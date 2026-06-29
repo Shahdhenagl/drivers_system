@@ -1,0 +1,113 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 158 64% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 158 64% 42%;
+    --radius: 0.85rem;
+  }
+
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 210 40% 98%;
+    --card: 222 44% 10%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 44% 10%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 158 64% 45%;
+    --primary-foreground: 222 47% 7%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 15%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 63% 51%;
+    --destructive-foreground: 210 40% 98%;
+    --success: 142 64% 45%;
+    --success-foreground: 210 40% 98%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 222 47% 7%;
+    --border: 217 33% 20%;
+    --input: 217 33% 20%;
+    --ring: 158 64% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* تمرير أنعم على الموبايل */
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* إخفاء شريط التمرير الأفقي للفلاتر */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* مساحة آمنة أسفل الشاشة (notch) */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* الطباعة / تصدير PDF */
+@media print {
+  nav,
+  .print\:hidden {
+    display: none !important;
+  }
+  main {
+    padding-bottom: 0 !important;
+    max-width: 100% !important;
+  }
+  :root,
+  html {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 40%;
+    --border: 214 32% 85%;
+    background: #fff !important;
+  }
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+}

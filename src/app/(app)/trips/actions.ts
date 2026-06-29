@@ -1,0 +1,213 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { audit } from "@/lib/audit";
+import { toPiastres } from "@/lib/money";
+import {
+  recordLedger,
+  availableInMethod,
+  deriveCollectionStatus,
+} from "@/lib/finance";
+
+/** إنشاء رحلة جديدة — يدعم إضافة مقاول/سواق أثناء الإنشاء */
+export async function createTrip(formData: FormData) {
+  const get = (k: string) => String(formData.get(k) ?? "").trim();
+
+  // المقاول
+  let contractorId = get("contractorId");
+  if (contractorId === "__new__" || !contractorId) {
+    const name = get("newContractorName");
+    const phone = get("newContractorPhone");
+    if (!name || !phone) throw new Error("بيانات المقاول ناقصة");
+    const c = await prisma.contractor.create({
+      data: { name, phone, company: get("newContractorCompany") || null },
+    });
+    contractorId = c.id;
+    await audit("CREATE", "Contractor", c.id, { via: "trip" });
+  }
+
+  // السواق (اختياري)
+  let driverId: string | null = get("driverId") || null;
+  if (driverId === "__new__") {
+    const name = get("newDriverName");
+    const phone = get("newDriverPhone");
+    const vehicleType = get("newDriverVehicleType") || "غير محدد";
+    if (!name || !phone) throw new Error("بيانات السواق ناقصة");
+    const dr = await prisma.driver.create({
+      data: { name, phone, vehicleType },
+    });
+    driverId = dr.id;
+    await audit("CREATE", "Driver", dr.id, { via: "trip" });
+  }
+  if (driverId === "") driverId = null;
+
+  const dateStr = get("date");
+  const trip = await prisma.trip.create({
+    data: {
+      contractorId,
+      driverId,
+      date: dateStr ? new Date(dateStr) : new Date(),
+      time: get("time") || null,
+      startPoint: get("startPoint"),
+      endPoint: get("endPoint"),
+      description: get("description") || null,
+      distance: get("distance") ? Number(get("distance")) : null,
+      contractorPrice: toPiastres(get("contractorPrice") || "0"),
+      driverDue: toPiastres(get("driverDue") || "0"),
+      notes: get("notes") || null,
+      status: "NEW",
+      collectionStatus: "NONE",
+    },
+  });
+  await audit("CREATE", "Trip", trip.id);
+  revalidatePath("/trips");
+  revalidatePath("/");
+  redirect(`/trips/${trip.id}`);
+}
+
+export async function updateTrip(id: string, formData: FormData) {
+  const get = (k: string) => String(formData.get(k) ?? "").trim();
+  const dateStr = get("date");
+  await prisma.trip.update({
+    where: { id },
+    data: {
+      date: dateStr ? new Date(dateStr) : undefined,
+      time: get("time") || null,
+      startPoint: get("startPoint"),
+      endPoint: get("endPoint"),
+      description: get("description") || null,
+      distance: get("distance") ? Number(get("distance")) : null,
+      contractorPrice: toPiastres(get("contractorPrice") || "0"),
+      driverDue: toPiastres(get("driverDue") || "0"),
+      driverId: get("driverId") || null,
+    },
+  });
+  await audit("UPDATE", "Trip", id);
+  revalidatePath(`/trips/${id}`);
+  revalidatePath("/trips");
+}
+
+/** تغيير حالة الرحلة */
+export async function setTripStatus(id: string, status: string) {
+  if (status === "COMPLETED") {
+    const trip = await prisma.trip.findUnique({ where: { id } });
+    // قاعدة: لا يمكن إنهاء الرحلة بدون اختيار سواق
+    if (!trip?.driverId) throw new Error("لا يمكن إنهاء الرحلة بدون اختيار سواق");
+  }
+  await prisma.trip.update({ where: { id }, data: { status } });
+  await audit("STATUS", "Trip", id, { status });
+  revalidatePath(`/trips/${id}`);
+  revalidatePath("/trips");
+  revalidatePath("/");
+}
+
+export async function addNote(id: string, formData: FormData) {
+  const note = String(formData.get("note") ?? "").trim();
+  await prisma.trip.update({ where: { id }, data: { notes: note || null } });
+  await audit("NOTE", "Trip", id);
+  revalidatePath(`/trips/${id}`);
+}
+
+/** تحصيل دفعة من المقاول */
+export async function addCollection(tripId: string, formData: FormData) {
+  const amount = toPiastres(String(formData.get("amount") ?? "0"));
+  const method = String(formData.get("method") ?? "cash");
+  const dateStr = String(formData.get("date") ?? "");
+  const date = dateStr ? new Date(dateStr) : new Date();
+  const note = String(formData.get("note") ?? "").trim() || null;
+  if (amount <= 0) throw new Error("القيمة غير صحيحة");
+
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
+    include: { collections: true },
+  });
+  if (!trip) throw new Error("الرحلة غير موجودة");
+
+  const collected = trip.collections.reduce((a, c) => a + c.amount, 0);
+  // قاعدة: لا يمكن تحصيل مبلغ أكبر من قيمة الرحلة
+  if (collected + amount > trip.contractorPrice) {
+    throw new Error("المبلغ يتجاوز قيمة الرحلة المتبقية");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const col = await tx.collection.create({
+      data: { tripId, amount, method, date, note },
+    });
+    await recordLedger(tx, {
+      type: "COLLECTION",
+      direction: "IN",
+      amount,
+      method,
+      description: `تحصيل — رحلة ${trip.startPoint} ← ${trip.endPoint}`,
+      refType: "Collection",
+      refId: col.id,
+      date,
+    });
+    const newStatus = deriveCollectionStatus(
+      trip.contractorPrice,
+      collected + amount
+    );
+    await tx.trip.update({
+      where: { id: tripId },
+      data: { collectionStatus: newStatus },
+    });
+  });
+
+  await audit("COLLECT", "Trip", tripId, { amount, method });
+  revalidatePath(`/trips/${tripId}`);
+  revalidatePath("/trips");
+  revalidatePath("/finance");
+  revalidatePath("/");
+}
+
+/** سداد دفعة لمستحق السواق من شاشة الرحلة */
+export async function addDriverPayment(tripId: string, formData: FormData) {
+  const amount = toPiastres(String(formData.get("amount") ?? "0"));
+  const method = String(formData.get("method") ?? "cash");
+  const dateStr = String(formData.get("date") ?? "");
+  const date = dateStr ? new Date(dateStr) : new Date();
+  const note = String(formData.get("note") ?? "").trim() || null;
+  if (amount <= 0) throw new Error("القيمة غير صحيحة");
+
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
+    include: { driverPayments: true },
+  });
+  if (!trip) throw new Error("الرحلة غير موجودة");
+  if (!trip.driverId) throw new Error("لا يوجد سواق على الرحلة");
+
+  const paid = trip.driverPayments.reduce((a, p) => a + p.amount, 0);
+  // قاعدة: لا يمكن دفع أكثر من المتبقي
+  if (paid + amount > trip.driverDue) {
+    throw new Error("المبلغ يتجاوز مستحق السواق المتبقي");
+  }
+  // قاعدة: لا يُصرف أكثر من رصيد الخزنة
+  const available = await availableInMethod(method);
+  if (amount > available) {
+    throw new Error("المبلغ أكبر من رصيد الخزنة في طريقة الدفع");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const dp = await tx.driverPayment.create({
+      data: { tripId, driverId: trip.driverId!, amount, method, date, note },
+    });
+    await recordLedger(tx, {
+      type: "DRIVER_PAYMENT",
+      direction: "OUT",
+      amount,
+      method,
+      description: `سداد سواق — رحلة ${trip.startPoint} ← ${trip.endPoint}`,
+      refType: "DriverPayment",
+      refId: dp.id,
+      date,
+    });
+  });
+
+  await audit("DRIVER_PAY", "Trip", tripId, { amount, method });
+  revalidatePath(`/trips/${tripId}`);
+  revalidatePath("/trips");
+  revalidatePath("/finance");
+  revalidatePath("/");
+}

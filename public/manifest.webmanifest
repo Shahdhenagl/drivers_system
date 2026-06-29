@@ -1,0 +1,20 @@
+{
+  "name": "نظام إدارة شركة النقل",
+  "short_name": "نظام النقل",
+  "description": "إدارة المقاولين والسواقين والرحلات والماليات",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

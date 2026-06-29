@@ -1,0 +1,217 @@
+// نظام إدارة شركة نقل المقاولين
+// المبالغ تُخزَّن كأعداد صحيحة بالقروش (piastres) = الجنيه × 100
+// للتحويل إلى Supabase/PostgreSQL: غيّر provider إلى "postgresql" و DATABASE_URL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ===================== البيانات الأساسية =====================
+
+model Contractor {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String
+  company   String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trips Trip[]
+
+  @@index([name])
+  @@index([phone])
+}
+
+model Driver {
+  id            String   @id @default(cuid())
+  name          String
+  phone         String
+  vehicleType   String
+  vehicleNumber String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  trips    Trip[]
+  payments DriverPayment[]
+
+  @@index([name])
+  @@index([phone])
+}
+
+model Partner {
+  id           String   @id @default(cuid())
+  name         String
+  sharePercent Float // نسبة المشاركة %
+  phone        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  withdrawals PartnerWithdrawal[]
+
+  @@index([name])
+}
+
+// ===================== الرحلات =====================
+// status: NEW | CONFIRMED | IN_PROGRESS | COMPLETED | CANCELLED
+// collectionStatus: NONE | PARTIAL | FULL
+
+model Trip {
+  id          String  @id @default(cuid())
+  contractor  Contractor @relation(fields: [contractorId], references: [id])
+  contractorId String
+  driver      Driver? @relation(fields: [driverId], references: [id])
+  driverId    String?
+
+  date        DateTime
+  time        String? // وقت الرحلة كنص HH:mm
+  startPoint  String
+  endPoint    String
+  description String?
+  distance    Float?
+
+  contractorPrice Int // سعر المقاول بالقروش
+  driverDue       Int // مستحق السواق بالقروش
+
+  status           String @default("NEW")
+  collectionStatus String @default("NONE")
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  collections    Collection[]
+  driverPayments DriverPayment[]
+
+  @@index([contractorId])
+  @@index([driverId])
+  @@index([date])
+  @@index([status])
+  @@index([collectionStatus])
+}
+
+// تحصيل من المقاول (دفعة)
+model Collection {
+  id        String   @id @default(cuid())
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  tripId    String
+  amount    Int // بالقروش
+  date      DateTime @default(now())
+  method    String // cash | instapay | visa | wallet
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([tripId])
+}
+
+// سداد مستحق السواق (دفعة)
+model DriverPayment {
+  id        String   @id @default(cuid())
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  tripId    String
+  driver    Driver   @relation(fields: [driverId], references: [id])
+  driverId  String
+  amount    Int // بالقروش
+  date      DateTime @default(now())
+  method    String
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([tripId])
+  @@index([driverId])
+}
+
+// ===================== المصروفات =====================
+model Expense {
+  id        String   @id @default(cuid())
+  name      String
+  category  String? // إيجار | بنزين | مرتبات | صيانة | عام
+  amount    Int // بالقروش
+  date      DateTime @default(now())
+  method    String
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([date])
+  @@index([category])
+}
+
+// ===================== الشركاء: السحوبات والتصفية =====================
+model PartnerWithdrawal {
+  id           String     @id @default(cuid())
+  partner      Partner    @relation(fields: [partnerId], references: [id])
+  partnerId    String
+  amount       Int // بالقروش
+  date         DateTime   @default(now())
+  method       String
+  note         String?
+  settlement   Settlement? @relation(fields: [settlementId], references: [id])
+  settlementId String?
+  createdAt    DateTime   @default(now())
+
+  @@index([partnerId])
+}
+
+// تصفية الخزنة الأسبوعية / توزيع الأرباح
+model Settlement {
+  id           String   @id @default(cuid())
+  date         DateTime @default(now())
+  periodStart  DateTime?
+  periodEnd    DateTime?
+  totalProfit  Int // الربح الموزّع بالقروش
+  note         String?
+  createdAt    DateTime @default(now())
+
+  withdrawals PartnerWithdrawal[]
+}
+
+// ===================== دفتر الأستاذ الموحد (Ledger) =====================
+// type: COLLECTION | DRIVER_PAYMENT | EXPENSE | PARTNER_WITHDRAWAL | CAPITAL | ADJUSTMENT
+// direction: IN | OUT
+// تُحسب الخزنة والأرباح من هذا الدفتر فقط
+
+model LedgerEntry {
+  id          String   @id @default(cuid())
+  type        String
+  direction   String // IN | OUT
+  amount      Int // بالقروش (دائمًا موجب)
+  method      String // cash | instapay | visa | wallet
+  description String
+  refType     String? // Collection | DriverPayment | Expense | PartnerWithdrawal | Trip
+  refId       String?
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([type])
+  @@index([method])
+  @@index([date])
+  @@index([refType, refId])
+}
+
+// ===================== سجل التدقيق =====================
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String // CREATE | UPDATE | DELETE | LOGIN ...
+  entity    String
+  entityId  String?
+  details   String? // JSON نصي
+  actor     String   @default("admin")
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// ===================== الإعدادات =====================
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
