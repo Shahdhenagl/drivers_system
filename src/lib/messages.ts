@@ -42,17 +42,22 @@ export function driverMessage(t: TripForMsg): string {
   return lines.filter(Boolean).join("\n");
 }
 
-/** تذكير للسواق */
+/** تذكير للسواق — يحتوي بيانات العميل ورقمه */
 export function driverReminder(t: TripForMsg): string {
   return [
     "🔔 تذكير برحلة",
     `📅 ${formatShortDate(t.date)}${t.time ? " - " + t.time : ""}`,
-    `📍 من: ${t.startPoint} إلى: ${t.endPoint}`,
+    `📍 من: ${t.startPoint}`,
+    `🏁 إلى: ${t.endPoint}`,
     `👤 العميل: ${t.contractor.name}`,
-  ].join("\n");
+    `📞 رقم العميل: ${displayPhone(t.contractor.phone)}`,
+    t.notes ? `📝 ملاحظات: ${t.notes}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
-/** تذكير بالتحصيل للمقاول */
+/** تذكير بالتحصيل للمقاول — يحتوي بيانات السواق ورقمه */
 export function collectionReminder(
   t: TripForMsg,
   remainingEgp: string
@@ -61,6 +66,10 @@ export function collectionReminder(
     `السلام عليكم أ. ${t.contractor.name}`,
     `نذكّر حضرتك بوجود مبلغ متبقٍّ بقيمة ${remainingEgp}`,
     `عن رحلة ${formatShortDate(t.date)} من ${t.startPoint} إلى ${t.endPoint}.`,
+    t.driver ? `🚚 السائق: ${t.driver.name}` : "",
+    t.driver ? `📞 رقم السائق: ${displayPhone(t.driver.phone)}` : "",
     "برجاء التكرم بسداده. شكرًا لتعاونكم 🌹",
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
