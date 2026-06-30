@@ -80,11 +80,10 @@ export async function GET(req: NextRequest) {
   }
 
   if (type === "soon") {
-    // تذكير قبل بدء الرحلة بساعتين تقريبًا.
-    // نافذة 30 دقيقة [بعد 90د، بعد 120د) تطابق جدولة كل 30 دقيقة فيُرسَل مرة واحدة.
+    // تذكير عندما تبدأ الرحلة خلال ساعتين. يُرسَل مرة واحدة فقط لكل رحلة
+    // (نسجّل REMIND_2H في سجل العمليات) فلا يتكرر مهما كان تواتر الكرون.
     const now = new Date();
-    const from = new Date(now.getTime() + 90 * 60_000);
-    const to = new Date(now.getTime() + 120 * 60_000);
+    const horizon = new Date(now.getTime() + 120 * 60_000);
 
     const candidates = await prisma.trip.findMany({
       where: {
@@ -98,8 +97,24 @@ export async function GET(req: NextRequest) {
 
     for (const trip of candidates) {
       const start = tripStart(trip.date, trip.time);
-      if (!start || start < from || start >= to) continue;
-      if (await sendTelegram(adminTripReminder(trip))) sent++;
+      if (!start || start <= now || start > horizon) continue;
+
+      const already = await prisma.auditLog.findFirst({
+        where: { entity: "Trip", entityId: trip.id, action: "REMIND_2H" },
+      });
+      if (already) continue;
+
+      if (await sendTelegram(adminTripReminder(trip))) {
+        sent++;
+        await prisma.auditLog.create({
+          data: {
+            action: "REMIND_2H",
+            entity: "Trip",
+            entityId: trip.id,
+            actor: "cron",
+          },
+        });
+      }
     }
     return NextResponse.json({ ok: true, type, sent });
   }
