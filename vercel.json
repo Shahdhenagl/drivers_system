@@ -3,7 +3,6 @@
   "regions": ["fra1"],
   "crons": [
     { "path": "/api/cron?type=daily", "schedule": "0 6 * * *" },
-    { "path": "/api/cron?type=soon", "schedule": "*/30 * * * *" },
     { "path": "/api/cron?type=weekly", "schedule": "0 22 * * 4" }
   ]
 }
