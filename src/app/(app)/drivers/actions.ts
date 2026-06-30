@@ -17,6 +17,7 @@ export async function createDriver(formData: FormData) {
     data: {
       name,
       phone,
+      altPhone: String(formData.get("altPhone") ?? "").trim() || null,
       vehicleType,
       vehicleNumber: String(formData.get("vehicleNumber") ?? "").trim() || null,
       notes: String(formData.get("notes") ?? "").trim() || null,
@@ -37,6 +38,7 @@ export async function updateDriver(id: string, formData: FormData) {
     data: {
       name,
       phone,
+      altPhone: String(formData.get("altPhone") ?? "").trim() || null,
       vehicleType,
       vehicleNumber: String(formData.get("vehicleNumber") ?? "").trim() || null,
       notes: String(formData.get("notes") ?? "").trim() || null,

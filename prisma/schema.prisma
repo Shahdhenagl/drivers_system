@@ -18,6 +18,7 @@ model Contractor {
   id        String   @id @default(cuid())
   name      String
   phone     String
+  altPhone  String? // رقم إضافي اختياري
   company   String?
   notes     String?
   createdAt DateTime @default(now())
@@ -33,6 +34,7 @@ model Driver {
   id            String   @id @default(cuid())
   name          String
   phone         String
+  altPhone      String? // رقم إضافي اختياري
   vehicleType   String
   vehicleNumber String?
   notes         String?

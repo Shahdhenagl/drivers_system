@@ -19,6 +19,7 @@ type Driver = {
   id: string;
   name: string;
   phone: string;
+  altPhone: string | null;
   vehicleType: string;
   vehicleNumber: string | null;
   notes: string | null;
@@ -63,6 +64,16 @@ export function DriverForm({
               placeholder="01xxxxxxxxx"
               defaultValue={driver?.phone}
               required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="altPhone">رقم إضافي (اختياري)</Label>
+            <Input
+              id="altPhone"
+              name="altPhone"
+              inputMode="tel"
+              placeholder="01xxxxxxxxx"
+              defaultValue={driver?.altPhone ?? ""}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">

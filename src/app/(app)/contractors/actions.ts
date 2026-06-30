@@ -14,6 +14,7 @@ export async function createContractor(formData: FormData) {
     data: {
       name,
       phone,
+      altPhone: String(formData.get("altPhone") ?? "").trim() || null,
       company: String(formData.get("company") ?? "").trim() || null,
       notes: String(formData.get("notes") ?? "").trim() || null,
     },
@@ -32,6 +33,7 @@ export async function updateContractor(id: string, formData: FormData) {
     data: {
       name,
       phone,
+      altPhone: String(formData.get("altPhone") ?? "").trim() || null,
       company: String(formData.get("company") ?? "").trim() || null,
       notes: String(formData.get("notes") ?? "").trim() || null,
     },

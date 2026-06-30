@@ -19,6 +19,7 @@ type Contractor = {
   id: string;
   name: string;
   phone: string;
+  altPhone: string | null;
   company: string | null;
   notes: string | null;
 };
@@ -62,6 +63,16 @@ export function ContractorForm({
               placeholder="01xxxxxxxxx"
               defaultValue={contractor?.phone}
               required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="altPhone">رقم إضافي (اختياري)</Label>
+            <Input
+              id="altPhone"
+              name="altPhone"
+              inputMode="tel"
+              placeholder="01xxxxxxxxx"
+              defaultValue={contractor?.altPhone ?? ""}
             />
           </div>
           <div className="space-y-1.5">

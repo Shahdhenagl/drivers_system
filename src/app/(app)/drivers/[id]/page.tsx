@@ -105,6 +105,11 @@ export default async function DriverProfile({
                 <div className="text-sm text-muted-foreground">
                   {displayPhone(d.phone)}
                 </div>
+                {d.altPhone && (
+                  <div className="text-sm text-muted-foreground">
+                    {displayPhone(d.altPhone)} (إضافي)
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex gap-1 print:hidden">

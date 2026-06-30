@@ -121,6 +121,11 @@ export default async function ContractorProfile({
                 <div className="text-sm text-muted-foreground">
                   {displayPhone(c.phone)}
                 </div>
+                {c.altPhone && (
+                  <div className="text-sm text-muted-foreground">
+                    {displayPhone(c.altPhone)} (إضافي)
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex gap-1 print:hidden">
