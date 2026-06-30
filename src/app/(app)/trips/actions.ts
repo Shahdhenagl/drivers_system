@@ -147,7 +147,9 @@ export async function deleteTrip(id: string) {
 
   // قاعدة: لو تم التحصيل (ولو جزئيًا) يفضل محفوظًا ولا يُحذف
   if (trip.collections.length > 0) {
-    throw new Error("تم التحصيل على هذه الرحلة — لا يمكن حذفها، تظل محفوظة");
+    return {
+      error: "تم التحصيل على هذه الرحلة — لا يمكن حذفها، تظل محفوظة.",
+    };
   }
 
   await prisma.$transaction(async (tx) => {

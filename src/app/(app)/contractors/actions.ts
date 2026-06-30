@@ -42,11 +42,27 @@ export async function updateContractor(id: string, formData: FormData) {
 }
 
 export async function deleteContractor(id: string) {
-  const tripCount = await prisma.trip.count({ where: { contractorId: id } });
-  if (tripCount > 0) {
-    throw new Error("لا يمكن حذف مقاول لديه رحلات");
+  const trips = await prisma.trip.findMany({
+    where: { contractorId: id },
+    select: {
+      _count: { select: { collections: true, driverPayments: true } },
+    },
+  });
+  const hasMoney = trips.some(
+    (t) => t._count.collections > 0 || t._count.driverPayments > 0
+  );
+  if (hasMoney) {
+    return {
+      error:
+        "لا يمكن حذف هذا المقاول لوجود تحصيل أو سداد مسجّل على رحلاته. احذف الطلبات المعنية أولًا.",
+    };
   }
-  await prisma.contractor.delete({ where: { id } });
+
+  // حذف رحلاته الفارغة ثم حذفه
+  await prisma.$transaction(async (tx) => {
+    await tx.trip.deleteMany({ where: { contractorId: id } });
+    await tx.contractor.delete({ where: { id } });
+  });
   await audit("DELETE", "Contractor", id);
   revalidatePath("/contractors");
   redirect("/contractors");

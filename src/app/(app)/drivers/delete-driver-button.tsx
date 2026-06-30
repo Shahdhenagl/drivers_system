@@ -12,11 +12,15 @@ export function DeleteDriverButton({ id }: { id: string }) {
     if (!confirm("هل تريد حذف هذا السواق نهائيًا؟")) return;
     setLoading(true);
     try {
-      await deleteDriver(id);
+      const res = await deleteDriver(id);
+      if (res?.error) {
+        alert(res.error);
+        setLoading(false);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       if (!msg.includes("NEXT_REDIRECT")) {
-        alert(msg || "تعذّر الحذف");
+        alert("تعذّر الحذف");
         setLoading(false);
       }
     }

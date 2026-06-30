@@ -48,9 +48,18 @@ export async function updateDriver(id: string, formData: FormData) {
 }
 
 export async function deleteDriver(id: string) {
-  const tripCount = await prisma.trip.count({ where: { driverId: id } });
-  if (tripCount > 0) throw new Error("لا يمكن حذف سواق لديه رحلات");
-  await prisma.driver.delete({ where: { id } });
+  const payCount = await prisma.driverPayment.count({ where: { driverId: id } });
+  if (payCount > 0) {
+    return {
+      error:
+        "لا يمكن حذف هذا السواق لوجود سداد مسجّل له. تظل سجلاته محفوظة.",
+    };
+  }
+  // فك ارتباطه عن أي رحلات ثم حذفه (تبقى الرحلات بدون سواق)
+  await prisma.$transaction(async (tx) => {
+    await tx.trip.updateMany({ where: { driverId: id }, data: { driverId: null } });
+    await tx.driver.delete({ where: { id } });
+  });
   await audit("DELETE", "Driver", id);
   revalidatePath("/drivers");
   redirect("/drivers");

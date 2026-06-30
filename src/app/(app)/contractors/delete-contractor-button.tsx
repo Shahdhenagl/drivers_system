@@ -12,11 +12,15 @@ export function DeleteContractorButton({ id }: { id: string }) {
     if (!confirm("هل تريد حذف هذا المقاول نهائيًا؟")) return;
     setLoading(true);
     try {
-      await deleteContractor(id);
+      const res = await deleteContractor(id);
+      if (res?.error) {
+        alert(res.error);
+        setLoading(false);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       if (!msg.includes("NEXT_REDIRECT")) {
-        alert(msg || "تعذّر الحذف");
+        alert("تعذّر الحذف");
         setLoading(false);
       }
     }

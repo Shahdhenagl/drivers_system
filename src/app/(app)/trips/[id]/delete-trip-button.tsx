@@ -22,11 +22,15 @@ export function DeleteTripButton({
     if (!confirm("حذف هذا الطلب وكل بياناته نهائيًا؟")) return;
     setLoading(true);
     try {
-      await deleteTrip(id);
+      const res = await deleteTrip(id);
+      if (res?.error) {
+        alert(res.error);
+        setLoading(false);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       if (!msg.includes("NEXT_REDIRECT")) {
-        alert(msg || "تعذّر الحذف");
+        alert("تعذّر الحذف");
         setLoading(false);
       }
     }
