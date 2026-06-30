@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { formatMoney } from "@/lib/money";
 import { displayPhone } from "@/lib/phone";
+import { effectiveAmounts } from "@/lib/finance";
 import { Plus, Phone, Building2, ChevronLeft, Users } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -31,8 +32,14 @@ export default async function ContractorsPage({
     orderBy: { createdAt: "desc" },
     include: {
       trips: {
-        where: { status: { not: "CANCELLED" } },
-        select: { contractorPrice: true, collections: { select: { amount: true } } },
+        select: {
+          status: true,
+          contractorPrice: true,
+          driverDue: true,
+          contractorPenalty: true,
+          driverPenalty: true,
+          collections: { select: { amount: true } },
+        },
       },
     },
   });
@@ -59,16 +66,11 @@ export default async function ContractorsPage({
         ) : (
           <div className="space-y-2.5">
             {contractors.map((c) => {
-              const due = c.trips.reduce(
-                (a, t) =>
-                  a +
-                  Math.max(
-                    t.contractorPrice -
-                      t.collections.reduce((s, x) => s + x.amount, 0),
-                    0
-                  ),
-                0
-              );
+              const due = c.trips.reduce((a, t) => {
+                const eff = effectiveAmounts(t);
+                const collected = t.collections.reduce((s, x) => s + x.amount, 0);
+                return a + Math.max(eff.contractor - collected, 0);
+              }, 0);
               return (
                 <Link key={c.id} href={`/contractors/${c.id}`}>
                   <Card className="flex items-center gap-3 p-3.5 active:scale-[0.99] transition-transform">

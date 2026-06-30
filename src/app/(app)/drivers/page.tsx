@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { formatMoney } from "@/lib/money";
 import { displayPhone } from "@/lib/phone";
+import { effectiveAmounts } from "@/lib/finance";
 import { Plus, Phone, Truck, ChevronLeft } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -31,8 +32,14 @@ export default async function DriversPage({
     orderBy: { createdAt: "desc" },
     include: {
       trips: {
-        where: { status: { not: "CANCELLED" } },
-        select: { driverDue: true, driverPayments: { select: { amount: true } } },
+        select: {
+          status: true,
+          contractorPrice: true,
+          driverDue: true,
+          contractorPenalty: true,
+          driverPenalty: true,
+          driverPayments: { select: { amount: true } },
+        },
       },
     },
   });
@@ -62,16 +69,11 @@ export default async function DriversPage({
         ) : (
           <div className="space-y-2.5">
             {drivers.map((d) => {
-              const remaining = d.trips.reduce(
-                (a, t) =>
-                  a +
-                  Math.max(
-                    t.driverDue -
-                      t.driverPayments.reduce((s, x) => s + x.amount, 0),
-                    0
-                  ),
-                0
-              );
+              const remaining = d.trips.reduce((a, t) => {
+                const eff = effectiveAmounts(t);
+                const paid = t.driverPayments.reduce((s, x) => s + x.amount, 0);
+                return a + Math.max(eff.driver - paid, 0);
+              }, 0);
               return (
                 <Link key={d.id} href={`/drivers/${d.id}`}>
                   <Card className="flex items-center gap-3 p-3.5 active:scale-[0.99] transition-transform">

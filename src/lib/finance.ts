@@ -62,26 +62,50 @@ export async function availableInMethod(method: string): Promise<number> {
   return (t as Record<string, number>)[method] ?? 0;
 }
 
-export type TripLike = {
+export type TripAmounts = {
+  status: string;
   contractorPrice: number;
   driverDue: number;
+  contractorPenalty?: number | null;
+  driverPenalty?: number | null;
+};
+
+/**
+ * المبالغ الفعلية للرحلة:
+ * - رحلة عادية: سعر المقاول ومستحق السواق.
+ * - رحلة ملغية: غرامة العميل ونصيب السواق منها (صفر في حالة السماح).
+ */
+export function effectiveAmounts(trip: TripAmounts) {
+  if (trip.status === "CANCELLED") {
+    return {
+      contractor: trip.contractorPenalty ?? 0,
+      driver: trip.driverPenalty ?? 0,
+    };
+  }
+  return { contractor: trip.contractorPrice, driver: trip.driverDue };
+}
+
+export type TripLike = TripAmounts & {
   collections: { amount: number }[];
   driverPayments: { amount: number }[];
 };
 
-/** حسابات الرحلة الواحدة */
+/** حسابات الرحلة الواحدة (تراعي الغرامة عند الإلغاء) */
 export function tripFinancials(trip: TripLike) {
+  const eff = effectiveAmounts(trip);
   const collected = trip.collections.reduce((a, c) => a + c.amount, 0);
-  const remainingCollection = Math.max(trip.contractorPrice - collected, 0);
+  const remainingCollection = Math.max(eff.contractor - collected, 0);
   const paidToDriver = trip.driverPayments.reduce((a, p) => a + p.amount, 0);
-  const remainingDriver = Math.max(trip.driverDue - paidToDriver, 0);
-  const profit = trip.contractorPrice - trip.driverDue;
+  const remainingDriver = Math.max(eff.driver - paidToDriver, 0);
+  const profit = eff.contractor - eff.driver;
   return {
     collected,
     remainingCollection,
     paidToDriver,
     remainingDriver,
     profit,
+    effContractor: eff.contractor,
+    effDriver: eff.driver,
   };
 }
 

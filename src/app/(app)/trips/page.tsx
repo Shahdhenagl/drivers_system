@@ -33,7 +33,9 @@ export default async function TripsPage({
   const sp = await searchParams;
   const where: Prisma.TripWhereInput = {};
 
+  // الطلبات الملغية لا تظهر في "الكل" — فقط عند اختيار فلتر "ملغية"
   if (sp.status) where.status = sp.status;
+  else where.status = { not: "CANCELLED" };
   if (sp.filter === "today") {
     where.date = { gte: startOfDay(), lte: endOfDay() };
   } else if (sp.filter === "tomorrow") {

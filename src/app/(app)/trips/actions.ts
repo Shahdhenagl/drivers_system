@@ -9,6 +9,7 @@ import {
   recordLedger,
   availableInMethod,
   deriveCollectionStatus,
+  effectiveAmounts,
 } from "@/lib/finance";
 import { VIA_DRIVER } from "@/lib/constants";
 
@@ -90,6 +91,52 @@ export async function updateTrip(id: string, formData: FormData) {
   revalidatePath("/trips");
 }
 
+/**
+ * إلغاء الطلب — مع اختيار سماح أو غرامة.
+ * في حالة الغرامة: العميل يدفع غرامة، السواق يأخذ نصيبًا منها، والباقي إيراد المكتب.
+ */
+export async function cancelTrip(id: string, formData: FormData) {
+  const type = String(formData.get("penaltyType") ?? "NONE");
+  let contractorPenalty = 0;
+  let driverPenalty = 0;
+
+  if (type === "PENALTY") {
+    contractorPenalty = toPiastres(String(formData.get("contractorPenalty") ?? "0"));
+    driverPenalty = toPiastres(String(formData.get("driverPenalty") ?? "0"));
+    if (contractorPenalty < 0 || driverPenalty < 0) {
+      throw new Error("قيم الغرامة غير صحيحة");
+    }
+    if (driverPenalty > contractorPenalty) {
+      throw new Error("نصيب السواق لا يمكن أن يتجاوز غرامة العميل");
+    }
+  }
+
+  const trip = await prisma.trip.findUnique({
+    where: { id },
+    include: { collections: true },
+  });
+  if (!trip) throw new Error("الرحلة غير موجودة");
+
+  const collected = trip.collections.reduce((a, c) => a + c.amount, 0);
+  const newCollectionStatus = deriveCollectionStatus(contractorPenalty, collected);
+
+  await prisma.trip.update({
+    where: { id },
+    data: {
+      status: "CANCELLED",
+      contractorPenalty,
+      driverPenalty,
+      collectionStatus: newCollectionStatus,
+    },
+  });
+
+  await audit("CANCEL", "Trip", id, { type, contractorPenalty, driverPenalty });
+  revalidatePath(`/trips/${id}`);
+  revalidatePath("/trips");
+  revalidatePath("/finance");
+  revalidatePath("/");
+}
+
 /** حذف الطلب — مسموح فقط إذا لم يتم تحصيل أي مبلغ من المقاول */
 export async function deleteTrip(id: string) {
   const trip = await prisma.trip.findUnique({
@@ -158,9 +205,10 @@ export async function addCollection(tripId: string, formData: FormData) {
   });
   if (!trip) throw new Error("الرحلة غير موجودة");
 
+  const eff = effectiveAmounts(trip);
   const collected = trip.collections.reduce((a, c) => a + c.amount, 0);
-  // قاعدة: لا يمكن تحصيل مبلغ أكبر من قيمة الرحلة
-  if (collected + amount > trip.contractorPrice) {
+  // قاعدة: لا يمكن تحصيل مبلغ أكبر من قيمة الرحلة (أو الغرامة عند الإلغاء)
+  if (collected + amount > eff.contractor) {
     throw new Error("المبلغ يتجاوز قيمة الرحلة المتبقية");
   }
 
@@ -178,10 +226,7 @@ export async function addCollection(tripId: string, formData: FormData) {
       refId: col.id,
       date,
     });
-    const newStatus = deriveCollectionStatus(
-      trip.contractorPrice,
-      collected + amount
-    );
+    const newStatus = deriveCollectionStatus(eff.contractor, collected + amount);
     await tx.trip.update({
       where: { id: tripId },
       data: { collectionStatus: newStatus },
@@ -217,10 +262,11 @@ export async function collectViaDriver(tripId: string, formData: FormData) {
   if (!trip) throw new Error("الرحلة غير موجودة");
   if (!trip.driverId) throw new Error("لا يوجد سواق على الرحلة");
 
+  const eff = effectiveAmounts(trip);
   const collected = trip.collections.reduce((a, c) => a + c.amount, 0);
-  const remainingCollection = trip.contractorPrice - collected;
+  const remainingCollection = eff.contractor - collected;
   const paid = trip.driverPayments.reduce((a, p) => a + p.amount, 0);
-  const remainingDriver = trip.driverDue - paid;
+  const remainingDriver = eff.driver - paid;
 
   if (amount > remainingCollection) {
     throw new Error("المبلغ أكبر من المتبقي على المقاول");
@@ -239,10 +285,7 @@ export async function collectViaDriver(tripId: string, formData: FormData) {
       data: { tripId, driverId: trip.driverId!, amount, method: VIA_DRIVER, date, note },
     });
     // تحديث حالة التحصيل
-    const newStatus = deriveCollectionStatus(
-      trip.contractorPrice,
-      collected + amount
-    );
+    const newStatus = deriveCollectionStatus(eff.contractor, collected + amount);
     await tx.trip.update({
       where: { id: tripId },
       data: { collectionStatus: newStatus },
@@ -272,9 +315,10 @@ export async function addDriverPayment(tripId: string, formData: FormData) {
   if (!trip) throw new Error("الرحلة غير موجودة");
   if (!trip.driverId) throw new Error("لا يوجد سواق على الرحلة");
 
+  const paidEff = effectiveAmounts(trip);
   const paid = trip.driverPayments.reduce((a, p) => a + p.amount, 0);
   // قاعدة: لا يمكن دفع أكثر من المتبقي
-  if (paid + amount > trip.driverDue) {
+  if (paid + amount > paidEff.driver) {
     throw new Error("المبلغ يتجاوز مستحق السواق المتبقي");
   }
   // قاعدة: لا يُصرف أكثر من رصيد الخزنة

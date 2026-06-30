@@ -54,6 +54,11 @@ export default async function FinancePage() {
           <Indicator label="متبقي للسواقين" value={ov.totalRemainingDrivers} tone="warning" />
           <Indicator label="إجمالي المصروفات" value={ov.totalExpenses} tone="destructive" />
           <Indicator label="إجمالي الربح" value={ov.grossProfit} tone="primary" />
+          <Indicator
+            label="إيراد الغرامات"
+            value={ov.totalPenaltyRevenue}
+            tone="primary"
+          />
           <div className="col-span-2">
             <Card className="space-y-1 bg-primary/10 p-4">
               <div className="flex items-center justify-between">

@@ -21,7 +21,9 @@ import {
   addDriverPayment,
   addNote,
   collectViaDriver,
+  cancelTrip,
 } from "../actions";
+import { toPiastres } from "@/lib/money";
 import { formatMoney, toEgp } from "@/lib/money";
 import { toDateInput } from "@/lib/format";
 import {
@@ -84,11 +86,7 @@ export function TripActions(props: Props) {
             <CheckCheck className="h-4 w-4" /> إنهاء الرحلة
           </Button>
         )}
-        {status !== "CANCELLED" && (
-          <Button variant="destructive" onClick={() => changeStatus("CANCELLED")}>
-            <XCircle className="h-4 w-4" /> إلغاء
-          </Button>
-        )}
+        {status !== "CANCELLED" && <CancelDialog tripId={tripId} />}
       </div>
 
       {/* المال + الملاحظة */}
@@ -192,6 +190,118 @@ function DriverPayDialog({
           المتبقي: <span className="font-bold text-warning">{formatMoney(remaining)}</span>
         </p>
         <PaymentFields action={action} max={toEgp(remaining)} err={err} submit="تأكيد السداد" />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CancelDialog({ tripId }: { tripId: string }) {
+  const [open, setOpen] = useState(false);
+  const [withPenalty, setWithPenalty] = useState(false);
+  const [contractorP, setContractorP] = useState("");
+  const [driverP, setDriverP] = useState("");
+  const [err, setErr] = useState("");
+  const router = useRouter();
+
+  const officeRevenue =
+    toPiastres(contractorP || "0") - toPiastres(driverP || "0");
+
+  async function action(fd: FormData) {
+    setErr("");
+    fd.set("penaltyType", withPenalty ? "PENALTY" : "NONE");
+    try {
+      await cancelTrip(tripId, fd);
+      setOpen(false);
+      router.refresh();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "خطأ");
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="destructive">
+          <XCircle className="h-4 w-4" /> إلغاء
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>إلغاء الطلب</DialogTitle>
+        </DialogHeader>
+        <form action={action} className="space-y-4">
+          {/* سماح أو غرامة */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setWithPenalty(false)}
+              className={`rounded-xl border p-3 text-sm font-semibold ${
+                !withPenalty
+                  ? "border-success bg-success/10 text-success"
+                  : "border-border text-muted-foreground"
+              }`}
+            >
+              سماح (بدون غرامة)
+            </button>
+            <button
+              type="button"
+              onClick={() => setWithPenalty(true)}
+              className={`rounded-xl border p-3 text-sm font-semibold ${
+                withPenalty
+                  ? "border-destructive bg-destructive/10 text-destructive"
+                  : "border-border text-muted-foreground"
+              }`}
+            >
+              غرامة
+            </button>
+          </div>
+
+          {withPenalty && (
+            <div className="space-y-3 rounded-xl border border-dashed border-destructive/40 p-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="contractorPenalty">غرامة على العميل (ج.م)</Label>
+                <Input
+                  id="contractorPenalty"
+                  name="contractorPenalty"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  inputMode="decimal"
+                  value={contractorP}
+                  onChange={(e) => setContractorP(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="driverPenalty">نصيب السواق منها (ج.م)</Label>
+                <Input
+                  id="driverPenalty"
+                  name="driverPenalty"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  inputMode="decimal"
+                  value={driverP}
+                  onChange={(e) => setDriverP(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-muted p-2 text-sm">
+                <span>إيراد المكتب من الغرامة</span>
+                <span
+                  className={`font-bold tabular-nums ${
+                    officeRevenue >= 0 ? "text-primary" : "text-destructive"
+                  }`}
+                >
+                  {formatMoney(officeRevenue)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {err && <p className="text-sm text-destructive">{err}</p>}
+          <SubmitButton size="lg" variant="destructive" className="w-full">
+            تأكيد الإلغاء
+          </SubmitButton>
+        </form>
       </DialogContent>
     </Dialog>
   );

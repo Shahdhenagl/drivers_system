@@ -1,5 +1,6 @@
 import { formatShortDate } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
+import { formatMoney } from "@/lib/money";
 import { COMPANY_NAME } from "@/lib/constants";
 
 const SIGNATURE = `\n\n— ${COMPANY_NAME}`;
@@ -59,6 +60,45 @@ export function driverReminder(t: TripForMsg): string {
     ]
       .filter(Boolean)
       .join("\n") + SIGNATURE
+  );
+}
+
+type PeriodReport = {
+  name: string;
+  periodLabel: string;
+  from: Date;
+  to: Date;
+  tripsCount: number;
+  total: number;
+  settled: number;
+  remainingTotal: number;
+};
+
+/** تقرير دوري للمقاول (أسبوعي/شهري) */
+export function contractorReport(r: PeriodReport): string {
+  return (
+    [
+      `📊 تقرير ${r.periodLabel} — ${r.name}`,
+      `🗓️ من ${formatShortDate(r.from)} إلى ${formatShortDate(r.to)}`,
+      `🚛 عدد الرحلات: ${r.tripsCount}`,
+      `💰 إجمالي قيمة الرحلات: ${formatMoney(r.total)}`,
+      `✅ المحصّل خلال الفترة: ${formatMoney(r.settled)}`,
+      `🔴 إجمالي المتبقي عليك: ${formatMoney(r.remainingTotal)}`,
+    ].join("\n") + SIGNATURE
+  );
+}
+
+/** تقرير دوري للسواق (أسبوعي/شهري) */
+export function driverReport(r: PeriodReport): string {
+  return (
+    [
+      `📊 تقرير ${r.periodLabel} — ${r.name}`,
+      `🗓️ من ${formatShortDate(r.from)} إلى ${formatShortDate(r.to)}`,
+      `🚛 عدد الرحلات: ${r.tripsCount}`,
+      `💵 إجمالي مستحقاتك: ${formatMoney(r.total)}`,
+      `✅ المدفوع لك خلال الفترة: ${formatMoney(r.settled)}`,
+      `🟢 إجمالي المتبقي لك: ${formatMoney(r.remainingTotal)}`,
+    ].join("\n") + SIGNATURE
   );
 }
 

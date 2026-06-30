@@ -1,11 +1,17 @@
 import { prisma } from "@/lib/prisma";
+import { effectiveAmounts } from "@/lib/finance";
 
 export async function getFinanceOverview() {
   const [trips, expenseAgg, collectionAgg, driverPayAgg, capitalSetting] =
     await Promise.all([
       prisma.trip.findMany({
-        where: { status: { not: "CANCELLED" } },
-        select: { contractorPrice: true, driverDue: true },
+        select: {
+          status: true,
+          contractorPrice: true,
+          driverDue: true,
+          contractorPenalty: true,
+          driverPenalty: true,
+        },
       }),
       prisma.expense.aggregate({ _sum: { amount: true } }),
       prisma.collection.aggregate({ _sum: { amount: true } }),
@@ -13,8 +19,17 @@ export async function getFinanceOverview() {
       prisma.setting.findUnique({ where: { key: "initial_capital" } }),
     ]);
 
-  const totalRevenue = trips.reduce((a, t) => a + t.contractorPrice, 0);
-  const totalDriverDue = trips.reduce((a, t) => a + t.driverDue, 0);
+  // المبالغ الفعلية: عادية للرحلات النشطة، والغرامة للملغية (صفر عند السماح)
+  const eff = trips.map(effectiveAmounts);
+  const totalRevenue = eff.reduce((a, e) => a + e.contractor, 0);
+  const totalDriverDue = eff.reduce((a, e) => a + e.driver, 0);
+  const totalPenaltyRevenue = trips.reduce(
+    (a, t) =>
+      t.status === "CANCELLED"
+        ? a + ((t.contractorPenalty ?? 0) - (t.driverPenalty ?? 0))
+        : a,
+    0
+  );
   const totalCollected = collectionAgg._sum.amount ?? 0;
   const totalDeferred = Math.max(totalRevenue - totalCollected, 0);
   const totalPaidDrivers = driverPayAgg._sum.amount ?? 0;
@@ -34,5 +49,6 @@ export async function getFinanceOverview() {
     totalExpenses,
     grossProfit,
     netProfit,
+    totalPenaltyRevenue,
   };
 }

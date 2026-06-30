@@ -53,6 +53,8 @@ CREATE TABLE "Trip" (
     "distance" DOUBLE PRECISION,
     "contractorPrice" INTEGER NOT NULL,
     "driverDue" INTEGER NOT NULL,
+    "contractorPenalty" INTEGER NOT NULL DEFAULT 0,
+    "driverPenalty" INTEGER NOT NULL DEFAULT 0,
     "status" TEXT NOT NULL DEFAULT 'NEW',
     "collectionStatus" TEXT NOT NULL DEFAULT 'NONE',
     "notes" TEXT,

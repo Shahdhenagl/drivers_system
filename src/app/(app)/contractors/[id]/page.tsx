@@ -9,8 +9,10 @@ import { PrintButton } from "@/components/print-button";
 import { ContractorForm } from "../contractor-form";
 import { DeleteContractorButton } from "../delete-contractor-button";
 import { formatMoney } from "@/lib/money";
-import { formatShortDate } from "@/lib/format";
+import { formatShortDate, startOfDay, endOfDay, addDays } from "@/lib/format";
 import { displayPhone, whatsAppLink } from "@/lib/phone";
+import { effectiveAmounts } from "@/lib/finance";
+import { contractorReport } from "@/lib/messages";
 import { methodLabel, TRIP_STATUS } from "@/lib/constants";
 import {
   Phone,
@@ -42,17 +44,20 @@ export default async function ContractorProfile({
   });
   if (!c) notFound();
 
-  const active = c.trips.filter((t) => t.status !== "CANCELLED");
-  const totalRequired = active.reduce((a, t) => a + t.contractorPrice, 0);
-  const totalCollected = active.reduce(
+  // تشمل الرحلات النشطة وغرامات الإلغاء (السماح = صفر)
+  const totalRequired = c.trips.reduce(
+    (a, t) => a + effectiveAmounts(t).contractor,
+    0
+  );
+  const totalCollected = c.trips.reduce(
     (a, t) => a + t.collections.reduce((s, x) => s + x.amount, 0),
     0
   );
   const totalDeferred = Math.max(totalRequired - totalCollected, 0);
-  const totalProfit = active.reduce(
-    (a, t) => a + (t.contractorPrice - t.driverDue),
-    0
-  );
+  const totalProfit = c.trips.reduce((a, t) => {
+    const e = effectiveAmounts(t);
+    return a + (e.contractor - e.driver);
+  }, 0);
 
   const payments = c.trips
     .flatMap((t) =>
@@ -62,6 +67,32 @@ export default async function ContractorProfile({
       }))
     )
     .sort((a, b) => +new Date(b.date) - +new Date(a.date));
+
+  // تقارير واتساب دورية
+  const now = new Date();
+  const reportPeriods = [
+    { label: "أسبوعي", from: startOfDay(addDays(now, -6)), to: endOfDay(now) },
+    { label: "شهري", from: startOfDay(addDays(now, -29)), to: endOfDay(now) },
+  ];
+  const reports = reportPeriods.map((p) => {
+    const inP = c.trips.filter((t) => t.date >= p.from && t.date <= p.to);
+    const total = inP.reduce((a, t) => a + effectiveAmounts(t).contractor, 0);
+    const settled = inP.reduce(
+      (a, t) => a + t.collections.reduce((s, x) => s + x.amount, 0),
+      0
+    );
+    const msg = contractorReport({
+      name: c.name,
+      periodLabel: p.label,
+      from: p.from,
+      to: p.to,
+      tripsCount: inP.length,
+      total,
+      settled,
+      remainingTotal: totalDeferred,
+    });
+    return { label: p.label, href: whatsAppLink(c.phone, msg) };
+  });
 
   return (
     <>
@@ -134,6 +165,22 @@ export default async function ContractorProfile({
           <SummaryBox label="إجمالي الآجل" value={totalDeferred} tone="destructive" />
           <SummaryBox label="أرباحنا منه" value={totalProfit} tone="primary" />
         </div>
+
+        {/* تقرير واتساب دوري */}
+        <Card className="space-y-2 p-4 print:hidden">
+          <div className="text-sm font-bold text-muted-foreground">
+            إرسال تقرير عبر واتساب
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {reports.map((r) => (
+              <Button key={r.label} asChild variant="success" size="sm">
+                <a href={r.href} target="_blank">
+                  <MessageCircle className="h-4 w-4" /> تقرير {r.label}
+                </a>
+              </Button>
+            ))}
+          </div>
+        </Card>
 
         {/* الرحلات */}
         <section>

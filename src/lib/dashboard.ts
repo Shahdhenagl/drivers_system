@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { startOfDay, endOfDay, addDays } from "@/lib/format";
+import { effectiveAmounts } from "@/lib/finance";
 
 export async function getDashboardStats() {
   const now = new Date();
@@ -22,14 +23,15 @@ export async function getDashboardStats() {
     prisma.trip.count({ where: { status: "IN_PROGRESS" } }),
   ]);
 
-  // العملاء المتأخرون: رحلات غير ملغية لم يكتمل تحصيلها
+  // العملاء المتأخرون: تشمل الرحلات النشطة وغرامات الإلغاء غير المسددة
   const openTrips = await prisma.trip.findMany({
-    where: { status: { not: "CANCELLED" } },
     select: {
       contractorId: true,
       contractorPrice: true,
       driverId: true,
       driverDue: true,
+      contractorPenalty: true,
+      driverPenalty: true,
       date: true,
       status: true,
       collections: { select: { amount: true } },
@@ -47,15 +49,16 @@ export async function getDashboardStats() {
   let profitMonth = 0;
 
   for (const t of openTrips) {
+    const eff = effectiveAmounts(t);
     const collected = t.collections.reduce((a, c) => a + c.amount, 0);
-    const remaining = t.contractorPrice - collected;
+    const remaining = eff.contractor - collected;
     if (remaining > 0) {
       overdueContractors.add(t.contractorId);
       overdueAmount += remaining;
     }
     if (t.driverId) {
       const paid = t.driverPayments.reduce((a, p) => a + p.amount, 0);
-      const remDriver = t.driverDue - paid;
+      const remDriver = eff.driver - paid;
       if (remDriver > 0) {
         driversOwed.add(t.driverId);
         driversOwedAmount += remDriver;
@@ -63,13 +66,24 @@ export async function getDashboardStats() {
     }
   }
 
-  // صافي الربح حسب الفترة: ربح الرحلات المكتملة - مصروفات الفترة
+  // صافي الربح حسب الفترة: ربح الرحلات المكتملة + غرامات الإلغاء - مصروفات الفترة
   const completed = await prisma.trip.findMany({
-    where: { status: "COMPLETED", date: { gte: monthStart } },
-    select: { contractorPrice: true, driverDue: true, date: true },
+    where: {
+      status: { in: ["COMPLETED", "CANCELLED"] },
+      date: { gte: monthStart },
+    },
+    select: {
+      status: true,
+      contractorPrice: true,
+      driverDue: true,
+      contractorPenalty: true,
+      driverPenalty: true,
+      date: true,
+    },
   });
   for (const t of completed) {
-    const p = t.contractorPrice - t.driverDue;
+    const eff = effectiveAmounts(t);
+    const p = eff.contractor - eff.driver;
     if (t.date >= todayStart && t.date <= todayEnd) profitToday += p;
     if (t.date >= weekStart) profitWeek += p;
     profitMonth += p;

@@ -184,9 +184,19 @@ export default async function TripDetail({
         {/* الملخص المالي */}
         <Card className="space-y-3 p-4">
           <div className="grid grid-cols-3 gap-2 text-center">
-            <Money label="سعر المقاول" value={trip.contractorPrice} />
-            <Money label="مستحق السواق" value={trip.driverDue} tone="warning" />
-            <Money label="الربح" value={fin.profit} tone="primary" />
+            {st === "CANCELLED" ? (
+              <>
+                <Money label="غرامة العميل" value={fin.effContractor} />
+                <Money label="نصيب السواق" value={fin.effDriver} tone="warning" />
+                <Money label="إيراد الغرامة" value={fin.profit} tone="primary" />
+              </>
+            ) : (
+              <>
+                <Money label="سعر المقاول" value={trip.contractorPrice} />
+                <Money label="مستحق السواق" value={trip.driverDue} tone="warning" />
+                <Money label="الربح" value={fin.profit} tone="primary" />
+              </>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-2 border-t border-border pt-3 text-center">
             <div>

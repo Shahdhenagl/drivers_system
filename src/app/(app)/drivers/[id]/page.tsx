@@ -10,8 +10,10 @@ import { DriverForm } from "../driver-form";
 import { DeleteDriverButton } from "../delete-driver-button";
 import { PayDriverForm } from "../pay-driver-form";
 import { formatMoney } from "@/lib/money";
-import { formatShortDate } from "@/lib/format";
+import { formatShortDate, startOfDay, endOfDay, addDays } from "@/lib/format";
 import { displayPhone, whatsAppLink } from "@/lib/phone";
+import { effectiveAmounts } from "@/lib/finance";
+import { driverReport } from "@/lib/messages";
 import { methodLabel, TRIP_STATUS } from "@/lib/constants";
 import {
   Phone,
@@ -45,10 +47,36 @@ export default async function DriverProfile({
   });
   if (!d) notFound();
 
-  const active = d.trips.filter((t) => t.status !== "CANCELLED");
-  const totalDue = active.reduce((a, t) => a + t.driverDue, 0);
+  // تشمل الرحلات النشطة ونصيب السواق من غرامات الإلغاء
+  const totalDue = d.trips.reduce((a, t) => a + effectiveAmounts(t).driver, 0);
   const totalPaid = d.payments.reduce((a, p) => a + p.amount, 0);
   const remaining = Math.max(totalDue - totalPaid, 0);
+
+  // تقارير واتساب دورية
+  const now = new Date();
+  const reportPeriods = [
+    { label: "أسبوعي", from: startOfDay(addDays(now, -6)), to: endOfDay(now) },
+    { label: "شهري", from: startOfDay(addDays(now, -29)), to: endOfDay(now) },
+  ];
+  const reports = reportPeriods.map((p) => {
+    const inP = d.trips.filter((t) => t.date >= p.from && t.date <= p.to);
+    const total = inP.reduce((a, t) => a + effectiveAmounts(t).driver, 0);
+    const settled = inP.reduce(
+      (a, t) => a + t.driverPayments.reduce((s, x) => s + x.amount, 0),
+      0
+    );
+    const msg = driverReport({
+      name: d.name,
+      periodLabel: p.label,
+      from: p.from,
+      to: p.to,
+      tripsCount: inP.length,
+      total,
+      settled,
+      remainingTotal: remaining,
+    });
+    return { label: p.label, href: whatsAppLink(d.phone, msg) };
+  });
 
   return (
     <>
@@ -118,6 +146,22 @@ export default async function DriverProfile({
         <div className="print:hidden">
           <PayDriverForm driverId={d.id} remaining={remaining} />
         </div>
+
+        {/* تقرير واتساب دوري */}
+        <Card className="space-y-2 p-4 print:hidden">
+          <div className="text-sm font-bold text-muted-foreground">
+            إرسال تقرير عبر واتساب
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {reports.map((r) => (
+              <Button key={r.label} asChild variant="success" size="sm">
+                <a href={r.href} target="_blank">
+                  <MessageCircle className="h-4 w-4" /> تقرير {r.label}
+                </a>
+              </Button>
+            ))}
+          </div>
+        </Card>
 
         {/* الرحلات */}
         <section>
