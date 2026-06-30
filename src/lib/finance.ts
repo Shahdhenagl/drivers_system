@@ -99,6 +99,19 @@ export async function assertSpendable(method: string, amount: number) {
   }
 }
 
+/**
+ * يتأكد أن المبلغ ضمن رصيد الخزنة الفعلي (دون اعتبار رأس المال).
+ * يُستخدم للالتزامات مثل سداد السواق — لا يُحجب بقفل رأس المال.
+ */
+export async function assertAvailable(method: string, amount: number) {
+  const available = await availableInMethod(method);
+  if (amount > available) {
+    throw new Error(
+      `المبلغ أكبر من رصيد الخزنة في طريقة الدفع — المتاح: ${formatMoney(available)}`
+    );
+  }
+}
+
 export type TripAmounts = {
   status: string;
   contractorPrice: number;

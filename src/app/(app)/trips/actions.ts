@@ -7,7 +7,7 @@ import { audit } from "@/lib/audit";
 import { toPiastres } from "@/lib/money";
 import {
   recordLedger,
-  assertSpendable,
+  assertAvailable,
   deriveCollectionStatus,
   effectiveAmounts,
 } from "@/lib/finance";
@@ -337,8 +337,8 @@ export async function addDriverPayment(tripId: string, formData: FormData) {
   if (paid + amount > paidEff.driver) {
     throw new Error("المبلغ يتجاوز مستحق السواق المتبقي");
   }
-  // قاعدة: لا يُصرف أكثر من المتاح مع الحفاظ على رأس المال في الكاش
-  await assertSpendable(method, amount);
+  // سداد السواق التزام — يُمنع فقط لو تجاوز رصيد الخزنة الفعلي (دون قفل رأس المال)
+  await assertAvailable(method, amount);
 
   await prisma.$transaction(async (tx) => {
     const dp = await tx.driverPayment.create({
