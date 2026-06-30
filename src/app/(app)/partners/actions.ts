@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { recordLedger, availableInMethod } from "@/lib/finance";
+import { recordLedger, assertSpendable } from "@/lib/finance";
 import { toPiastres } from "@/lib/money";
 
 export async function createPartner(formData: FormData) {
@@ -58,10 +58,7 @@ export async function addWithdrawal(partnerId: string, formData: FormData) {
   const note = String(formData.get("note") ?? "").trim() || null;
   if (amount <= 0) throw new Error("القيمة غير صحيحة");
 
-  const available = await availableInMethod(method);
-  if (amount > available) {
-    throw new Error("المبلغ أكبر من رصيد الخزنة في طريقة الدفع");
-  }
+  await assertSpendable(method, amount);
 
   await prisma.$transaction(async (tx) => {
     const w = await tx.partnerWithdrawal.create({
@@ -98,10 +95,7 @@ export async function distributeProfits(formData: FormData) {
   const totalShare = partners.reduce((a, p) => a + p.sharePercent, 0);
   if (totalShare <= 0) throw new Error("نسب الشركاء غير صحيحة");
 
-  const available = await availableInMethod(method);
-  if (amount > available) {
-    throw new Error("المبلغ أكبر من رصيد الخزنة في طريقة الدفع");
-  }
+  await assertSpendable(method, amount);
 
   await prisma.$transaction(async (tx) => {
     const settlement = await tx.settlement.create({

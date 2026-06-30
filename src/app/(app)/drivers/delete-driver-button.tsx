@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Trash2, Loader2 } from "lucide-react";
 import { deleteDriver } from "./actions";
+import { playSound } from "@/lib/sounds";
 
 export function DeleteDriverButton({ id }: { id: string }) {
   const [loading, setLoading] = useState(false);
@@ -14,14 +15,18 @@ export function DeleteDriverButton({ id }: { id: string }) {
     try {
       const res = await deleteDriver(id);
       if (res?.error) {
+        playSound("error");
         alert(res.error);
         setLoading(false);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       if (!msg.includes("NEXT_REDIRECT")) {
+        playSound("error");
         alert("تعذّر الحذف");
         setLoading(false);
+      } else {
+        playSound("cancel");
       }
     }
   }

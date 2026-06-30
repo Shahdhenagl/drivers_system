@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/submit-button";
 import { MethodSelect } from "@/components/method-select";
 import { payDriverDues } from "./actions";
+import { playSound } from "@/lib/sounds";
 import { formatMoney, toEgp } from "@/lib/money";
 import { toDateInput } from "@/lib/format";
 import { HandCoins } from "lucide-react";
@@ -35,9 +36,11 @@ export function PayDriverForm({
     setError("");
     try {
       await payDriverDues(driverId, formData);
+      playSound("money");
       setOpen(false);
       router.refresh();
     } catch (e) {
+      playSound("error");
       setError(e instanceof Error ? e.message : "حدث خطأ");
     }
   }

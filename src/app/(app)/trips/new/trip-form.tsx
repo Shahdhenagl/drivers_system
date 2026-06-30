@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { SubmitButton } from "@/components/submit-button";
 import { createTrip } from "../actions";
+import { playSound } from "@/lib/sounds";
 import { toDateInput } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
 import { UserPlus, History } from "lucide-react";
@@ -43,8 +44,12 @@ export function TripForm({
     try {
       await createTrip(formData);
     } catch (e) {
-      // redirect throws — تجاهله
-      if (e instanceof Error && e.message.includes("NEXT_REDIRECT")) return;
+      // نجاح الحفظ يرمي NEXT_REDIRECT — هنا نشغّل صوت الطلب الجديد المميز
+      if (e instanceof Error && e.message.includes("NEXT_REDIRECT")) {
+        playSound("order");
+        return;
+      }
+      playSound("error");
       setError(e instanceof Error ? e.message : "حدث خطأ");
     }
   }

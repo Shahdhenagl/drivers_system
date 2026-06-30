@@ -3,7 +3,8 @@ import { isAuthenticated, setSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Truck } from "lucide-react";
+import { MicrobusLogo } from "@/components/microbus-logo";
+import { COMPANY_NAME } from "@/lib/constants";
 
 async function login(formData: FormData) {
   "use server";
@@ -32,9 +33,9 @@ export default async function LoginPage({
       <div className="w-full max-w-sm space-y-8">
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-            <Truck className="h-8 w-8" />
+            <MicrobusLogo className="h-9 w-9" />
           </div>
-          <h1 className="text-2xl font-bold">مكتب الأصدقاء</h1>
+          <h1 className="text-2xl font-bold">{COMPANY_NAME}</h1>
           <p className="text-sm text-muted-foreground">
             لإدارة النقل — تسجيل دخول المدير للمتابعة
           </p>

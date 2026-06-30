@@ -26,6 +26,7 @@ import {
 import { toPiastres } from "@/lib/money";
 import { formatMoney, toEgp } from "@/lib/money";
 import { toDateInput } from "@/lib/format";
+import { playSound } from "@/lib/sounds";
 import {
   Play,
   CheckCircle2,
@@ -55,8 +56,13 @@ export function TripActions(props: Props) {
     setErr("");
     try {
       await setTripStatus(tripId, s);
+      // صوت مميز حسب الحالة
+      playSound(
+        s === "CONFIRMED" ? "order" : s === "COMPLETED" ? "success" : "success"
+      );
       router.refresh();
     } catch (e) {
+      playSound("error");
       setErr(e instanceof Error ? e.message : "خطأ");
     }
   }
@@ -124,9 +130,11 @@ function CollectDialog({
     setErr("");
     try {
       await addCollection(tripId, fd);
+      playSound("money");
       setOpen(false);
       router.refresh();
     } catch (e) {
+      playSound("error");
       setErr(e instanceof Error ? e.message : "خطأ");
     }
   }
@@ -168,9 +176,11 @@ function DriverPayDialog({
     setErr("");
     try {
       await addDriverPayment(tripId, fd);
+      playSound("money");
       setOpen(false);
       router.refresh();
     } catch (e) {
+      playSound("error");
       setErr(e instanceof Error ? e.message : "خطأ");
     }
   }
@@ -211,9 +221,11 @@ function CancelDialog({ tripId }: { tripId: string }) {
     fd.set("penaltyType", withPenalty ? "PENALTY" : "NONE");
     try {
       await cancelTrip(tripId, fd);
+      playSound("cancel");
       setOpen(false);
       router.refresh();
     } catch (e) {
+      playSound("error");
       setErr(e instanceof Error ? e.message : "خطأ");
     }
   }
@@ -327,9 +339,11 @@ function ViaDriverDialog({
     setErr("");
     try {
       await collectViaDriver(tripId, fd);
+      playSound("money");
       setOpen(false);
       router.refresh();
     } catch (e) {
+      playSound("error");
       setErr(e instanceof Error ? e.message : "خطأ");
     }
   }
@@ -450,6 +464,7 @@ function NoteDialog({
 
   async function action(fd: FormData) {
     await addNote(tripId, fd);
+    playSound("success");
     setOpen(false);
     router.refresh();
   }

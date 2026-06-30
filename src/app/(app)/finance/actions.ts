@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { recordLedger, availableInMethod } from "@/lib/finance";
+import { recordLedger, assertSpendable } from "@/lib/finance";
 import { toPiastres } from "@/lib/money";
+import { sendTelegram } from "@/lib/telegram";
+import { adminExpenseMessage } from "@/lib/messages";
 
 export async function addExpense(formData: FormData) {
   const get = (k: string) => String(formData.get(k) ?? "").trim();
@@ -13,11 +15,8 @@ export async function addExpense(formData: FormData) {
   const name = get("name");
   if (!name || amount <= 0) throw new Error("بيانات غير صحيحة");
 
-  // قاعدة: لا يُصرف أكثر من رصيد الخزنة في طريقة الدفع
-  const available = await availableInMethod(method);
-  if (amount > available) {
-    throw new Error("المبلغ أكبر من رصيد الخزنة في طريقة الدفع");
-  }
+  // قاعدة: لا يُصرف أكثر من المتاح مع الحفاظ على رأس المال في الكاش
+  await assertSpendable(method, amount);
 
   const dateStr = get("date");
   const date = dateStr ? new Date(dateStr) : new Date();
@@ -46,6 +45,22 @@ export async function addExpense(formData: FormData) {
   });
 
   await audit("CREATE", "Expense", undefined, { name, amount });
+
+  // إشعار الأدمن بالمصروف عبر تيليجرام (لا يعطّل التسجيل لو فشل)
+  try {
+    await sendTelegram(
+      adminExpenseMessage({
+        name,
+        amount,
+        category: get("category") || null,
+        method,
+        date,
+      })
+    );
+  } catch {
+    // تجاهل أي فشل في الإشعار
+  }
+
   revalidatePath("/finance");
   revalidatePath("/");
 }

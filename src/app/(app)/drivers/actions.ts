@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { recordLedger, availableInMethod } from "@/lib/finance";
+import { recordLedger, assertSpendable } from "@/lib/finance";
 import { toPiastres } from "@/lib/money";
 
 export async function createDriver(formData: FormData) {
@@ -77,11 +77,8 @@ export async function payDriverDues(driverId: string, formData: FormData) {
 
   if (amount <= 0) throw new Error("القيمة غير صحيحة");
 
-  // قاعدة: لا يُصرف أكثر من الموجود في الخزنة لتلك الطريقة
-  const available = await availableInMethod(method);
-  if (amount > available) {
-    throw new Error("المبلغ أكبر من رصيد الخزنة في طريقة الدفع المختارة");
-  }
+  // قاعدة: لا يُصرف أكثر من المتاح مع الحفاظ على رأس المال في الكاش
+  await assertSpendable(method, amount);
 
   const trips = await prisma.trip.findMany({
     where: { driverId, status: { not: "CANCELLED" } },

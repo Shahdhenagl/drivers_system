@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { PAYMENT_METHOD_KEYS, type PaymentMethod } from "@/lib/constants";
+import { formatMoney } from "@/lib/money";
 
 type DB = Prisma.TransactionClient | typeof prisma;
 
@@ -60,6 +61,42 @@ export async function treasuryByMethod(): Promise<
 export async function availableInMethod(method: string): Promise<number> {
   const t = await treasuryByMethod();
   return (t as Record<string, number>)[method] ?? 0;
+}
+
+/** رأس المال المحجوز في الكاش (لا يجوز الصرف منه) — بالقروش */
+export async function cashFloor(): Promise<number> {
+  const s = await prisma.setting.findUnique({
+    where: { key: "initial_capital" },
+  });
+  return s ? Number(s.value) : 0;
+}
+
+/**
+ * أقصى مبلغ يمكن صرفه من طريقة دفع مع الحفاظ على رأس المال.
+ * الكاش: الرصيد ناقص رأس المال. باقي الطرق: الرصيد كاملًا.
+ */
+export async function spendableInMethod(method: string): Promise<number> {
+  const available = await availableInMethod(method);
+  if (method === "cash") {
+    return Math.max(available - (await cashFloor()), 0);
+  }
+  return available;
+}
+
+/**
+ * يتأكد أن المبلغ قابل للصرف من طريقة الدفع دون المساس برأس المال،
+ * ويرمي خطأً واضحًا إن تجاوز المتاح.
+ */
+export async function assertSpendable(method: string, amount: number) {
+  const spendable = await spendableInMethod(method);
+  if (amount > spendable) {
+    const floor = method === "cash" ? await cashFloor() : 0;
+    throw new Error(
+      floor > 0
+        ? `المبلغ يتجاوز المتاح للصرف. رأس المال (${formatMoney(floor)}) محفوظ في الكاش — المتاح للصرف الآن: ${formatMoney(spendable)}`
+        : `المبلغ أكبر من رصيد الخزنة في طريقة الدفع — المتاح: ${formatMoney(spendable)}`
+    );
+  }
 }
 
 export type TripAmounts = {

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Trash2, Loader2 } from "lucide-react";
 import { deleteTrip } from "../actions";
+import { playSound } from "@/lib/sounds";
 
 export function DeleteTripButton({
   id,
@@ -24,14 +25,18 @@ export function DeleteTripButton({
     try {
       const res = await deleteTrip(id);
       if (res?.error) {
+        playSound("error");
         alert(res.error);
         setLoading(false);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       if (!msg.includes("NEXT_REDIRECT")) {
+        playSound("error");
         alert("تعذّر الحذف");
         setLoading(false);
+      } else {
+        playSound("cancel");
       }
     }
   }

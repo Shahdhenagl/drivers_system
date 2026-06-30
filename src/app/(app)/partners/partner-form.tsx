@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SubmitButton } from "@/components/submit-button";
 import { createPartner, updatePartner } from "./actions";
+import { playSound } from "@/lib/sounds";
 
 type Partner = {
   id: string;
@@ -38,9 +39,11 @@ export function PartnerForm({
     try {
       if (isEdit) await updatePartner(partner!.id, fd);
       else await createPartner(fd);
+      playSound(isEdit ? "success" : "order");
       setOpen(false);
       router.refresh();
     } catch (e) {
+      playSound("error");
       setErr(e instanceof Error ? e.message : "خطأ");
     }
   }

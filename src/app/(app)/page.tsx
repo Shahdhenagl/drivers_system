@@ -3,6 +3,7 @@ import { StatCard } from "@/components/stat-card";
 import { getDashboardStats } from "@/lib/dashboard";
 import { treasuryByMethod } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
+import { COMPANY_NAME } from "@/lib/constants";
 import {
   CalendarDays,
   CalendarClock,
@@ -23,7 +24,7 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <AppHeader title="مكتب الأصدقاء" />
+      <AppHeader title={COMPANY_NAME} />
       <div className="space-y-5 py-3">
         {/* الخزنة */}
         <section className="rounded-2xl bg-gradient-to-br from-primary to-primary/70 p-5 text-primary-foreground shadow-lg shadow-primary/20">

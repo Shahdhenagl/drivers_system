@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/submit-button";
 import { MethodSelect } from "@/components/method-select";
 import { addWithdrawal } from "./actions";
+import { playSound } from "@/lib/sounds";
 import { MinusCircle } from "lucide-react";
 
 export function WithdrawForm({ partnerId }: { partnerId: string }) {
@@ -27,9 +28,11 @@ export function WithdrawForm({ partnerId }: { partnerId: string }) {
     setErr("");
     try {
       await addWithdrawal(partnerId, fd);
+      playSound("money");
       setOpen(false);
       router.refresh();
     } catch (e) {
+      playSound("error");
       setErr(e instanceof Error ? e.message : "خطأ");
     }
   }

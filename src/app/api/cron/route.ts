@@ -4,14 +4,22 @@ import { sendTelegram } from "@/lib/telegram";
 import { treasuryByMethod } from "@/lib/finance";
 import { getFinanceOverview } from "@/lib/finance-overview";
 import { getDashboardStats } from "@/lib/dashboard";
-import { formatShortDate, startOfDay, endOfDay, addDays } from "@/lib/format";
+import {
+  formatShortDate,
+  startOfDay,
+  endOfDay,
+  addDays,
+  tripStart,
+} from "@/lib/format";
 import { formatMoney } from "@/lib/money";
+import { adminTripReminder } from "@/lib/messages";
 
 export const dynamic = "force-dynamic";
 
 /**
  * إشعارات مجدولة عبر Telegram.
  * الاستدعاء: GET /api/cron?secret=XXX&type=daily   (قبل موعد الرحلات بيوم)
+ *           GET /api/cron?secret=XXX&type=soon   (كل 30 دقيقة — تذكير قبل الرحلة بساعتين)
  *           GET /api/cron?secret=XXX&type=weekly  (الجمعة 12:00 ص — تصفية الخزنة)
  */
 export async function GET(req: NextRequest) {
@@ -54,6 +62,31 @@ export async function GET(req: NextRequest) {
       if (await sendTelegram(msg)) sent++;
     }
     return NextResponse.json({ ok: true, type, trips: trips.length, sent });
+  }
+
+  if (type === "soon") {
+    // تذكير قبل بدء الرحلة بساعتين تقريبًا.
+    // نافذة 30 دقيقة [بعد 90د، بعد 120د) تطابق جدولة كل 30 دقيقة فيُرسَل مرة واحدة.
+    const now = new Date();
+    const from = new Date(now.getTime() + 90 * 60_000);
+    const to = new Date(now.getTime() + 120 * 60_000);
+
+    const candidates = await prisma.trip.findMany({
+      where: {
+        status: { not: "CANCELLED" },
+        time: { not: null },
+        date: { gte: startOfDay(now), lte: endOfDay(addDays(now, 1)) },
+      },
+      include: { contractor: true, driver: true },
+      orderBy: { time: "asc" },
+    });
+
+    for (const trip of candidates) {
+      const start = tripStart(trip.date, trip.time);
+      if (!start || start < from || start >= to) continue;
+      if (await sendTelegram(adminTripReminder(trip))) sent++;
+    }
+    return NextResponse.json({ ok: true, type, sent });
   }
 
   if (type === "weekly") {

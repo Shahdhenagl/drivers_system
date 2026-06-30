@@ -39,3 +39,50 @@ export function addDays(d: Date, n: number): Date {
   x.setDate(x.getDate() + n);
   return x;
 }
+
+const TIMEZONE = "Africa/Cairo";
+
+/** فرق توقيت منطقة زمنية عن UTC (بالملّي ثانية) عند لحظة معيّنة — مستقل عن توقيت السيرفر */
+function tzOffsetMs(timeZone: string, instant: Date): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const p: Record<string, string> = {};
+  for (const part of dtf.formatToParts(instant)) p[part.type] = part.value;
+  const asUTC = Date.UTC(
+    Number(p.year),
+    Number(p.month) - 1,
+    Number(p.day),
+    Number(p.hour === "24" ? "0" : p.hour),
+    Number(p.minute),
+    Number(p.second)
+  );
+  return asUTC - instant.getTime();
+}
+
+/**
+ * لحظة بدء الرحلة كـ Date (UTC) بدمج تاريخها (المخزَّن منتصف الليل UTC)
+ * مع وقتها النصّي "HH:mm" مُفسَّرًا بتوقيت القاهرة (يراعي التوقيت الصيفي).
+ * يُرجِع null لو لا يوجد وقت محدّد. مستقل عن توقيت السيرفر.
+ */
+export function tripStart(date: Date, time?: string | null): Date | null {
+  if (!time) return null;
+  const [h, m] = time.split(":").map(Number);
+  if (Number.isNaN(h)) return null;
+  const utcGuess = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+    h,
+    m || 0
+  );
+  const offset = tzOffsetMs(TIMEZONE, new Date(utcGuess));
+  return new Date(utcGuess - offset);
+}

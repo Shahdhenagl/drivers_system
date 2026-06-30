@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/submit-button";
 import { MethodSelect } from "@/components/method-select";
 import { distributeProfits } from "./actions";
+import { playSound } from "@/lib/sounds";
 import { formatMoney } from "@/lib/money";
 import { PieChart } from "lucide-react";
 
@@ -28,9 +29,11 @@ export function DistributeForm({ netProfit }: { netProfit: number }) {
     setErr("");
     try {
       await distributeProfits(fd);
+      playSound("money");
       setOpen(false);
       router.refresh();
     } catch (e) {
+      playSound("error");
       setErr(e instanceof Error ? e.message : "خطأ");
     }
   }

@@ -3,6 +3,7 @@ import { AppHeader } from "@/components/layout/app-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { logout } from "./actions";
+import { COMPANY_NAME } from "@/lib/constants";
 import {
   Users,
   Truck,
@@ -49,7 +50,7 @@ export default function MorePage() {
         </form>
 
         <p className="pt-4 text-center text-xs text-muted-foreground">
-          مكتب الأصدقاء • الإصدار 1.0
+          {COMPANY_NAME} • الإصدار 1.0
         </p>
       </div>
     </>

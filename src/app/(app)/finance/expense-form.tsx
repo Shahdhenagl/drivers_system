@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/submit-button";
 import { MethodSelect } from "@/components/method-select";
 import { addExpense } from "./actions";
+import { playSound } from "@/lib/sounds";
 import { EXPENSE_CATEGORIES } from "@/lib/constants";
 import { toDateInput } from "@/lib/format";
 import { Plus } from "lucide-react";
@@ -36,9 +37,11 @@ export function ExpenseForm() {
     setErr("");
     try {
       await addExpense(fd);
+      playSound("money");
       setOpen(false);
       router.refresh();
     } catch (e) {
+      playSound("error");
       setErr(e instanceof Error ? e.message : "خطأ");
     }
   }

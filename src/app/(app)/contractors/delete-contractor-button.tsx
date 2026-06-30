@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Trash2, Loader2 } from "lucide-react";
 import { deleteContractor } from "./actions";
+import { playSound } from "@/lib/sounds";
 
 export function DeleteContractorButton({ id }: { id: string }) {
   const [loading, setLoading] = useState(false);
@@ -14,14 +15,18 @@ export function DeleteContractorButton({ id }: { id: string }) {
     try {
       const res = await deleteContractor(id);
       if (res?.error) {
+        playSound("error");
         alert(res.error);
         setLoading(false);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       if (!msg.includes("NEXT_REDIRECT")) {
+        playSound("error");
         alert("تعذّر الحذف");
         setLoading(false);
+      } else {
+        playSound("cancel");
       }
     }
   }

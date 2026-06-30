@@ -7,11 +7,13 @@ import { audit } from "@/lib/audit";
 import { toPiastres } from "@/lib/money";
 import {
   recordLedger,
-  availableInMethod,
+  assertSpendable,
   deriveCollectionStatus,
   effectiveAmounts,
 } from "@/lib/finance";
 import { VIA_DRIVER } from "@/lib/constants";
+import { sendTelegram } from "@/lib/telegram";
+import { adminNewTripMessage } from "@/lib/messages";
 
 /** إنشاء رحلة جديدة — يدعم إضافة مقاول/سواق أثناء الإنشاء */
 export async function createTrip(formData: FormData) {
@@ -64,6 +66,18 @@ export async function createTrip(formData: FormData) {
     },
   });
   await audit("CREATE", "Trip", trip.id);
+
+  // إشعار الأدمن بالطلب الجديد عبر تيليجرام (لا يعطّل الإنشاء لو فشل)
+  try {
+    const full = await prisma.trip.findUnique({
+      where: { id: trip.id },
+      include: { contractor: true, driver: true },
+    });
+    if (full) await sendTelegram(adminNewTripMessage(full));
+  } catch {
+    // تجاهل أي فشل في الإشعار
+  }
+
   revalidatePath("/trips");
   revalidatePath("/");
   redirect(`/trips/${trip.id}`);
@@ -323,11 +337,8 @@ export async function addDriverPayment(tripId: string, formData: FormData) {
   if (paid + amount > paidEff.driver) {
     throw new Error("المبلغ يتجاوز مستحق السواق المتبقي");
   }
-  // قاعدة: لا يُصرف أكثر من رصيد الخزنة
-  const available = await availableInMethod(method);
-  if (amount > available) {
-    throw new Error("المبلغ أكبر من رصيد الخزنة في طريقة الدفع");
-  }
+  // قاعدة: لا يُصرف أكثر من المتاح مع الحفاظ على رأس المال في الكاش
+  await assertSpendable(method, amount);
 
   await prisma.$transaction(async (tx) => {
     const dp = await tx.driverPayment.create({

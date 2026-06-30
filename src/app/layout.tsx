@@ -10,13 +10,13 @@ const cairo = Cairo({
 });
 
 export const metadata: Metadata = {
-  title: "مكتب الأصدقاء",
-  description: "مكتب الأصدقاء لإدارة نقل المقاولين والسواقين",
+  title: "مكتب رحلات الأصدقاء",
+  description: "مكتب رحلات الأصدقاء لإدارة نقل المقاولين والسواقين",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "مكتب الأصدقاء",
+    title: "مكتب رحلات الأصدقاء",
   },
 };
 

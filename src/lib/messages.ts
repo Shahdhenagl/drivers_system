@@ -1,9 +1,75 @@
 import { formatShortDate } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
 import { formatMoney } from "@/lib/money";
-import { COMPANY_NAME } from "@/lib/constants";
+import { COMPANY_NAME, methodLabel } from "@/lib/constants";
 
 const SIGNATURE = `\n\n— ${COMPANY_NAME}`;
+
+type AdminTripMsg = {
+  date: Date;
+  time?: string | null;
+  startPoint: string;
+  endPoint: string;
+  notes?: string | null;
+  contractorPrice: number;
+  driverDue: number;
+  contractor: { name: string; phone: string };
+  driver?: { name: string; phone: string } | null;
+};
+
+function tripAdminLines(t: AdminTripMsg): string[] {
+  return [
+    `📅 ${formatShortDate(t.date)}${t.time ? " - " + t.time : ""}`,
+    `📍 من: ${t.startPoint}`,
+    `🏁 إلى: ${t.endPoint}`,
+    `👤 المقاول: ${t.contractor.name}`,
+    `📞 ${displayPhone(t.contractor.phone)}`,
+    t.driver ? `🚚 السواق: ${t.driver.name}` : "🚚 السواق: غير محدد",
+    t.driver ? `📞 ${displayPhone(t.driver.phone)}` : "",
+    `💰 سعر المقاول: ${formatMoney(t.contractorPrice)}`,
+    `💵 مستحق السواق: ${formatMoney(t.driverDue)}`,
+  ];
+}
+
+/** إشعار للأدمن بطلب جديد — يشمل الأرقام والسعر */
+export function adminNewTripMessage(t: AdminTripMsg): string {
+  return (
+    ["🆕 <b>طلب جديد</b>", ...tripAdminLines(t), t.notes ? `📝 ${t.notes}` : ""]
+      .filter(Boolean)
+      .join("\n") + SIGNATURE
+  );
+}
+
+/** تذكير للأدمن برحلة بعد ساعتين تقريبًا — يشمل الأرقام والسعر */
+export function adminTripReminder(t: AdminTripMsg): string {
+  return (
+    ["🔔 <b>تذكير: رحلة بعد ساعتين تقريبًا</b>", ...tripAdminLines(t)]
+      .filter(Boolean)
+      .join("\n") + SIGNATURE
+  );
+}
+
+/** إشعار للأدمن بمصروف جديد */
+export function adminExpenseMessage(e: {
+  name: string;
+  amount: number;
+  category?: string | null;
+  method: string;
+  date: Date;
+}): string {
+  return (
+    [
+      "💸 <b>مصروف جديد</b>",
+      `📌 ${e.name}`,
+      `💵 ${formatMoney(e.amount)}`,
+      e.category ? `🏷️ ${e.category}` : "",
+      `💳 ${methodLabel(e.method)}`,
+      `📅 ${formatShortDate(e.date)}`,
+    ]
+      .filter(Boolean)
+      .join("\n") + SIGNATURE
+  );
+}
 
 type TripForMsg = {
   date: Date;
