@@ -36,6 +36,21 @@ export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get("type") ?? "daily";
   let sent = 0;
 
+  if (type === "test") {
+    // اختبار سريع: يتأكد أن البوت والمعرّفات مضبوطة
+    const ok = await sendTelegram(
+      "✅ <b>اختبار الإشعارات</b>\nالبوت متصل ويعمل. ستصلك إشعارات الطلبات الجديدة والمصروفات وتذكير الرحلات هنا."
+    );
+    return NextResponse.json({
+      ok,
+      type,
+      sent: ok ? 1 : 0,
+      hint: ok
+        ? "تم الإرسال"
+        : "لم يُرسَل — تأكد من TELEGRAM_BOT_TOKEN و TELEGRAM_CHAT_ID في Vercel",
+    });
+  }
+
   if (type === "daily") {
     // رحلات الغد
     const t = addDays(new Date(), 1);
