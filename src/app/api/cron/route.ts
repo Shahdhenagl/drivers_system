@@ -15,8 +15,13 @@ export const dynamic = "force-dynamic";
  *           GET /api/cron?secret=XXX&type=weekly  (الجمعة 12:00 ص — تصفية الخزنة)
  */
 export async function GET(req: NextRequest) {
+  const expected = process.env.CRON_SECRET;
   const secret = req.nextUrl.searchParams.get("secret");
-  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+  const authHeader = req.headers.get("authorization");
+  const authorized =
+    !!expected &&
+    (secret === expected || authHeader === `Bearer ${expected}`);
+  if (!authorized) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
