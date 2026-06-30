@@ -20,6 +20,7 @@ import {
   addCollection,
   addDriverPayment,
   addNote,
+  collectViaDriver,
 } from "../actions";
 import { formatMoney, toEgp } from "@/lib/money";
 import { toDateInput } from "@/lib/format";
@@ -31,6 +32,7 @@ import {
   Banknote,
   HandCoins,
   StickyNote,
+  ArrowLeftRight,
 } from "lucide-react";
 
 type Props = {
@@ -98,6 +100,12 @@ export function TripActions(props: Props) {
           hasDriver={props.hasDriver}
         />
       </div>
+      <ViaDriverDialog
+        tripId={tripId}
+        hasDriver={props.hasDriver}
+        remainingCollection={props.remainingCollection}
+        remainingDriver={props.remainingDriver}
+      />
       <NoteDialog tripId={tripId} notes={props.notes} />
     </div>
   );
@@ -184,6 +192,90 @@ function DriverPayDialog({
           المتبقي: <span className="font-bold text-warning">{formatMoney(remaining)}</span>
         </p>
         <PaymentFields action={action} max={toEgp(remaining)} err={err} submit="تأكيد السداد" />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ViaDriverDialog({
+  tripId,
+  hasDriver,
+  remainingCollection,
+  remainingDriver,
+}: {
+  tripId: string;
+  hasDriver: boolean;
+  remainingCollection: number;
+  remainingDriver: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [err, setErr] = useState("");
+  const router = useRouter();
+  const max = Math.min(remainingCollection, remainingDriver);
+
+  async function action(fd: FormData) {
+    setErr("");
+    try {
+      await collectViaDriver(tripId, fd);
+      setOpen(false);
+      router.refresh();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "خطأ");
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          variant="secondary"
+          className="w-full"
+          disabled={!hasDriver || max <= 0}
+        >
+          <ArrowLeftRight className="h-4 w-4" /> تحصيل عن طريق السواق
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>تحصيل عن طريق السواق</DialogTitle>
+        </DialogHeader>
+        <div className="mb-3 space-y-1 rounded-lg bg-muted p-2 text-center text-sm">
+          <p>المبلغ الذي سلّمه المقاول للسواق مباشرة.</p>
+          <p className="text-xs text-muted-foreground">
+            يُخصم من مديونية المقاول ومن مستحق السواق — ولا يؤثر على الخزنة.
+          </p>
+          <p className="font-bold">
+            الحد الأقصى: <span className="text-primary">{formatMoney(max)}</span>
+          </p>
+        </div>
+        <form action={action} className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="amount">القيمة (ج.م) *</Label>
+            <Input
+              id="amount"
+              name="amount"
+              type="number"
+              step="0.01"
+              min="0"
+              max={toEgp(max)}
+              inputMode="decimal"
+              required
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="date">التاريخ</Label>
+            <Input id="date" name="date" type="date" defaultValue={toDateInput(new Date())} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="note">ملاحظة</Label>
+            <Textarea id="note" name="note" placeholder="تفاصيل إضافية (اختياري)" />
+          </div>
+          {err && <p className="text-sm text-destructive">{err}</p>}
+          <SubmitButton size="lg" className="w-full">
+            تأكيد التحصيل عن طريق السواق
+          </SubmitButton>
+        </form>
       </DialogContent>
     </Dialog>
   );

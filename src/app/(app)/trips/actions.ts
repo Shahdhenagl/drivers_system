@@ -10,6 +10,7 @@ import {
   availableInMethod,
   deriveCollectionStatus,
 } from "@/lib/finance";
+import { VIA_DRIVER } from "@/lib/constants";
 
 /** إنشاء رحلة جديدة — يدعم إضافة مقاول/سواق أثناء الإنشاء */
 export async function createTrip(formData: FormData) {
@@ -188,6 +189,67 @@ export async function addCollection(tripId: string, formData: FormData) {
   });
 
   await audit("COLLECT", "Trip", tripId, { amount, method });
+  revalidatePath(`/trips/${tripId}`);
+  revalidatePath("/trips");
+  revalidatePath("/finance");
+  revalidatePath("/");
+}
+
+/**
+ * تحصيل عن طريق السواق:
+ * المقاول يسلّم السواق مبلغًا مباشرة.
+ * - يُخصم من مديونية المقاول (يُسجَّل كتحصيل)
+ * - يُخصم من مستحق السواق لنفس الطلب (يُسجَّل كسداد)
+ * - لا يؤثر على الخزنة (لا توجد قيود في دفتر الأستاذ — المال لم يمرّ بالمكتب)
+ */
+export async function collectViaDriver(tripId: string, formData: FormData) {
+  const amount = toPiastres(String(formData.get("amount") ?? "0"));
+  const dateStr = String(formData.get("date") ?? "");
+  const date = dateStr ? new Date(dateStr) : new Date();
+  const extra = String(formData.get("note") ?? "").trim();
+  const note = extra ? `عن طريق السواق — ${extra}` : "تحصيل عن طريق السواق";
+  if (amount <= 0) throw new Error("القيمة غير صحيحة");
+
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
+    include: { collections: true, driverPayments: true },
+  });
+  if (!trip) throw new Error("الرحلة غير موجودة");
+  if (!trip.driverId) throw new Error("لا يوجد سواق على الرحلة");
+
+  const collected = trip.collections.reduce((a, c) => a + c.amount, 0);
+  const remainingCollection = trip.contractorPrice - collected;
+  const paid = trip.driverPayments.reduce((a, p) => a + p.amount, 0);
+  const remainingDriver = trip.driverDue - paid;
+
+  if (amount > remainingCollection) {
+    throw new Error("المبلغ أكبر من المتبقي على المقاول");
+  }
+  if (amount > remainingDriver) {
+    throw new Error("المبلغ أكبر من مستحق السواق المتبقي لهذا الطلب");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // تحصيل من المقاول (بطريقة خاصة لا تدخل الخزنة)
+    await tx.collection.create({
+      data: { tripId, amount, method: VIA_DRIVER, date, note },
+    });
+    // خصم من مستحق السواق (بنفس الطريقة الخاصة)
+    await tx.driverPayment.create({
+      data: { tripId, driverId: trip.driverId!, amount, method: VIA_DRIVER, date, note },
+    });
+    // تحديث حالة التحصيل
+    const newStatus = deriveCollectionStatus(
+      trip.contractorPrice,
+      collected + amount
+    );
+    await tx.trip.update({
+      where: { id: tripId },
+      data: { collectionStatus: newStatus },
+    });
+  });
+
+  await audit("COLLECT_VIA_DRIVER", "Trip", tripId, { amount });
   revalidatePath(`/trips/${tripId}`);
   revalidatePath("/trips");
   revalidatePath("/finance");

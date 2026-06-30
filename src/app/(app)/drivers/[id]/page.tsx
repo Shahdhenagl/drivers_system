@@ -12,7 +12,7 @@ import { PayDriverForm } from "../pay-driver-form";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate } from "@/lib/format";
 import { displayPhone, whatsAppLink } from "@/lib/phone";
-import { PAYMENT_METHODS, TRIP_STATUS } from "@/lib/constants";
+import { methodLabel, TRIP_STATUS } from "@/lib/constants";
 import {
   Phone,
   MessageCircle,
@@ -179,8 +179,7 @@ export default async function DriverProfile({
                       {formatMoney(p.amount)}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {formatShortDate(p.date)} •{" "}
-                      {PAYMENT_METHODS[p.method as keyof typeof PAYMENT_METHODS]}
+                      {formatShortDate(p.date)} • {methodLabel(p.method)}
                     </div>
                   </div>
                   {p.note && (

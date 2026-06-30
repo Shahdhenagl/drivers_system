@@ -13,6 +13,7 @@ const ACTION_LABEL: Record<string, string> = {
   DELETE: "حذف",
   STATUS: "تغيير حالة",
   COLLECT: "تحصيل",
+  COLLECT_VIA_DRIVER: "تحصيل عن طريق السواق",
   DRIVER_PAY: "سداد سواق",
   PAY: "سداد",
   WITHDRAW: "سحب",

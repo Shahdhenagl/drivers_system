@@ -11,7 +11,7 @@ import { DeleteContractorButton } from "../delete-contractor-button";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate } from "@/lib/format";
 import { displayPhone, whatsAppLink } from "@/lib/phone";
-import { PAYMENT_METHODS, TRIP_STATUS } from "@/lib/constants";
+import { methodLabel, TRIP_STATUS } from "@/lib/constants";
 import {
   Phone,
   MessageCircle,
@@ -197,8 +197,7 @@ export default async function ContractorProfile({
                   <div>
                     <div className="font-medium">{formatMoney(p.amount)}</div>
                     <div className="text-xs text-muted-foreground">
-                      {formatShortDate(p.date)} •{" "}
-                      {PAYMENT_METHODS[p.method as keyof typeof PAYMENT_METHODS]}
+                      {formatShortDate(p.date)} • {methodLabel(p.method)}
                     </div>
                   </div>
                   <div className="max-w-[45%] truncate text-xs text-muted-foreground">

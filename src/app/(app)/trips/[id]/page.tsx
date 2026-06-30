@@ -23,7 +23,7 @@ import {
   TRIP_STATUS_COLOR,
   COLLECTION_STATUS,
   COLLECTION_STATUS_COLOR,
-  PAYMENT_METHODS,
+  methodLabel,
   type TripStatus,
   type CollectionStatus,
 } from "@/lib/constants";
@@ -338,8 +338,7 @@ function PaymentList({
                 {formatMoney(p.amount)}
               </div>
               <div className="text-xs text-muted-foreground">
-                {formatShortDate(p.date)} •{" "}
-                {PAYMENT_METHODS[p.method as keyof typeof PAYMENT_METHODS]}
+                {formatShortDate(p.date)} • {methodLabel(p.method)}
               </div>
             </div>
             {p.note && (

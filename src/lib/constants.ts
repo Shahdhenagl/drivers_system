@@ -43,6 +43,15 @@ export const PAYMENT_METHODS = {
 export type PaymentMethod = keyof typeof PAYMENT_METHODS;
 export const PAYMENT_METHOD_KEYS = Object.keys(PAYMENT_METHODS) as PaymentMethod[];
 
+// طريقة خاصة: التحصيل عن طريق السواق (لا تدخل الخزنة)
+export const VIA_DRIVER = "via_driver";
+
+/** اسم طريقة الدفع للعرض (يشمل الطرق الخاصة) */
+export function methodLabel(m: string): string {
+  if (m === VIA_DRIVER) return "عن طريق السواق";
+  return PAYMENT_METHODS[m as PaymentMethod] ?? m;
+}
+
 // فئات المصروفات
 export const EXPENSE_CATEGORIES = [
   "إيجار",
