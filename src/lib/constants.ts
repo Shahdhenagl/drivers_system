@@ -1,3 +1,6 @@
+// اسم المكتب (يظهر في الواجهة ويُختَم به كل الرسائل)
+export const COMPANY_NAME = "مكتب الأصدقاء";
+
 // حالات الرحلة
 export const TRIP_STATUS = {
   NEW: "جديدة",

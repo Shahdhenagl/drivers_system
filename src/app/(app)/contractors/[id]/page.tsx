@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PrintButton } from "@/components/print-button";
 import { ContractorForm } from "../contractor-form";
+import { DeleteContractorButton } from "../delete-contractor-button";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate } from "@/lib/format";
 import { displayPhone, whatsAppLink } from "@/lib/phone";
@@ -91,14 +92,17 @@ export default async function ContractorProfile({
                 </div>
               </div>
             </div>
-            <ContractorForm
-              contractor={c}
-              trigger={
-                <Button variant="ghost" size="icon" className="print:hidden">
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              }
-            />
+            <div className="flex gap-1 print:hidden">
+              <ContractorForm
+                contractor={c}
+                trigger={
+                  <Button variant="ghost" size="icon">
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                }
+              />
+              <DeleteContractorButton id={c.id} />
+            </div>
           </div>
           {c.notes && (
             <p className="rounded-lg bg-muted p-2 text-sm">{c.notes}</p>

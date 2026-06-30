@@ -1,5 +1,8 @@
 import { formatShortDate } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
+import { COMPANY_NAME } from "@/lib/constants";
+
+const SIGNATURE = `\n\n— ${COMPANY_NAME}`;
 
 type TripForMsg = {
   date: Date;
@@ -24,7 +27,7 @@ export function contractorMessage(t: TripForMsg): string {
     lines.push(`👤 السائق: ${t.driver.name}`);
     lines.push(`📞 رقم السائق: ${displayPhone(t.driver.phone)}`);
   }
-  return lines.filter(Boolean).join("\n");
+  return lines.filter(Boolean).join("\n") + SIGNATURE;
 }
 
 /** رسالة للسواق — لا يظهر سعر المقاول إطلاقًا */
@@ -39,22 +42,24 @@ export function driverMessage(t: TripForMsg): string {
     `📞 رقم العميل: ${displayPhone(t.contractor.phone)}`,
     t.notes ? `📝 ملاحظات: ${t.notes}` : "",
   ];
-  return lines.filter(Boolean).join("\n");
+  return lines.filter(Boolean).join("\n") + SIGNATURE;
 }
 
 /** تذكير للسواق — يحتوي بيانات العميل ورقمه */
 export function driverReminder(t: TripForMsg): string {
-  return [
-    "🔔 تذكير برحلة",
-    `📅 ${formatShortDate(t.date)}${t.time ? " - " + t.time : ""}`,
-    `📍 من: ${t.startPoint}`,
-    `🏁 إلى: ${t.endPoint}`,
-    `👤 العميل: ${t.contractor.name}`,
-    `📞 رقم العميل: ${displayPhone(t.contractor.phone)}`,
-    t.notes ? `📝 ملاحظات: ${t.notes}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  return (
+    [
+      "🔔 تذكير برحلة",
+      `📅 ${formatShortDate(t.date)}${t.time ? " - " + t.time : ""}`,
+      `📍 من: ${t.startPoint}`,
+      `🏁 إلى: ${t.endPoint}`,
+      `👤 العميل: ${t.contractor.name}`,
+      `📞 رقم العميل: ${displayPhone(t.contractor.phone)}`,
+      t.notes ? `📝 ملاحظات: ${t.notes}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n") + SIGNATURE
+  );
 }
 
 /** تذكير بالتحصيل للمقاول — يحتوي بيانات السواق ورقمه */
@@ -62,14 +67,16 @@ export function collectionReminder(
   t: TripForMsg,
   remainingEgp: string
 ): string {
-  return [
-    `السلام عليكم أ. ${t.contractor.name}`,
-    `نذكّر حضرتك بوجود مبلغ متبقٍّ بقيمة ${remainingEgp}`,
-    `عن رحلة ${formatShortDate(t.date)} من ${t.startPoint} إلى ${t.endPoint}.`,
-    t.driver ? `🚚 السائق: ${t.driver.name}` : "",
-    t.driver ? `📞 رقم السائق: ${displayPhone(t.driver.phone)}` : "",
-    "برجاء التكرم بسداده. شكرًا لتعاونكم 🌹",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  return (
+    [
+      `السلام عليكم أ. ${t.contractor.name}`,
+      `نذكّر حضرتك بوجود مبلغ متبقٍّ بقيمة ${remainingEgp}`,
+      `عن رحلة ${formatShortDate(t.date)} من ${t.startPoint} إلى ${t.endPoint}.`,
+      t.driver ? `🚚 السائق: ${t.driver.name}` : "",
+      t.driver ? `📞 رقم السائق: ${displayPhone(t.driver.phone)}` : "",
+      "برجاء التكرم بسداده. شكرًا لتعاونكم 🌹",
+    ]
+      .filter(Boolean)
+      .join("\n") + SIGNATURE
+  );
 }

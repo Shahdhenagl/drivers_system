@@ -55,11 +55,16 @@ export default async function FinancePage() {
           <Indicator label="إجمالي المصروفات" value={ov.totalExpenses} tone="destructive" />
           <Indicator label="إجمالي الربح" value={ov.grossProfit} tone="primary" />
           <div className="col-span-2">
-            <Card className="flex items-center justify-between bg-primary/10 p-4">
-              <span className="text-sm font-bold">صافي الربح (بعد المصروفات)</span>
-              <span className="text-xl font-extrabold tabular-nums text-primary">
-                {formatMoney(ov.netProfit)}
-              </span>
+            <Card className="space-y-1 bg-primary/10 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold">صافي الربح (بعد المصروفات)</span>
+                <span className="text-xl font-extrabold tabular-nums text-primary">
+                  {formatMoney(ov.netProfit)}
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                المصروفات تُخصم من الربح فقط — رأس المال ({formatMoney(ov.capital, false)} ج.م) محفوظ.
+              </p>
             </Card>
           </div>
         </section>

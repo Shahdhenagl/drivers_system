@@ -89,6 +89,38 @@ export async function updateTrip(id: string, formData: FormData) {
   revalidatePath("/trips");
 }
 
+/** حذف الطلب — مسموح فقط إذا لم يتم تحصيل أي مبلغ من المقاول */
+export async function deleteTrip(id: string) {
+  const trip = await prisma.trip.findUnique({
+    where: { id },
+    include: { collections: true, driverPayments: true },
+  });
+  if (!trip) return;
+
+  // قاعدة: لو تم التحصيل (ولو جزئيًا) يفضل محفوظًا ولا يُحذف
+  if (trip.collections.length > 0) {
+    throw new Error("تم التحصيل على هذه الرحلة — لا يمكن حذفها، تظل محفوظة");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // عكس أي سداد للسواق من دفتر الأستاذ (يرجع للخزنة) قبل الحذف
+    const dpIds = trip.driverPayments.map((p) => p.id);
+    if (dpIds.length > 0) {
+      await tx.ledgerEntry.deleteMany({
+        where: { refType: "DriverPayment", refId: { in: dpIds } },
+      });
+    }
+    // حذف الرحلة (يحذف تلقائيًا الدفعات المرتبطة عبر Cascade)
+    await tx.trip.delete({ where: { id } });
+  });
+
+  await audit("DELETE", "Trip", id);
+  revalidatePath("/trips");
+  revalidatePath("/finance");
+  revalidatePath("/");
+  redirect("/trips");
+}
+
 /** تغيير حالة الرحلة */
 export async function setTripStatus(id: string, status: string) {
   if (status === "COMPLETED") {

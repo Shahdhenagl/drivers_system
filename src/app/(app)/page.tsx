@@ -23,7 +23,7 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <AppHeader title="لوحة التحكم" />
+      <AppHeader title="مكتب الأصدقاء" />
       <div className="space-y-5 py-3">
         {/* الخزنة */}
         <section className="rounded-2xl bg-gradient-to-br from-primary to-primary/70 p-5 text-primary-foreground shadow-lg shadow-primary/20">

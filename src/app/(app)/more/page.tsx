@@ -49,7 +49,7 @@ export default function MorePage() {
         </form>
 
         <p className="pt-4 text-center text-xs text-muted-foreground">
-          نظام إدارة شركة النقل • الإصدار 1.0
+          مكتب الأصدقاء • الإصدار 1.0
         </p>
       </div>
     </>

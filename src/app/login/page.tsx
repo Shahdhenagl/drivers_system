@@ -34,9 +34,9 @@ export default async function LoginPage({
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
             <Truck className="h-8 w-8" />
           </div>
-          <h1 className="text-2xl font-bold">نظام إدارة النقل</h1>
+          <h1 className="text-2xl font-bold">مكتب الأصدقاء</h1>
           <p className="text-sm text-muted-foreground">
-            تسجيل دخول المدير للمتابعة
+            لإدارة النقل — تسجيل دخول المدير للمتابعة
           </p>
         </div>
 

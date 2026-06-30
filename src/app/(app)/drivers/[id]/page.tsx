@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PrintButton } from "@/components/print-button";
 import { DriverForm } from "../driver-form";
+import { DeleteDriverButton } from "../delete-driver-button";
 import { PayDriverForm } from "../pay-driver-form";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate } from "@/lib/format";
@@ -78,14 +79,17 @@ export default async function DriverProfile({
                 </div>
               </div>
             </div>
-            <DriverForm
-              driver={d}
-              trigger={
-                <Button variant="ghost" size="icon" className="print:hidden">
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              }
-            />
+            <div className="flex gap-1 print:hidden">
+              <DriverForm
+                driver={d}
+                trigger={
+                  <Button variant="ghost" size="icon">
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                }
+              />
+              <DeleteDriverButton id={d.id} />
+            </div>
           </div>
           {d.notes && <p className="rounded-lg bg-muted p-2 text-sm">{d.notes}</p>}
           <div className="flex gap-2 print:hidden">

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TripActions } from "./trip-actions";
 import { EditTripForm } from "./edit-trip";
+import { DeleteTripButton } from "./delete-trip-button";
 import { tripFinancials } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatDate, formatShortDate } from "@/lib/format";
@@ -90,6 +91,7 @@ export default async function TripDetail({
           >
             <ArrowRight className="h-4 w-4" /> رجوع
           </Link>
+          <div className="flex items-center gap-2">
           <EditTripForm
             trip={{
               id: trip.id,
@@ -110,6 +112,8 @@ export default async function TripDetail({
               </Button>
             }
           />
+            <DeleteTripButton id={trip.id} canDelete={fin.collected === 0} />
+          </div>
         </div>
 
         {/* الحالة + المسار */}
