@@ -4,13 +4,14 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { recordLedger, assertSpendable } from "@/lib/finance";
+import { recordLedger } from "@/lib/finance";
 import { toPiastres } from "@/lib/money";
 
 export async function createPartner(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const sharePercent = Number(formData.get("sharePercent") ?? "0");
-  if (!name || sharePercent <= 0) throw new Error("بيانات غير صحيحة");
+  if (!name || sharePercent <= 0)
+    return { error: "اكتب اسم الشريك ونسبة صحيحة" };
 
   const p = await prisma.partner.create({
     data: {
@@ -26,7 +27,8 @@ export async function createPartner(formData: FormData) {
 export async function updatePartner(id: string, formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const sharePercent = Number(formData.get("sharePercent") ?? "0");
-  if (!name || sharePercent <= 0) throw new Error("بيانات غير صحيحة");
+  if (!name || sharePercent <= 0)
+    return { error: "اكتب اسم الشريك ونسبة صحيحة" };
 
   await prisma.partner.update({
     where: { id },
@@ -56,9 +58,7 @@ export async function addWithdrawal(partnerId: string, formData: FormData) {
   const amount = toPiastres(String(formData.get("amount") ?? "0"));
   const method = String(formData.get("method") ?? "cash");
   const note = String(formData.get("note") ?? "").trim() || null;
-  if (amount <= 0) throw new Error("القيمة غير صحيحة");
-
-  await assertSpendable(method, amount);
+  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
 
   await prisma.$transaction(async (tx) => {
     const w = await tx.partnerWithdrawal.create({
@@ -87,15 +87,13 @@ export async function distributeProfits(formData: FormData) {
   const amount = toPiastres(String(formData.get("amount") ?? "0"));
   const method = String(formData.get("method") ?? "cash");
   const note = String(formData.get("note") ?? "").trim() || null;
-  if (amount <= 0) throw new Error("القيمة غير صحيحة");
+  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
 
   const partners = await prisma.partner.findMany();
-  if (partners.length === 0) throw new Error("لا يوجد شركاء");
+  if (partners.length === 0) return { error: "لا يوجد شركاء" };
 
   const totalShare = partners.reduce((a, p) => a + p.sharePercent, 0);
-  if (totalShare <= 0) throw new Error("نسب الشركاء غير صحيحة");
-
-  await assertSpendable(method, amount);
+  if (totalShare <= 0) return { error: "نسب الشركاء غير صحيحة" };
 
   await prisma.$transaction(async (tx) => {
     const settlement = await tx.settlement.create({

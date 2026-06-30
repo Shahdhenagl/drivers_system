@@ -35,13 +35,18 @@ export function PayDriverForm({
   async function action(formData: FormData) {
     setError("");
     try {
-      await payDriverDues(driverId, formData);
+      const res = await payDriverDues(driverId, formData);
+      if (res?.error) {
+        playSound("error");
+        setError(res.error);
+        return;
+      }
       playSound("money");
       setOpen(false);
       router.refresh();
-    } catch (e) {
+    } catch {
       playSound("error");
-      setError(e instanceof Error ? e.message : "حدث خطأ");
+      setError("حصل خطأ غير متوقع، حاول تاني");
     }
   }
 

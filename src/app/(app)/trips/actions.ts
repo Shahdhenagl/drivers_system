@@ -7,7 +7,6 @@ import { audit } from "@/lib/audit";
 import { toPiastres } from "@/lib/money";
 import {
   recordLedger,
-  assertAvailable,
   deriveCollectionStatus,
   effectiveAmounts,
 } from "@/lib/finance";
@@ -24,7 +23,7 @@ export async function createTrip(formData: FormData) {
   if (contractorId === "__new__" || !contractorId) {
     const name = get("newContractorName");
     const phone = get("newContractorPhone");
-    if (!name || !phone) throw new Error("بيانات المقاول ناقصة");
+    if (!name || !phone) return { error: "اكتب اسم المقاول ورقم موبايله" };
     const c = await prisma.contractor.create({
       data: { name, phone, company: get("newContractorCompany") || null },
     });
@@ -38,7 +37,7 @@ export async function createTrip(formData: FormData) {
     const name = get("newDriverName");
     const phone = get("newDriverPhone");
     const vehicleType = get("newDriverVehicleType") || "غير محدد";
-    if (!name || !phone) throw new Error("بيانات السواق ناقصة");
+    if (!name || !phone) return { error: "اكتب اسم السواق ورقم موبايله" };
     const dr = await prisma.driver.create({
       data: { name, phone, vehicleType },
     });
@@ -118,10 +117,10 @@ export async function cancelTrip(id: string, formData: FormData) {
     contractorPenalty = toPiastres(String(formData.get("contractorPenalty") ?? "0"));
     driverPenalty = toPiastres(String(formData.get("driverPenalty") ?? "0"));
     if (contractorPenalty < 0 || driverPenalty < 0) {
-      throw new Error("قيم الغرامة غير صحيحة");
+      return { error: "قيم الغرامة غير صحيحة" };
     }
     if (driverPenalty > contractorPenalty) {
-      throw new Error("نصيب السواق لا يمكن أن يتجاوز غرامة العميل");
+      return { error: "نصيب السواق لا يمكن أن يتجاوز غرامة العميل" };
     }
   }
 
@@ -129,7 +128,7 @@ export async function cancelTrip(id: string, formData: FormData) {
     where: { id },
     include: { collections: true },
   });
-  if (!trip) throw new Error("الرحلة غير موجودة");
+  if (!trip) return { error: "الرحلة غير موجودة" };
 
   const collected = trip.collections.reduce((a, c) => a + c.amount, 0);
   const newCollectionStatus = deriveCollectionStatus(contractorPenalty, collected);
@@ -190,7 +189,7 @@ export async function setTripStatus(id: string, status: string) {
   if (status === "COMPLETED") {
     const trip = await prisma.trip.findUnique({ where: { id } });
     // قاعدة: لا يمكن إنهاء الرحلة بدون اختيار سواق
-    if (!trip?.driverId) throw new Error("لا يمكن إنهاء الرحلة بدون اختيار سواق");
+    if (!trip?.driverId) return { error: "لا يمكن إنهاء الرحلة بدون اختيار سواق" };
   }
   await prisma.trip.update({ where: { id }, data: { status } });
   await audit("STATUS", "Trip", id, { status });
@@ -213,19 +212,19 @@ export async function addCollection(tripId: string, formData: FormData) {
   const dateStr = String(formData.get("date") ?? "");
   const date = dateStr ? new Date(dateStr) : new Date();
   const note = String(formData.get("note") ?? "").trim() || null;
-  if (amount <= 0) throw new Error("القيمة غير صحيحة");
+  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
 
   const trip = await prisma.trip.findUnique({
     where: { id: tripId },
     include: { collections: true },
   });
-  if (!trip) throw new Error("الرحلة غير موجودة");
+  if (!trip) return { error: "الرحلة غير موجودة" };
 
   const eff = effectiveAmounts(trip);
   const collected = trip.collections.reduce((a, c) => a + c.amount, 0);
   // قاعدة: لا يمكن تحصيل مبلغ أكبر من قيمة الرحلة (أو الغرامة عند الإلغاء)
   if (collected + amount > eff.contractor) {
-    throw new Error("المبلغ يتجاوز قيمة الرحلة المتبقية");
+    return { error: "المبلغ يتجاوز قيمة الرحلة المتبقية" };
   }
 
   await prisma.$transaction(async (tx) => {
@@ -269,14 +268,14 @@ export async function collectViaDriver(tripId: string, formData: FormData) {
   const date = dateStr ? new Date(dateStr) : new Date();
   const extra = String(formData.get("note") ?? "").trim();
   const note = extra ? `عن طريق السواق — ${extra}` : "تحصيل عن طريق السواق";
-  if (amount <= 0) throw new Error("القيمة غير صحيحة");
+  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
 
   const trip = await prisma.trip.findUnique({
     where: { id: tripId },
     include: { collections: true, driverPayments: true },
   });
-  if (!trip) throw new Error("الرحلة غير موجودة");
-  if (!trip.driverId) throw new Error("لا يوجد سواق على الرحلة");
+  if (!trip) return { error: "الرحلة غير موجودة" };
+  if (!trip.driverId) return { error: "لا يوجد سواق على الرحلة" };
 
   const eff = effectiveAmounts(trip);
   const collected = trip.collections.reduce((a, c) => a + c.amount, 0);
@@ -285,10 +284,10 @@ export async function collectViaDriver(tripId: string, formData: FormData) {
   const remainingDriver = eff.driver - paid;
 
   if (amount > remainingCollection) {
-    throw new Error("المبلغ أكبر من المتبقي على المقاول");
+    return { error: "المبلغ أكبر من المتبقي على المقاول" };
   }
   if (amount > remainingDriver) {
-    throw new Error("المبلغ أكبر من مستحق السواق المتبقي لهذا الطلب");
+    return { error: "المبلغ أكبر من مستحق السواق المتبقي لهذا الطلب" };
   }
 
   await prisma.$transaction(async (tx) => {
@@ -322,23 +321,21 @@ export async function addDriverPayment(tripId: string, formData: FormData) {
   const dateStr = String(formData.get("date") ?? "");
   const date = dateStr ? new Date(dateStr) : new Date();
   const note = String(formData.get("note") ?? "").trim() || null;
-  if (amount <= 0) throw new Error("القيمة غير صحيحة");
+  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
 
   const trip = await prisma.trip.findUnique({
     where: { id: tripId },
     include: { driverPayments: true },
   });
-  if (!trip) throw new Error("الرحلة غير موجودة");
-  if (!trip.driverId) throw new Error("لا يوجد سواق على الرحلة");
+  if (!trip) return { error: "الرحلة غير موجودة" };
+  if (!trip.driverId) return { error: "لا يوجد سواق على الرحلة" };
 
   const paidEff = effectiveAmounts(trip);
   const paid = trip.driverPayments.reduce((a, p) => a + p.amount, 0);
   // قاعدة: لا يمكن دفع أكثر من المتبقي
   if (paid + amount > paidEff.driver) {
-    throw new Error("المبلغ يتجاوز مستحق السواق المتبقي");
+    return { error: "المبلغ يتجاوز مستحق السواق المتبقي" };
   }
-  // سداد السواق التزام — يُمنع فقط لو تجاوز رصيد الخزنة الفعلي (دون قفل رأس المال)
-  await assertAvailable(method, amount);
 
   await prisma.$transaction(async (tx) => {
     const dp = await tx.driverPayment.create({

@@ -42,7 +42,12 @@ export function TripForm({
     formData.set("contractorId", contractorId);
     formData.set("driverId", driverId);
     try {
-      await createTrip(formData);
+      const res = await createTrip(formData);
+      // لو رجع خطأ تحقّق (بيانات ناقصة)
+      if (res?.error) {
+        playSound("error");
+        setError(res.error);
+      }
     } catch (e) {
       // نجاح الحفظ يرمي NEXT_REDIRECT — هنا نشغّل صوت الطلب الجديد المميز
       if (e instanceof Error && e.message.includes("NEXT_REDIRECT")) {
@@ -50,7 +55,7 @@ export function TripForm({
         return;
       }
       playSound("error");
-      setError(e instanceof Error ? e.message : "حدث خطأ");
+      setError("حصل خطأ غير متوقع، حاول تاني");
     }
   }
 

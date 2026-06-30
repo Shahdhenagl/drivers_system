@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { recordLedger, assertAvailable } from "@/lib/finance";
+import { recordLedger } from "@/lib/finance";
 import { toPiastres } from "@/lib/money";
 
 export async function createDriver(formData: FormData) {
@@ -75,10 +75,7 @@ export async function payDriverDues(driverId: string, formData: FormData) {
   const date = dateStr ? new Date(dateStr) : new Date();
   const note = String(formData.get("note") ?? "").trim() || null;
 
-  if (amount <= 0) throw new Error("القيمة غير صحيحة");
-
-  // سداد السواق التزام — يُمنع فقط لو تجاوز رصيد الخزنة الفعلي (دون قفل رأس المال)
-  await assertAvailable(method, amount);
+  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
 
   const trips = await prisma.trip.findMany({
     where: { driverId, status: { not: "CANCELLED" } },
@@ -94,7 +91,7 @@ export async function payDriverDues(driverId: string, formData: FormData) {
 
   // قاعدة: لا يُدفع أكثر من المتبقي للسواق
   if (amount > totalDue) {
-    throw new Error("المبلغ أكبر من إجمالي المتبقي للسواق");
+    return { error: "المبلغ أكبر من إجمالي المتبقي للسواق" };
   }
 
   await prisma.$transaction(async (tx) => {

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { recordLedger, assertSpendable } from "@/lib/finance";
+import { recordLedger } from "@/lib/finance";
 import { toPiastres } from "@/lib/money";
 import { sendTelegram } from "@/lib/telegram";
 import { adminExpenseMessage } from "@/lib/messages";
@@ -13,10 +13,7 @@ export async function addExpense(formData: FormData) {
   const amount = toPiastres(get("amount") || "0");
   const method = get("method") || "cash";
   const name = get("name");
-  if (!name || amount <= 0) throw new Error("بيانات غير صحيحة");
-
-  // قاعدة: لا يُصرف أكثر من المتاح مع الحفاظ على رأس المال في الكاش
-  await assertSpendable(method, amount);
+  if (!name || amount <= 0) return { error: "اكتب اسم المصروف وقيمة صحيحة" };
 
   const dateStr = get("date");
   const date = dateStr ? new Date(dateStr) : new Date();

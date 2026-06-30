@@ -37,14 +37,20 @@ export function PartnerForm({
   async function action(fd: FormData) {
     setErr("");
     try {
-      if (isEdit) await updatePartner(partner!.id, fd);
-      else await createPartner(fd);
+      const res = isEdit
+        ? await updatePartner(partner!.id, fd)
+        : await createPartner(fd);
+      if (res?.error) {
+        playSound("error");
+        setErr(res.error);
+        return;
+      }
       playSound(isEdit ? "success" : "order");
       setOpen(false);
       router.refresh();
-    } catch (e) {
+    } catch {
       playSound("error");
-      setErr(e instanceof Error ? e.message : "خطأ");
+      setErr("حصل خطأ غير متوقع، حاول تاني");
     }
   }
 

@@ -27,7 +27,7 @@ export default async function FinancePage() {
         {/* الخزنة */}
         <section className="rounded-2xl bg-gradient-to-br from-primary to-primary/70 p-5 text-primary-foreground shadow-lg shadow-primary/20">
           <div className="flex items-center gap-2 text-sm opacity-90">
-            <Wallet className="h-4 w-4" /> رصيد الخزنة
+            <Wallet className="h-4 w-4" /> رصيد الخزنة (السيولة)
           </div>
           <div className="mt-1 text-3xl font-extrabold tabular-nums">
             {formatMoney(treasury.total)}
@@ -68,7 +68,7 @@ export default async function FinancePage() {
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                المصروفات تُخصم من الربح فقط — رأس المال ({formatMoney(ov.capital, false)} ج.م) محفوظ.
+                رأس المال ({formatMoney(ov.capital, false)} ج.م) ثابت ومنفصل — والخزنة تعرض السيولة التشغيلية فقط (قد تكون بالسالب).
               </p>
             </Card>
           </div>

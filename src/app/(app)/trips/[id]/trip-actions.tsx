@@ -55,15 +55,17 @@ export function TripActions(props: Props) {
   async function changeStatus(s: string) {
     setErr("");
     try {
-      await setTripStatus(tripId, s);
-      // صوت مميز حسب الحالة
-      playSound(
-        s === "CONFIRMED" ? "order" : s === "COMPLETED" ? "success" : "success"
-      );
+      const res = await setTripStatus(tripId, s);
+      if (res?.error) {
+        playSound("error");
+        setErr(res.error);
+        return;
+      }
+      playSound(s === "CONFIRMED" ? "order" : "success");
       router.refresh();
-    } catch (e) {
+    } catch {
       playSound("error");
-      setErr(e instanceof Error ? e.message : "خطأ");
+      setErr("حصل خطأ غير متوقع، حاول تاني");
     }
   }
 
@@ -129,13 +131,18 @@ function CollectDialog({
   async function action(fd: FormData) {
     setErr("");
     try {
-      await addCollection(tripId, fd);
+      const res = await addCollection(tripId, fd);
+      if (res?.error) {
+        playSound("error");
+        setErr(res.error);
+        return;
+      }
       playSound("money");
       setOpen(false);
       router.refresh();
-    } catch (e) {
+    } catch {
       playSound("error");
-      setErr(e instanceof Error ? e.message : "خطأ");
+      setErr("حصل خطأ غير متوقع، حاول تاني");
     }
   }
 
@@ -175,13 +182,18 @@ function DriverPayDialog({
   async function action(fd: FormData) {
     setErr("");
     try {
-      await addDriverPayment(tripId, fd);
+      const res = await addDriverPayment(tripId, fd);
+      if (res?.error) {
+        playSound("error");
+        setErr(res.error);
+        return;
+      }
       playSound("money");
       setOpen(false);
       router.refresh();
-    } catch (e) {
+    } catch {
       playSound("error");
-      setErr(e instanceof Error ? e.message : "خطأ");
+      setErr("حصل خطأ غير متوقع، حاول تاني");
     }
   }
 
@@ -220,13 +232,18 @@ function CancelDialog({ tripId }: { tripId: string }) {
     setErr("");
     fd.set("penaltyType", withPenalty ? "PENALTY" : "NONE");
     try {
-      await cancelTrip(tripId, fd);
+      const res = await cancelTrip(tripId, fd);
+      if (res?.error) {
+        playSound("error");
+        setErr(res.error);
+        return;
+      }
       playSound("cancel");
       setOpen(false);
       router.refresh();
-    } catch (e) {
+    } catch {
       playSound("error");
-      setErr(e instanceof Error ? e.message : "خطأ");
+      setErr("حصل خطأ غير متوقع، حاول تاني");
     }
   }
 
@@ -338,13 +355,18 @@ function ViaDriverDialog({
   async function action(fd: FormData) {
     setErr("");
     try {
-      await collectViaDriver(tripId, fd);
+      const res = await collectViaDriver(tripId, fd);
+      if (res?.error) {
+        playSound("error");
+        setErr(res.error);
+        return;
+      }
       playSound("money");
       setOpen(false);
       router.refresh();
-    } catch (e) {
+    } catch {
       playSound("error");
-      setErr(e instanceof Error ? e.message : "خطأ");
+      setErr("حصل خطأ غير متوقع، حاول تاني");
     }
   }
 

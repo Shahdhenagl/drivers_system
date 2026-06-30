@@ -27,13 +27,18 @@ export function WithdrawForm({ partnerId }: { partnerId: string }) {
   async function action(fd: FormData) {
     setErr("");
     try {
-      await addWithdrawal(partnerId, fd);
+      const res = await addWithdrawal(partnerId, fd);
+      if (res?.error) {
+        playSound("error");
+        setErr(res.error);
+        return;
+      }
       playSound("money");
       setOpen(false);
       router.refresh();
-    } catch (e) {
+    } catch {
       playSound("error");
-      setErr(e instanceof Error ? e.message : "خطأ");
+      setErr("حصل خطأ غير متوقع، حاول تاني");
     }
   }
 
