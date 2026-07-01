@@ -68,6 +68,8 @@ export const LEDGER_TYPE = {
   DRIVER_PAYMENT: "سداد سواق",
   DRIVER_ADVANCE: "سلفة سواق",
   DRIVER_ADVANCE_REPAYMENT: "سداد سلفة سواق",
+  ADVANCE_OUT: "سلفة/رصيد (صرف)",
+  ADVANCE_IN: "سلفة/رصيد (استلام)",
   EXPENSE: "مصروف",
   PARTNER_WITHDRAWAL: "سحب شريك",
   TRANSFER: "تحويل بين الوسائل",

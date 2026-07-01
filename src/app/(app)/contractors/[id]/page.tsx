@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { PrintButton } from "@/components/print-button";
 import { ContractorForm } from "../contractor-form";
 import { DeleteContractorButton } from "../delete-contractor-button";
+import { AdvancePanel } from "@/components/advance-panel";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate, startOfDay, endOfDay, addDays } from "@/lib/format";
 import { displayPhone, whatsAppLink } from "@/lib/phone";
@@ -43,6 +44,32 @@ export default async function ContractorProfile({
     },
   });
   if (!c) notFound();
+
+  // السلف/الأرصدة (مرنة لو الجدول غير موجود قبل الترحيل)
+  const advances = await prisma.advance
+    .findMany({
+      where: { partyType: "CONTRACTOR", partyId: id },
+      orderBy: { date: "desc" },
+    })
+    .catch(
+      () =>
+        [] as {
+          id: string;
+          amount: number;
+          direction: string;
+          method: string;
+          note: string | null;
+          isOpening: boolean;
+          date: Date;
+        }[]
+    );
+  const advOut = advances
+    .filter((a) => a.direction === "OUT")
+    .reduce((s, a) => s + a.amount, 0);
+  const advIn = advances
+    .filter((a) => a.direction === "IN")
+    .reduce((s, a) => s + a.amount, 0);
+  const advanceBalance = advOut - advIn;
 
   // تشمل الرحلات النشطة وغرامات الإلغاء (السماح = صفر)
   const totalRequired = c.trips.reduce(
@@ -170,6 +197,16 @@ export default async function ContractorProfile({
           <SummaryBox label="إجمالي الآجل" value={totalDeferred} tone="destructive" />
           <SummaryBox label="أرباحنا منه" value={totalProfit} tone="primary" />
         </div>
+
+        {/* السلف والأرصدة */}
+        <AdvancePanel
+          partyType="CONTRACTOR"
+          partyId={c.id}
+          name={c.name}
+          phone={c.phone}
+          balance={advanceBalance}
+          advances={advances}
+        />
 
         {/* تقرير واتساب دوري */}
         <Card className="space-y-2 p-4 print:hidden">

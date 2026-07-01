@@ -210,56 +210,53 @@ export function driverReport(r: DriverReportData): string {
   return [...header, ...tripLines, ...totals].join("\n") + SIGNATURE;
 }
 
-/** إشعار للأدمن بصرف سلفة لسواق */
-export function adminDriverAdvanceMessage(d: {
+/** رصيد الطرف: موجب = عليه لنا، سالب = لنا عليه (نحن مدينون له) */
+function balanceLabel(balance: number): string {
+  if (balance > 0) return `📊 عليه لنا الآن: ${formatMoney(balance)}`;
+  if (balance < 0) return `📊 لنا عليه (مدينون له): ${formatMoney(-balance)}`;
+  return "📊 الحساب صفر";
+}
+
+/** إشعار للأدمن بحركة سلفة/رصيد لطرف (سواق أو مقاول) في أي اتجاه */
+export function adminAdvanceMessage(d: {
+  partyLabel: string; // سواق | مقاول
   name: string;
   amount: number;
   method: string;
   note?: string | null;
-  outstanding: number;
+  direction: string; // OUT | IN
+  isOpening: boolean;
+  balance: number;
 }): string {
+  const title = d.isOpening
+    ? "🧾 <b>رصيد افتتاحي</b>"
+    : d.direction === "OUT"
+      ? "💳 <b>صرف سلفة</b>"
+      : "✅ <b>استلام/سداد</b>";
+  const dirLine =
+    d.direction === "OUT"
+      ? `⬅️ خرج من الخزنة: ${formatMoney(d.amount)}`
+      : `➡️ دخل الخزنة: ${formatMoney(d.amount)}`;
   return (
     [
-      "💳 <b>سلفة سواق</b>",
-      `🚚 السواق: ${d.name}`,
-      `💵 المبلغ: ${formatMoney(d.amount)}`,
+      title,
+      `👤 ${d.partyLabel}: ${d.name}`,
+      dirLine,
       `💳 الطريقة: ${methodLabel(d.method)}`,
       d.note ? `📝 ${d.note}` : "",
-      `📊 إجمالي السلف عليه الآن: ${formatMoney(d.outstanding)}`,
+      balanceLabel(d.balance),
     ]
       .filter(Boolean)
       .join("\n") + SIGNATURE
   );
 }
 
-/** إشعار للأدمن بسداد سلفة من سواق (إيراد يدخل الخزنة) */
-export function adminDriverRepaymentMessage(d: {
-  name: string;
-  amount: number;
-  method: string;
-  note?: string | null;
-  outstanding: number;
-}): string {
-  return (
-    [
-      "✅ <b>سداد سلفة سواق (إيراد)</b>",
-      `🚚 السواق: ${d.name}`,
-      `💵 المبلغ المُسدَّد: ${formatMoney(d.amount)}`,
-      `💳 الطريقة: ${methodLabel(d.method)}`,
-      d.note ? `📝 ${d.note}` : "",
-      `📊 المتبقي من السلف عليه: ${formatMoney(d.outstanding)}`,
-    ]
-      .filter(Boolean)
-      .join("\n") + SIGNATURE
-  );
-}
-
-/** تذكير للسواق بسداد ما عليه من سلف (واتساب) */
-export function driverAdvanceReminder(name: string, outstanding: number): string {
+/** تذكير للطرف بسداد ما عليه (واتساب) — عندما يكون مدينًا لنا */
+export function advanceReminder(name: string, owedToUs: number): string {
   return (
     [
       `السلام عليكم ${name}`,
-      `نذكّر حضرتك بوجود سلفة متبقّية بقيمة ${formatMoney(outstanding)}.`,
+      `نذكّر حضرتك بوجود مبلغ متبقٍّ بقيمة ${formatMoney(owedToUs)}.`,
       "برجاء التكرم بالسداد أو التنسيق معنا. شكرًا 🌹",
     ].join("\n") + SIGNATURE
   );

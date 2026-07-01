@@ -5,13 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { recordLedger, planSpend } from "@/lib/finance";
-import { toPiastres, formatMoney } from "@/lib/money";
-import { methodLabel } from "@/lib/constants";
-import { sendTelegram } from "@/lib/telegram";
-import {
-  adminDriverAdvanceMessage,
-  adminDriverRepaymentMessage,
-} from "@/lib/messages";
+import { toPiastres } from "@/lib/money";
 
 export async function createDriver(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
@@ -131,130 +125,6 @@ export async function payDriverDues(driverId: string, formData: FormData) {
   });
 
   await audit("PAY", "Driver", driverId, { amount, method });
-  revalidatePath(`/drivers/${driverId}`);
-  revalidatePath("/drivers");
-  revalidatePath("/finance");
-}
-
-/** إجمالي السلف المتبقية على سواق (المصروف − المسدَّد) بالقروش */
-async function driverAdvanceOutstanding(driverId: string): Promise<number> {
-  const rows = await prisma.driverAdvance.groupBy({
-    by: ["kind"],
-    where: { driverId },
-    _sum: { amount: true },
-  });
-  let advanced = 0;
-  let repaid = 0;
-  for (const r of rows) {
-    if (r.kind === "ADVANCE") advanced = r._sum.amount ?? 0;
-    else if (r.kind === "REPAYMENT") repaid = r._sum.amount ?? 0;
-  }
-  return advanced - repaid;
-}
-
-/** صرف سلفة لسواق — تخرج من الخزنة وتُسجَّل عليه */
-export async function addDriverAdvance(driverId: string, formData: FormData) {
-  const amount = toPiastres(String(formData.get("amount") ?? "0"));
-  const method = String(formData.get("method") ?? "cash");
-  const fallback = String(formData.get("fallback") ?? "") === "1";
-  const note = String(formData.get("note") ?? "").trim() || null;
-  const dateStr = String(formData.get("date") ?? "");
-  const date = dateStr ? new Date(dateStr) : new Date();
-  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
-
-  const driver = await prisma.driver.findUnique({ where: { id: driverId } });
-  if (!driver) return { error: "السواق غير موجود" };
-
-  // منع النزول تحت الصفر وحفظ رأس المال (مع إمكان السحب من وسائل أخرى)
-  const plan = await planSpend(method, amount, fallback);
-  if (!plan.ok) {
-    return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
-  }
-
-  await prisma.$transaction(async (tx) => {
-    const adv = await tx.driverAdvance.create({
-      data: { driverId, amount, kind: "ADVANCE", method, note, date },
-    });
-    for (const e of plan.entries) {
-      await recordLedger(tx, {
-        type: "DRIVER_ADVANCE",
-        direction: "OUT",
-        amount: e.amount,
-        method: e.method,
-        description:
-          plan.entries.length > 1
-            ? `سلفة سواق — ${driver.name} (${methodLabel(e.method)})`
-            : `سلفة سواق — ${driver.name}`,
-        refType: "DriverAdvance",
-        refId: adv.id,
-        date,
-      });
-    }
-  });
-
-  await audit("ADVANCE", "Driver", driverId, { amount, method });
-
-  try {
-    const outstanding = await driverAdvanceOutstanding(driverId);
-    await sendTelegram(
-      adminDriverAdvanceMessage({ name: driver.name, amount, method, note, outstanding })
-    );
-  } catch {
-    // تجاهل فشل الإشعار
-  }
-
-  revalidatePath(`/drivers/${driverId}`);
-  revalidatePath("/drivers");
-  revalidatePath("/finance");
-}
-
-/** سداد سلفة من سواق — إيراد يدخل الخزنة ويُنقص ما عليه */
-export async function repayDriverAdvance(driverId: string, formData: FormData) {
-  const amount = toPiastres(String(formData.get("amount") ?? "0"));
-  const method = String(formData.get("method") ?? "cash");
-  const note = String(formData.get("note") ?? "").trim() || null;
-  const dateStr = String(formData.get("date") ?? "");
-  const date = dateStr ? new Date(dateStr) : new Date();
-  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
-
-  const driver = await prisma.driver.findUnique({ where: { id: driverId } });
-  if (!driver) return { error: "السواق غير موجود" };
-
-  const outstandingBefore = await driverAdvanceOutstanding(driverId);
-  if (outstandingBefore <= 0) return { error: "لا توجد سلف على هذا السواق" };
-  if (amount > outstandingBefore) {
-    return {
-      error: `المبلغ أكبر من السلف المتبقية — المتبقي: ${formatMoney(outstandingBefore)}`,
-    };
-  }
-
-  await prisma.$transaction(async (tx) => {
-    const rep = await tx.driverAdvance.create({
-      data: { driverId, amount, kind: "REPAYMENT", method, note, date },
-    });
-    await recordLedger(tx, {
-      type: "DRIVER_ADVANCE_REPAYMENT",
-      direction: "IN",
-      amount,
-      method,
-      description: `سداد سلفة سواق — ${driver.name}`,
-      refType: "DriverAdvance",
-      refId: rep.id,
-      date,
-    });
-  });
-
-  await audit("ADVANCE_REPAY", "Driver", driverId, { amount, method });
-
-  try {
-    const outstanding = await driverAdvanceOutstanding(driverId);
-    await sendTelegram(
-      adminDriverRepaymentMessage({ name: driver.name, amount, method, note, outstanding })
-    );
-  } catch {
-    // تجاهل فشل الإشعار
-  }
-
   revalidatePath(`/drivers/${driverId}`);
   revalidatePath("/drivers");
   revalidatePath("/finance");

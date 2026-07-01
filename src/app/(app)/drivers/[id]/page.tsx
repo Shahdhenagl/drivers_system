@@ -9,12 +9,12 @@ import { PrintButton } from "@/components/print-button";
 import { DriverForm } from "../driver-form";
 import { DeleteDriverButton } from "../delete-driver-button";
 import { PayDriverForm } from "../pay-driver-form";
-import { AdvanceForm, RepayAdvanceForm } from "../advance-forms";
+import { AdvancePanel } from "@/components/advance-panel";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate, startOfDay, endOfDay, addDays } from "@/lib/format";
 import { displayPhone, whatsAppLink } from "@/lib/phone";
 import { effectiveAmounts } from "@/lib/finance";
-import { driverReport, driverAdvanceReminder } from "@/lib/messages";
+import { driverReport } from "@/lib/messages";
 import { methodLabel, TRIP_STATUS } from "@/lib/constants";
 import {
   Phone,
@@ -23,7 +23,6 @@ import {
   ChevronLeft,
   ArrowRight,
   Truck,
-  Wallet,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -49,24 +48,39 @@ export default async function DriverProfile({
   });
   if (!d) notFound();
 
-  // السلف تُجلب منفصلة ومرنة (لو الجدول غير موجود بعد قبل الترحيل)
-  const advances = await prisma.driverAdvance
-    .findMany({ where: { driverId: id }, orderBy: { date: "desc" } })
-    .catch(() => [] as { id: string; amount: number; kind: string; method: string; note: string | null; date: Date }[]);
+  // السلف/الأرصدة تُجلب منفصلة ومرنة (لو الجدول غير موجود بعد قبل الترحيل)
+  const advances = await prisma.advance
+    .findMany({
+      where: { partyType: "DRIVER", partyId: id },
+      orderBy: { date: "desc" },
+    })
+    .catch(
+      () =>
+        [] as {
+          id: string;
+          amount: number;
+          direction: string;
+          method: string;
+          note: string | null;
+          isOpening: boolean;
+          date: Date;
+        }[]
+    );
 
   // تشمل الرحلات النشطة ونصيب السواق من غرامات الإلغاء
   const totalDue = d.trips.reduce((a, t) => a + effectiveAmounts(t).driver, 0);
   const totalPaid = d.payments.reduce((a, p) => a + p.amount, 0);
   const remaining = Math.max(totalDue - totalPaid, 0);
 
-  // السلف: المصروف − المسدَّد
-  const advancesGiven = advances
-    .filter((a) => a.kind === "ADVANCE")
+  // رصيد السلف: OUT − IN (موجب = عليه لنا، سالب = لنا عليه)
+  const advOut = advances
+    .filter((a) => a.direction === "OUT")
     .reduce((s, a) => s + a.amount, 0);
-  const advancesRepaid = advances
-    .filter((a) => a.kind === "REPAYMENT")
+  const advIn = advances
+    .filter((a) => a.direction === "IN")
     .reduce((s, a) => s + a.amount, 0);
-  const advanceOutstanding = Math.max(advancesGiven - advancesRepaid, 0);
+  const advanceBalance = advOut - advIn;
+  const advanceOutstanding = Math.max(advanceBalance, 0);
 
   // تقارير واتساب دورية
   const now = new Date();
@@ -175,66 +189,15 @@ export default async function DriverProfile({
           <PayDriverForm driverId={d.id} remaining={remaining} />
         </div>
 
-        {/* السلف */}
-        <Card className="space-y-3 p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-bold text-muted-foreground">
-              <Wallet className="h-4 w-4" /> سلف السواق
-            </div>
-            <span
-              className={`text-lg font-extrabold tabular-nums ${
-                advanceOutstanding > 0 ? "text-warning" : "text-success"
-              }`}
-            >
-              {formatMoney(advanceOutstanding)}
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-2 print:hidden">
-            <AdvanceForm driverId={d.id} />
-            <RepayAdvanceForm driverId={d.id} outstanding={advanceOutstanding} />
-          </div>
-          {advanceOutstanding > 0 && (
-            <Button asChild variant="outline" size="sm" className="w-full print:hidden">
-              <a
-                href={whatsAppLink(
-                  d.phone,
-                  driverAdvanceReminder(d.name, advanceOutstanding)
-                )}
-                target="_blank"
-              >
-                <MessageCircle className="h-4 w-4" /> تذكير السواق بسداد السلفة
-              </a>
-            </Button>
-          )}
-          {advances.length > 0 && (
-            <div className="divide-y divide-border rounded-lg border border-border">
-              {advances.map((a) => (
-                <div
-                  key={a.id}
-                  className="flex items-center justify-between p-2.5 text-sm"
-                >
-                  <div>
-                    <div
-                      className={`font-medium ${
-                        a.kind === "ADVANCE" ? "text-warning" : "text-success"
-                      }`}
-                    >
-                      {a.kind === "ADVANCE" ? "سلفة" : "سداد"} — {formatMoney(a.amount)}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {formatShortDate(a.date)} • {methodLabel(a.method)}
-                    </div>
-                  </div>
-                  {a.note && (
-                    <div className="max-w-[45%] truncate text-xs text-muted-foreground">
-                      {a.note}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+        {/* السلف والأرصدة */}
+        <AdvancePanel
+          partyType="DRIVER"
+          partyId={d.id}
+          name={d.name}
+          phone={d.phone}
+          balance={advanceBalance}
+          advances={advances}
+        />
 
         {/* تقرير واتساب دوري */}
         <Card className="space-y-2 p-4 print:hidden">

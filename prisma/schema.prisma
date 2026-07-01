@@ -43,7 +43,6 @@ model Driver {
 
   trips    Trip[]
   payments DriverPayment[]
-  advances DriverAdvance[]
 
   @@index([name])
   @@index([phone])
@@ -135,19 +134,22 @@ model DriverPayment {
   @@index([driverId])
 }
 
-// سلف السواق: صرف سلفة (ADVANCE) أو سداد منها (REPAYMENT)
-model DriverAdvance {
+// سلف/أرصدة الأطراف (سواق أو مقاول) — في الاتجاهين
+// direction: OUT = صُرف للطرف (عليه/مدين لنا) | IN = استُلم منه (له/مدينين له)
+// net = مجموع OUT − مجموع IN: موجب = عليه لنا، سالب = لنا عليه (نحن مدينون له)
+model Advance {
   id        String   @id @default(cuid())
-  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  driverId  String
-  amount    Int // بالقروش
-  kind      String // ADVANCE = سلفة مصروفة | REPAYMENT = سداد من السواق
-  date      DateTime @default(now())
+  partyType String // DRIVER | CONTRACTOR
+  partyId   String
+  amount    Int // بالقروش (موجب)
+  direction String // OUT | IN
   method    String
   note      String?
+  isOpening Boolean  @default(false) // رصيد افتتاحي / سلفة سابقة
+  date      DateTime @default(now())
   createdAt DateTime @default(now())
 
-  @@index([driverId])
+  @@index([partyType, partyId])
 }
 
 // ===================== المصروفات =====================

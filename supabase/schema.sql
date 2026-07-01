@@ -284,6 +284,27 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 
 -- ============================================================
+-- الأرصدة/السلف الموحّدة للأطراف (Advance)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS "Advance" (
+    "id" TEXT NOT NULL,
+    "partyType" TEXT NOT NULL,
+    "partyId" TEXT NOT NULL,
+    "amount" INTEGER NOT NULL,
+    "direction" TEXT NOT NULL,
+    "method" TEXT NOT NULL,
+    "note" TEXT,
+    "isOpening" BOOLEAN NOT NULL DEFAULT false,
+    "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Advance_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX IF NOT EXISTS "Advance_party_idx" ON "Advance"("partyType", "partyId");
+
+
+-- ============================================================
 -- البيانات الابتدائية: رأس المال 200,000 ج.م (= 20,000,000 قرش)
 -- ============================================================
 INSERT INTO "Setting" ("key", "value", "updatedAt")
