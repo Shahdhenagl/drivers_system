@@ -19,34 +19,42 @@ export default async function DriversPage({
 }) {
   const { q } = await searchParams;
 
-  const drivers = await prisma.driver.findMany({
-    where: q
-      ? {
-          OR: [
-            { name: { contains: q } },
-            { phone: { contains: q } },
-            { altPhone: { contains: q } },
-            { phone3: { contains: q } },
-            { vehicleType: { contains: q } },
-          ],
-        }
-      : undefined,
-    orderBy: { createdAt: "desc" },
-    include: {
-      trips: {
-        select: {
-          status: true,
-          contractorPrice: true,
-          driverDue: true,
-          driverTip: true,
-          customerDiscount: true,
-          contractorPenalty: true,
-          driverPenalty: true,
-          driverPayments: { select: { amount: true } },
+  const [drivers, allIds] = await Promise.all([
+    prisma.driver.findMany({
+      where: q
+        ? {
+            OR: [
+              { name: { contains: q } },
+              { phone: { contains: q } },
+              { altPhone: { contains: q } },
+              { phone3: { contains: q } },
+              { vehicleType: { contains: q } },
+            ],
+          }
+        : undefined,
+      orderBy: { createdAt: "desc" },
+      include: {
+        trips: {
+          select: {
+            status: true,
+            contractorPrice: true,
+            driverDue: true,
+            driverTip: true,
+            customerDiscount: true,
+            contractorPenalty: true,
+            driverPenalty: true,
+            driverPayments: { select: { amount: true } },
+          },
         },
       },
-    },
-  });
+    }),
+    // رقم تسلسلي ثابت حسب ترتيب الإضافة (أول سواق = 1)
+    prisma.driver.findMany({
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    }),
+  ]);
+  const seqMap = new Map(allIds.map((d, i) => [d.id, i + 1]));
 
   return (
     <>
@@ -81,8 +89,8 @@ export default async function DriversPage({
               return (
                 <Link key={d.id} href={`/drivers/${d.id}`}>
                   <Card className="flex items-center gap-3 p-3.5 active:scale-[0.99] transition-transform">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-warning/15 text-warning">
-                      <Truck className="h-5 w-5" />
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-warning/15 text-warning font-bold tabular-nums">
+                      {seqMap.get(d.id)}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-semibold">{d.name}</div>

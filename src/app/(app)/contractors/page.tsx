@@ -19,34 +19,42 @@ export default async function ContractorsPage({
 }) {
   const { q } = await searchParams;
 
-  const contractors = await prisma.contractor.findMany({
-    where: q
-      ? {
-          OR: [
-            { name: { contains: q } },
-            { phone: { contains: q } },
-            { altPhone: { contains: q } },
-            { phone3: { contains: q } },
-            { company: { contains: q } },
-          ],
-        }
-      : undefined,
-    orderBy: { createdAt: "desc" },
-    include: {
-      trips: {
-        select: {
-          status: true,
-          contractorPrice: true,
-          driverDue: true,
-          driverTip: true,
-          customerDiscount: true,
-          contractorPenalty: true,
-          driverPenalty: true,
-          collections: { select: { amount: true } },
+  const [contractors, allIds] = await Promise.all([
+    prisma.contractor.findMany({
+      where: q
+        ? {
+            OR: [
+              { name: { contains: q } },
+              { phone: { contains: q } },
+              { altPhone: { contains: q } },
+              { phone3: { contains: q } },
+              { company: { contains: q } },
+            ],
+          }
+        : undefined,
+      orderBy: { createdAt: "desc" },
+      include: {
+        trips: {
+          select: {
+            status: true,
+            contractorPrice: true,
+            driverDue: true,
+            driverTip: true,
+            customerDiscount: true,
+            contractorPenalty: true,
+            driverPenalty: true,
+            collections: { select: { amount: true } },
+          },
         },
       },
-    },
-  });
+    }),
+    // رقم تسلسلي ثابت حسب ترتيب الإضافة (أول مقاول = 1)
+    prisma.contractor.findMany({
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    }),
+  ]);
+  const seqMap = new Map(allIds.map((c, i) => [c.id, i + 1]));
 
   return (
     <>
@@ -78,8 +86,8 @@ export default async function ContractorsPage({
               return (
                 <Link key={c.id} href={`/contractors/${c.id}`}>
                   <Card className="flex items-center gap-3 p-3.5 active:scale-[0.99] transition-transform">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary font-bold">
-                      {c.name.charAt(0)}
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary font-bold tabular-nums">
+                      {seqMap.get(c.id)}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-semibold">{c.name}</div>
