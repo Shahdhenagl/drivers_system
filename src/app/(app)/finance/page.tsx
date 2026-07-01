@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { ExpenseForm } from "./expense-form";
 import { DeleteExpenseButton } from "./delete-expense-button";
 import { TransferForm } from "./transfer-form";
+import { CashAdjustForm } from "./cash-adjust-form";
 import { prisma } from "@/lib/prisma";
 import { treasuryByMethod } from "@/lib/finance";
 import { getFinanceOverview } from "@/lib/finance-overview";
@@ -37,6 +38,10 @@ export default async function FinancePage() {
           </div>
           <div className="mt-1 text-3xl font-extrabold tabular-nums">
             {formatMoney(treasury.total)}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2 print:hidden">
+            <CashAdjustForm kind="deposit" />
+            <CashAdjustForm kind="withdraw" />
           </div>
           <div className="mt-3 grid grid-cols-4 gap-2 text-center text-[11px]">
             {(["cash", "instapay", "wallet", "visa"] as const).map((m) => (
@@ -75,7 +80,7 @@ export default async function FinancePage() {
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                رأس المال ({formatMoney(ov.capital, false)} ج.م) محفوظ في الكاش ولا يُصرف منه — والخزنة لا تنزل بالسالب.
+                رأس المال الابتدائي {formatMoney(ov.capital, false)} ج.م — والخزنة تُتعامَل كنقدية عادية (لا تنزل بالسالب).
               </p>
             </Card>
           </div>

@@ -117,6 +117,39 @@ export async function transferBetweenMethods(formData: FormData) {
   revalidatePath("/");
 }
 
+/** إيداع أو سحب نقدي عام في الخزنة (لا يؤثر على الربح) */
+export async function adjustTreasury(formData: FormData) {
+  const kind = String(formData.get("kind") ?? "deposit"); // deposit | withdraw
+  const method = String(formData.get("method") ?? "cash");
+  const amount = toPiastres(String(formData.get("amount") ?? "0"));
+  const note = String(formData.get("note") ?? "").trim();
+  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
+
+  if (kind === "withdraw") {
+    const plan = await planSpend(method, amount, false);
+    if (!plan.ok) {
+      return { error: plan.error, balances: plan.balances, canFallback: false };
+    }
+  }
+
+  await recordLedger(prisma, {
+    type: kind === "withdraw" ? "WITHDRAWAL" : "DEPOSIT",
+    direction: kind === "withdraw" ? "OUT" : "IN",
+    amount,
+    method,
+    description:
+      (kind === "withdraw" ? "سحب نقدي" : "إيداع نقدي") +
+      (note ? ` — ${note}` : ""),
+  });
+
+  await audit(kind === "withdraw" ? "WITHDRAW_CASH" : "DEPOSIT_CASH", "Treasury", undefined, {
+    amount,
+    method,
+  });
+  revalidatePath("/finance");
+  revalidatePath("/");
+}
+
 export async function deleteExpense(id: string) {
   const exp = await prisma.expense.findUnique({ where: { id } });
   if (!exp) return;

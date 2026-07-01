@@ -71,6 +71,9 @@ export const LEDGER_TYPE = {
   EXPENSE: "مصروف",
   PARTNER_WITHDRAWAL: "سحب شريك",
   TRANSFER: "تحويل بين الوسائل",
+  DEPOSIT: "إيداع نقدي",
+  WITHDRAWAL: "سحب نقدي",
+  OPENING_BALANCE: "رصيد افتتاحي",
   ADJUSTMENT: "تسوية",
 } as const;
 export type LedgerType = keyof typeof LEDGER_TYPE;

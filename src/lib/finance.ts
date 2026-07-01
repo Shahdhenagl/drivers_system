@@ -63,24 +63,6 @@ export async function treasuryByMethod(): Promise<
   return result;
 }
 
-/** رأس المال المحجوز في الكاش (لا يجوز النزول تحته) — بالقروش */
-export async function cashFloor(): Promise<number> {
-  const s = await prisma.setting.findUnique({
-    where: { key: "initial_capital" },
-  });
-  return s ? Number(s.value) : 0;
-}
-
-/** المتاح للصرف من وسيلة: الكاش = الرصيد − رأس المال، الباقي = الرصيد كاملًا */
-function spendableFrom(
-  method: string,
-  treasury: Record<string, number>,
-  floor: number
-): number {
-  const bal = treasury[method] ?? 0;
-  return method === "cash" ? Math.max(bal - floor, 0) : bal;
-}
-
 export type SpendEntry = { method: string; amount: number };
 export type SpendResult =
   | { ok: true; entries: SpendEntry[] }
@@ -95,7 +77,7 @@ export type SpendResult =
 const FALLBACK_ORDER = ["cash", "wallet", "instapay", "visa"];
 
 /**
- * يخطّط صرف مبلغ من وسيلة أساسية، مع منع النزول تحت الصفر وحفظ رأس المال في الكاش.
+ * يخطّط صرف مبلغ من وسيلة أساسية، مع منع النزول تحت الصفر (لا يوجد قفل لرأس المال).
  * لو allowFallback=true يغطّي الباقي من باقي الوسائل بالترتيب.
  * يُرجِع الخطة (قيود لكل وسيلة) أو فشلًا يحمل أرصدة الوسائل لعرضها.
  */
@@ -105,15 +87,10 @@ export async function planSpend(
   allowFallback = false
 ): Promise<SpendResult> {
   const treasury = await treasuryByMethod();
-  const floor = await cashFloor();
-  const spendable: Record<string, number> = {};
   const balances: Record<string, number> = {};
-  for (const m of PAYMENT_METHOD_KEYS) {
-    spendable[m] = spendableFrom(m, treasury, floor);
-    balances[m] = treasury[m] ?? 0;
-  }
+  for (const m of PAYMENT_METHOD_KEYS) balances[m] = treasury[m] ?? 0;
 
-  const primAvail = spendable[primary] ?? 0;
+  const primAvail = balances[primary] ?? 0;
 
   if (amount <= primAvail) {
     return { ok: true, entries: [{ method: primary, amount }] };
@@ -125,7 +102,7 @@ export async function planSpend(
     let remaining = amount;
     for (const m of order) {
       if (remaining <= 0) break;
-      const avail = spendable[m] ?? 0;
+      const avail = balances[m] ?? 0;
       if (avail <= 0) continue;
       const take = Math.min(avail, remaining);
       entries.push({ method: m, amount: take });
@@ -134,21 +111,14 @@ export async function planSpend(
     if (remaining <= 0) return { ok: true, entries };
   }
 
-  const floorNote =
-    primary === "cash" ? ` (رأس المال ${formatMoney(floor)} محفوظ)` : "";
-  const totalSpendable = PAYMENT_METHOD_KEYS.reduce(
-    (a, m) => a + (spendable[m] ?? 0),
-    0
-  );
+  const totalAvail = PAYMENT_METHOD_KEYS.reduce((a, m) => a + (balances[m] ?? 0), 0);
   return {
     ok: false,
-    error: `الرصيد لا يكفي في ${methodLabel(primary)} — المتاح للصرف: ${formatMoney(
-      primAvail
-    )}${floorNote}`,
+    error: `الرصيد لا يكفي في ${methodLabel(primary)} — المتاح: ${formatMoney(primAvail)}`,
     balances,
-    spendable,
+    spendable: balances,
     // يمكن تغطية الباقي من وسائل أخرى فقط لو لم نكن قد جرّبنا ذلك بالفعل
-    canFallback: !allowFallback && totalSpendable >= amount,
+    canFallback: !allowFallback && totalAvail >= amount,
   };
 }
 
