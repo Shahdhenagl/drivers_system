@@ -64,6 +64,11 @@ export default async function FinancePage() {
           <Indicator label="مدفوع للسواقين" value={ov.totalPaidDrivers} />
           <Indicator label="متبقي للسواقين" value={ov.totalRemainingDrivers} tone="warning" />
           <Indicator label="سلف السواقين" value={ov.totalDriverAdvances} tone="warning" />
+          <Indicator
+            label="سلف من السواقين (عليّ)"
+            value={ov.totalDriverAdvancesOwed}
+            tone="destructive"
+          />
           <Indicator label="سلف المقاولين" value={ov.totalContractorAdvances} tone="warning" />
           <Indicator label="إجمالي المصروفات" value={ov.totalExpenses} tone="destructive" />
           <Indicator label="إجمالي الربح" value={ov.grossProfit} tone="primary" />

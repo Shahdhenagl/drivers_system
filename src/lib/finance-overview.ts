@@ -19,12 +19,17 @@ export async function getFinanceOverview() {
       prisma.collection.aggregate({ _sum: { amount: true } }),
       prisma.driverPayment.aggregate({ _sum: { amount: true } }),
       // مرن: لو جدول الأرصدة غير موجود بعد (قبل الترحيل) نتعامل معه كصفر
+      // نجمّع حسب كل طرف على حدة حتى لا تتقاصّ أرصدة الأطراف مع بعضها
       prisma.advance
-        .groupBy({ by: ["partyType", "direction"], _sum: { amount: true } })
+        .groupBy({
+          by: ["partyType", "partyId", "direction"],
+          _sum: { amount: true },
+        })
         .catch(
           () =>
             [] as {
               partyType: string;
+              partyId: string;
               direction: string;
               _sum: { amount: number | null };
             }[]
@@ -52,19 +57,32 @@ export async function getFinanceOverview() {
   const netProfit = grossProfit - totalExpenses;
   const capital = Number(capitalSetting?.value ?? "0");
 
-  // صافي ما على الأطراف من سلف (OUT − IN، الموجب = عليهم لنا)
-  const netAdvance = (pt: string) => {
-    let out = 0;
-    let inn = 0;
-    for (const r of advanceAgg) {
-      if (r.partyType !== pt) continue;
-      if (r.direction === "OUT") out += r._sum.amount ?? 0;
-      else if (r.direction === "IN") inn += r._sum.amount ?? 0;
+  // صافي رصيد كل طرف على حدة (OUT − IN): موجب = عليه لنا، سالب = لنا عليه (نحن مدينون له)
+  const partyNet = new Map<string, number>();
+  for (const r of advanceAgg) {
+    const key = `${r.partyType}|${r.partyId}`;
+    const amt = r._sum.amount ?? 0;
+    partyNet.set(
+      key,
+      (partyNet.get(key) ?? 0) + (r.direction === "OUT" ? amt : -amt)
+    );
+  }
+  // نجمع الموجب (عليهم لنا) والسالب (علينا لهم) كلٌّ على حدة لكل نوع طرف
+  let driverOwesUs = 0; // سلف السواقين (عليهم لنا)
+  let weOweDrivers = 0; // سلف من السواقين (علينا لهم)
+  let contractorOwesUs = 0;
+  for (const [key, net] of partyNet) {
+    const pt = key.split("|")[0];
+    if (pt === "DRIVER") {
+      if (net > 0) driverOwesUs += net;
+      else weOweDrivers += -net;
+    } else if (pt === "CONTRACTOR") {
+      if (net > 0) contractorOwesUs += net;
     }
-    return out - inn;
-  };
-  const totalDriverAdvances = Math.max(netAdvance("DRIVER"), 0);
-  const totalContractorAdvances = Math.max(netAdvance("CONTRACTOR"), 0);
+  }
+  const totalDriverAdvances = driverOwesUs;
+  const totalDriverAdvancesOwed = weOweDrivers;
+  const totalContractorAdvances = contractorOwesUs;
 
   return {
     capital,
@@ -78,6 +96,7 @@ export async function getFinanceOverview() {
     netProfit,
     totalPenaltyRevenue,
     totalDriverAdvances,
+    totalDriverAdvancesOwed,
     totalContractorAdvances,
   };
 }
