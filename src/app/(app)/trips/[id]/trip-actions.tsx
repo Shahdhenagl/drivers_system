@@ -69,6 +69,15 @@ export function TripActions(props: Props) {
     }
   }
 
+  // الطلب الملغي مقفول تمامًا — لا عمليات
+  if (status === "CANCELLED") {
+    return (
+      <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-center text-sm font-semibold text-destructive">
+        🚫 هذا الطلب ملغي — لا يمكن إجراء أي عملية عليه
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       {err && (
@@ -313,8 +322,12 @@ function CancelDialog({ tripId }: { tripId: string }) {
                   onChange={(e) => setDriverP(e.target.value)}
                 />
               </div>
+              <div className="space-y-1.5">
+                <Label>طريقة تحصيل الغرامة</Label>
+                <MethodSelect />
+              </div>
               <div className="flex items-center justify-between rounded-lg bg-muted p-2 text-sm">
-                <span>إيراد المكتب من الغرامة</span>
+                <span>إيراد المكتب من الغرامة (يدخل الخزنة)</span>
                 <span
                   className={`font-bold tabular-nums ${
                     officeRevenue >= 0 ? "text-primary" : "text-destructive"
