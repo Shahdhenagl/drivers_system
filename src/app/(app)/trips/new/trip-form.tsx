@@ -1,13 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchSelect } from "@/components/ui/search-select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,7 +11,7 @@ import { createTrip } from "../actions";
 import { playSound } from "@/lib/sounds";
 import { toDateInput } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
-import { UserPlus, History } from "lucide-react";
+import { History } from "lucide-react";
 import Link from "next/link";
 
 type Option = { id: string; name: string; phone: string };
@@ -64,23 +58,13 @@ export function TripForm({
       {/* المقاول */}
       <Card className="space-y-3 p-4">
         <Label>المقاول *</Label>
-        <Select value={contractorId} onValueChange={setContractorId}>
-          <SelectTrigger>
-            <SelectValue placeholder="اختر المقاول" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__new__">
-              <span className="flex items-center gap-2 text-primary">
-                <UserPlus className="h-4 w-4" /> مقاول جديد
-              </span>
-            </SelectItem>
-            {contractors.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.name} — {displayPhone(c.phone)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchSelect
+          value={contractorId}
+          onChange={setContractorId}
+          options={contractors}
+          placeholder="اختر المقاول"
+          newLabel="مقاول جديد"
+        />
 
         {selectedContractor && (
           <div className="flex items-center justify-between rounded-lg bg-muted p-2 text-sm">
@@ -201,23 +185,13 @@ export function TripForm({
       {/* السواق */}
       <Card className="space-y-3 p-4">
         <Label>السواق *</Label>
-        <Select value={driverId} onValueChange={setDriverId}>
-          <SelectTrigger>
-            <SelectValue placeholder="اختر السواق" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__new__">
-              <span className="flex items-center gap-2 text-primary">
-                <UserPlus className="h-4 w-4" /> سواق جديد
-              </span>
-            </SelectItem>
-            {drivers.map((d) => (
-              <SelectItem key={d.id} value={d.id}>
-                {d.name} — {displayPhone(d.phone)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchSelect
+          value={driverId}
+          onChange={setDriverId}
+          options={drivers}
+          placeholder="اختر السواق"
+          newLabel="سواق جديد"
+        />
 
         {newDriver && (
           <div className="space-y-2 rounded-lg border border-dashed border-primary/40 p-3">
