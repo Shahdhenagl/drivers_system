@@ -22,6 +22,8 @@ export type TripCardData = {
   endPoint: string;
   contractorPrice: number;
   driverDue: number;
+  driverTip?: number | null;
+  customerDiscount?: number | null;
   status: string;
   collectionStatus: string;
   contractor: { name: string };
@@ -29,7 +31,10 @@ export type TripCardData = {
 };
 
 export function TripCard({ trip }: { trip: TripCardData }) {
-  const profit = trip.contractorPrice - trip.driverDue;
+  const profit =
+    trip.contractorPrice -
+    (trip.customerDiscount ?? 0) -
+    (trip.driverDue + (trip.driverTip ?? 0));
   const st = trip.status as TripStatus;
   const cs = trip.collectionStatus as CollectionStatus;
 

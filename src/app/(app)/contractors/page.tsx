@@ -25,6 +25,8 @@ export default async function ContractorsPage({
           OR: [
             { name: { contains: q } },
             { phone: { contains: q } },
+            { altPhone: { contains: q } },
+            { phone3: { contains: q } },
             { company: { contains: q } },
           ],
         }
@@ -36,6 +38,8 @@ export default async function ContractorsPage({
           status: true,
           contractorPrice: true,
           driverDue: true,
+          driverTip: true,
+          customerDiscount: true,
           contractorPenalty: true,
           driverPenalty: true,
           collections: { select: { amount: true } },

@@ -66,7 +66,8 @@ export default async function TripsPage({
   if (sp.collection === "due") {
     trips = trips.filter((t) => {
       const collected = t.collections.reduce((a, c) => a + c.amount, 0);
-      return t.status !== "CANCELLED" && collected < t.contractorPrice;
+      const due = t.contractorPrice - t.customerDiscount;
+      return t.status !== "CANCELLED" && collected < due;
     });
   }
 

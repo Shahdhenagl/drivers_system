@@ -21,6 +21,7 @@ type Driver = {
   name: string;
   phone: string;
   altPhone: string | null;
+  phone3: string | null;
   vehicleType: string;
   vehicleNumber: string | null;
   notes: string | null;
@@ -36,6 +37,8 @@ export function DriverForm({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(driver?.name ?? "");
   const [phone, setPhone] = useState(driver?.phone ?? "");
+  const [altPhone, setAltPhone] = useState(driver?.altPhone ?? "");
+  const [phone3, setPhone3] = useState(driver?.phone3 ?? "");
   const router = useRouter();
   const isEdit = !!driver;
 
@@ -57,9 +60,11 @@ export function DriverForm({
           {!isEdit && (
             <div className="flex justify-center pb-1">
               <ContactPickerAvatar
-                onPick={(n, p) => {
+                onPick={(n, phones) => {
                   if (n) setName(n);
-                  if (p) setPhone(p);
+                  if (phones[0]) setPhone(phones[0]);
+                  if (phones[1]) setAltPhone(phones[1]);
+                  if (phones[2]) setPhone3(phones[2]);
                 }}
               />
             </div>
@@ -87,13 +92,25 @@ export function DriverForm({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="altPhone">رقم إضافي (اختياري)</Label>
+            <Label htmlFor="altPhone">رقم إضافي 2 (اختياري)</Label>
             <Input
               id="altPhone"
               name="altPhone"
               inputMode="tel"
               placeholder="01xxxxxxxxx"
-              defaultValue={driver?.altPhone ?? ""}
+              value={altPhone}
+              onChange={(e) => setAltPhone(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="phone3">رقم إضافي 3 (اختياري)</Label>
+            <Input
+              id="phone3"
+              name="phone3"
+              inputMode="tel"
+              placeholder="01xxxxxxxxx"
+              value={phone3}
+              onChange={(e) => setPhone3(e.target.value)}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">

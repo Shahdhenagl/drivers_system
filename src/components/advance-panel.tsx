@@ -22,7 +22,7 @@ import { formatMoney, toPiastres } from "@/lib/money";
 import { formatShortDate, toDateInput } from "@/lib/format";
 import { methodLabel } from "@/lib/constants";
 import { advanceReminder } from "@/lib/messages";
-import { whatsAppLink } from "@/lib/phone";
+import { WhatsAppButton } from "@/components/whatsapp-button";
 import { Wallet, HandCoins, MessageCircle, FileClock } from "lucide-react";
 
 type AdvanceRow = {
@@ -271,11 +271,15 @@ export function AdvancePanel({
       />
 
       {balance > 0 && (
-        <Button asChild variant="outline" size="sm" className="w-full print:hidden">
-          <a href={whatsAppLink(phone, advanceReminder(name, balance))} target="_blank">
-            <MessageCircle className="h-4 w-4" /> تذكير بسداد ما عليه
-          </a>
-        </Button>
+        <WhatsAppButton
+          phone={phone}
+          message={advanceReminder(name, balance)}
+          variant="outline"
+          size="sm"
+          className="w-full print:hidden"
+        >
+          <MessageCircle className="h-4 w-4" /> تذكير بسداد ما عليه
+        </WhatsAppButton>
       )}
 
       {advances.length > 0 && (

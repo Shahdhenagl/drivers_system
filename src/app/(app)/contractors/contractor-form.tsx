@@ -21,6 +21,7 @@ type Contractor = {
   name: string;
   phone: string;
   altPhone: string | null;
+  phone3: string | null;
   company: string | null;
   notes: string | null;
 };
@@ -35,6 +36,8 @@ export function ContractorForm({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(contractor?.name ?? "");
   const [phone, setPhone] = useState(contractor?.phone ?? "");
+  const [altPhone, setAltPhone] = useState(contractor?.altPhone ?? "");
+  const [phone3, setPhone3] = useState(contractor?.phone3 ?? "");
   const router = useRouter();
   const isEdit = !!contractor;
 
@@ -56,9 +59,11 @@ export function ContractorForm({
           {!isEdit && (
             <div className="flex justify-center pb-1">
               <ContactPickerAvatar
-                onPick={(n, p) => {
+                onPick={(n, phones) => {
                   if (n) setName(n);
-                  if (p) setPhone(p);
+                  if (phones[0]) setPhone(phones[0]);
+                  if (phones[1]) setAltPhone(phones[1]);
+                  if (phones[2]) setPhone3(phones[2]);
                 }}
               />
             </div>
@@ -87,13 +92,25 @@ export function ContractorForm({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="altPhone">رقم إضافي (اختياري)</Label>
+            <Label htmlFor="altPhone">رقم إضافي 2 (اختياري)</Label>
             <Input
               id="altPhone"
               name="altPhone"
               inputMode="tel"
               placeholder="01xxxxxxxxx"
-              defaultValue={contractor?.altPhone ?? ""}
+              value={altPhone}
+              onChange={(e) => setAltPhone(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="phone3">رقم إضافي 3 (اختياري)</Label>
+            <Input
+              id="phone3"
+              name="phone3"
+              inputMode="tel"
+              placeholder="01xxxxxxxxx"
+              value={phone3}
+              onChange={(e) => setPhone3(e.target.value)}
             />
           </div>
           <div className="space-y-1.5">

@@ -3,6 +3,7 @@ import { AppHeader } from "@/components/layout/app-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { logout } from "./actions";
+import { WhatsAppDefaultSetting } from "@/components/whatsapp-default-setting";
 import { COMPANY_NAME } from "@/lib/constants";
 import {
   Users,
@@ -42,6 +43,8 @@ export default function MorePage() {
             </Link>
           ))}
         </div>
+
+        <WhatsAppDefaultSetting />
 
         <form action={logout}>
           <Button variant="outline" size="lg" className="w-full text-destructive">

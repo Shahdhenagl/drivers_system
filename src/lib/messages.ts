@@ -13,11 +13,15 @@ type AdminTripMsg = {
   notes?: string | null;
   contractorPrice: number;
   driverDue: number;
+  driverTip?: number | null;
+  customerDiscount?: number | null;
   contractor: { name: string; phone: string };
   driver?: { name: string; phone: string } | null;
 };
 
 function tripAdminLines(t: AdminTripMsg): string[] {
+  const tip = t.driverTip ?? 0;
+  const discount = t.customerDiscount ?? 0;
   return [
     `📅 ${formatShortDate(t.date)}${t.time ? " - " + t.time : ""}`,
     `📍 من: ${t.startPoint}`,
@@ -28,6 +32,8 @@ function tripAdminLines(t: AdminTripMsg): string[] {
     t.driver ? `📞 ${displayPhone(t.driver.phone)}` : "",
     `💰 سعر المقاول: ${formatMoney(t.contractorPrice)}`,
     `💵 مستحق السواق: ${formatMoney(t.driverDue)}`,
+    tip > 0 ? `🎁 اكرامية للسواق: ${formatMoney(tip)}` : "",
+    discount > 0 ? `🏷️ خصم على العميل: ${formatMoney(discount)}` : "",
   ];
 }
 

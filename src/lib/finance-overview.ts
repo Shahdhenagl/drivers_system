@@ -9,6 +9,8 @@ export async function getFinanceOverview() {
           status: true,
           contractorPrice: true,
           driverDue: true,
+          driverTip: true,
+          customerDiscount: true,
           contractorPenalty: true,
           driverPenalty: true,
         },

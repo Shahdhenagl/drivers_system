@@ -12,7 +12,8 @@ import { PayDriverForm } from "../pay-driver-form";
 import { AdvancePanel } from "@/components/advance-panel";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate, startOfDay, endOfDay, addDays } from "@/lib/format";
-import { displayPhone, whatsAppLink } from "@/lib/phone";
+import { displayPhone } from "@/lib/phone";
+import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
 import { driverReport } from "@/lib/messages";
 import { methodLabel, TRIP_STATUS } from "@/lib/constants";
@@ -112,7 +113,7 @@ export default async function DriverProfile({
       remainingTotal: remaining,
       advanceOutstanding,
     });
-    return { label: p.label, href: whatsAppLink(d.phone, msg) };
+    return { label: p.label, message: msg };
   });
 
   return (
@@ -147,6 +148,11 @@ export default async function DriverProfile({
                     {displayPhone(d.altPhone)} (إضافي)
                   </div>
                 )}
+                {d.phone3 && (
+                  <div className="text-sm text-muted-foreground">
+                    {displayPhone(d.phone3)} (إضافي)
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex gap-1 print:hidden">
@@ -163,12 +169,16 @@ export default async function DriverProfile({
           </div>
           {d.notes && <p className="rounded-lg bg-muted p-2 text-sm">{d.notes}</p>}
           <div className="flex gap-2 print:hidden">
-            <Button asChild variant="success" size="sm" className="flex-1">
-              <a href={whatsAppLink(d.phone, `مرحبًا ${d.name}`)} target="_blank">
-                <MessageCircle className="h-4 w-4" />
-                واتساب
-              </a>
-            </Button>
+            <WhatsAppButton
+              phone={d.phone}
+              message={`مرحبًا ${d.name}`}
+              variant="success"
+              size="sm"
+              className="flex-1"
+            >
+              <MessageCircle className="h-4 w-4" />
+              واتساب
+            </WhatsAppButton>
             <Button asChild variant="outline" size="sm" className="flex-1">
               <a href={`tel:${d.phone}`}>
                 <Phone className="h-4 w-4" />
@@ -206,11 +216,15 @@ export default async function DriverProfile({
           </div>
           <div className="grid grid-cols-2 gap-2">
             {reports.map((r) => (
-              <Button key={r.label} asChild variant="success" size="sm">
-                <a href={r.href} target="_blank">
-                  <MessageCircle className="h-4 w-4" /> تقرير {r.label}
-                </a>
-              </Button>
+              <WhatsAppButton
+                key={r.label}
+                phone={d.phone}
+                message={r.message}
+                variant="success"
+                size="sm"
+              >
+                <MessageCircle className="h-4 w-4" /> تقرير {r.label}
+              </WhatsAppButton>
             ))}
           </div>
         </Card>

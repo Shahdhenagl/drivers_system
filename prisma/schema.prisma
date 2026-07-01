@@ -19,6 +19,7 @@ model Contractor {
   name      String
   phone     String
   altPhone  String? // رقم إضافي اختياري
+  phone3    String? // رقم إضافي ثالث اختياري
   company   String?
   notes     String?
   createdAt DateTime @default(now())
@@ -35,6 +36,7 @@ model Driver {
   name          String
   phone         String
   altPhone      String? // رقم إضافي اختياري
+  phone3        String? // رقم إضافي ثالث اختياري
   vehicleType   String
   vehicleNumber String?
   notes         String?
@@ -81,6 +83,11 @@ model Trip {
 
   contractorPrice Int // سعر المقاول بالقروش
   driverDue       Int // مستحق السواق بالقروش
+
+  // اكرامية للسواق (بالقروش): تزيد ما يقبضه السواق وتُخصم من ربح المكتب
+  driverTip Int @default(0)
+  // خصم على العميل (بالقروش): يقلّل سعر المقاول ويُخصم من ربح المكتب
+  customerDiscount Int @default(0)
 
   // غرامة الإلغاء (بالقروش) — تُستخدم بدل السعر/المستحق عند الإلغاء بغرامة
   contractorPenalty Int @default(0) // غرامة على العميل
@@ -138,16 +145,20 @@ model DriverPayment {
 // direction: OUT = صُرف للطرف (عليه/مدين لنا) | IN = استُلم منه (له/مدينين له)
 // net = مجموع OUT − مجموع IN: موجب = عليه لنا، سالب = لنا عليه (نحن مدينون له)
 model Advance {
-  id        String   @id @default(cuid())
-  partyType String // DRIVER | CONTRACTOR
-  partyId   String
-  amount    Int // بالقروش (موجب)
-  direction String // OUT | IN
-  method    String
-  note      String?
-  isOpening Boolean  @default(false) // رصيد افتتاحي / سلفة سابقة
-  date      DateTime @default(now())
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  partyType  String // DRIVER | CONTRACTOR | PARTNER
+  partyId    String
+  amount     Int // بالقروش (موجب)
+  direction  String // OUT | IN
+  method     String
+  note       String?
+  isOpening  Boolean  @default(false) // رصيد افتتاحي / سلفة سابقة
+  // مصدر السلفة: OFFICE (الخزنة) أو طرف آخر
+  sourceType String? // OFFICE | DRIVER | CONTRACTOR | PARTNER
+  sourceId   String?
+  sourceName String?
+  date       DateTime @default(now())
+  createdAt  DateTime @default(now())
 
   @@index([partyType, partyId])
 }

@@ -168,6 +168,34 @@ export function TripForm({
             required
           />
         </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="driverTip">اكرامية للسواق</Label>
+          <Input
+            id="driverTip"
+            name="driverTip"
+            type="number"
+            step="0.01"
+            inputMode="decimal"
+            placeholder="0"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            تزيد ما يقبضه السواق وتُخصم من ربحك
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="customerDiscount">خصم على العميل</Label>
+          <Input
+            id="customerDiscount"
+            name="customerDiscount"
+            type="number"
+            step="0.01"
+            inputMode="decimal"
+            placeholder="0"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            يقلّل سعر العميل ويُخصم من ربحك
+          </p>
+        </div>
       </Card>
 
       {/* السواق */}

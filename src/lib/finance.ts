@@ -126,13 +126,15 @@ export type TripAmounts = {
   status: string;
   contractorPrice: number;
   driverDue: number;
+  driverTip?: number | null; // اكرامية للسواق
+  customerDiscount?: number | null; // خصم على العميل
   contractorPenalty?: number | null;
   driverPenalty?: number | null;
 };
 
 /**
  * المبالغ الفعلية للرحلة:
- * - رحلة عادية: سعر المقاول ومستحق السواق.
+ * - رحلة عادية: سعر المقاول ناقص خصم العميل، ومستحق السواق زائد الاكرامية.
  * - رحلة ملغية: غرامة العميل ونصيب السواق منها (صفر في حالة السماح).
  */
 export function effectiveAmounts(trip: TripAmounts) {
@@ -142,7 +144,10 @@ export function effectiveAmounts(trip: TripAmounts) {
       driver: trip.driverPenalty ?? 0,
     };
   }
-  return { contractor: trip.contractorPrice, driver: trip.driverDue };
+  return {
+    contractor: trip.contractorPrice - (trip.customerDiscount ?? 0),
+    driver: trip.driverDue + (trip.driverTip ?? 0),
+  };
 }
 
 export type TripLike = TripAmounts & {

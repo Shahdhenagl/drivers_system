@@ -60,6 +60,8 @@ export async function createTrip(formData: FormData) {
       distance: get("distance") ? Number(get("distance")) : null,
       contractorPrice: toPiastres(get("contractorPrice") || "0"),
       driverDue: toPiastres(get("driverDue") || "0"),
+      driverTip: toPiastres(get("driverTip") || "0"),
+      customerDiscount: toPiastres(get("customerDiscount") || "0"),
       notes: get("notes") || null,
       status: "NEW",
       collectionStatus: "NONE",
@@ -97,6 +99,8 @@ export async function updateTrip(id: string, formData: FormData) {
       distance: get("distance") ? Number(get("distance")) : null,
       contractorPrice: toPiastres(get("contractorPrice") || "0"),
       driverDue: toPiastres(get("driverDue") || "0"),
+      driverTip: toPiastres(get("driverTip") || "0"),
+      customerDiscount: toPiastres(get("customerDiscount") || "0"),
       driverId: get("driverId") || null,
     },
   });

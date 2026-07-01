@@ -35,6 +35,8 @@ type Trip = {
   distance: number | null;
   contractorPrice: number;
   driverDue: number;
+  driverTip: number;
+  customerDiscount: number;
   driverId: string | null;
 };
 
@@ -109,6 +111,26 @@ export function EditTripForm({
                 step="0.01"
                 defaultValue={toEgp(trip.driverDue)}
                 required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="driverTip">اكرامية للسواق</Label>
+              <Input
+                id="driverTip"
+                name="driverTip"
+                type="number"
+                step="0.01"
+                defaultValue={toEgp(trip.driverTip)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="customerDiscount">خصم على العميل</Label>
+              <Input
+                id="customerDiscount"
+                name="customerDiscount"
+                type="number"
+                step="0.01"
+                defaultValue={toEgp(trip.customerDiscount)}
               />
             </div>
           </div>

@@ -11,7 +11,8 @@ import { DeleteTripButton } from "./delete-trip-button";
 import { tripFinancials } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatDate, formatShortDate } from "@/lib/format";
-import { displayPhone, whatsAppLink } from "@/lib/phone";
+import { displayPhone } from "@/lib/phone";
+import { WhatsAppButton } from "@/components/whatsapp-button";
 import {
   contractorMessage,
   driverMessage,
@@ -103,6 +104,8 @@ export default async function TripDetail({
               distance: trip.distance,
               contractorPrice: trip.contractorPrice,
               driverDue: trip.driverDue,
+              driverTip: trip.driverTip,
+              customerDiscount: trip.customerDiscount,
               driverId: trip.driverId,
             }}
             drivers={drivers}
@@ -198,6 +201,29 @@ export default async function TripDetail({
               </>
             )}
           </div>
+          {st !== "CANCELLED" &&
+            (trip.driverTip > 0 || trip.customerDiscount > 0) && (
+              <div className="space-y-1 rounded-lg bg-muted/60 p-2 text-xs">
+                {trip.driverTip > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">اكرامية للسواق</span>
+                    <span className="font-semibold text-warning">
+                      +{formatMoney(trip.driverTip, false)} — السواق يقبض{" "}
+                      {formatMoney(fin.effDriver, false)}
+                    </span>
+                  </div>
+                )}
+                {trip.customerDiscount > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">خصم على العميل</span>
+                    <span className="font-semibold text-destructive">
+                      −{formatMoney(trip.customerDiscount, false)} — العميل يدفع{" "}
+                      {formatMoney(fin.effContractor, false)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           <div className="grid grid-cols-2 gap-2 border-t border-border pt-3 text-center">
             <div>
               <div className="text-[11px] text-muted-foreground">محصّل / متبقي</div>
@@ -236,50 +262,45 @@ export default async function TripDetail({
         <Card className="space-y-2 p-4">
           <div className="text-sm font-bold text-muted-foreground">إرسال واتساب</div>
           <div className="grid grid-cols-2 gap-2">
-            <Button asChild variant="success" size="sm">
-              <a
-                href={whatsAppLink(trip.contractor.phone, contractorMessage(msgData))}
-                target="_blank"
-              >
-                <Send className="h-4 w-4" /> للمقاول
-              </a>
-            </Button>
-            <Button asChild variant="success" size="sm" disabled={!trip.driver}>
-              {trip.driver ? (
-                <a
-                  href={whatsAppLink(trip.driver.phone, driverMessage(msgData))}
-                  target="_blank"
-                >
-                  <Send className="h-4 w-4" /> للسواق
-                </a>
-              ) : (
-                <span>
-                  <Send className="h-4 w-4" /> للسواق
-                </span>
-              )}
-            </Button>
+            <WhatsAppButton
+              phone={trip.contractor.phone}
+              message={contractorMessage(msgData)}
+              variant="success"
+              size="sm"
+            >
+              <Send className="h-4 w-4" /> للمقاول
+            </WhatsAppButton>
+            <WhatsAppButton
+              phone={trip.driver?.phone ?? ""}
+              message={trip.driver ? driverMessage(msgData) : ""}
+              variant="success"
+              size="sm"
+              disabled={!trip.driver}
+            >
+              <Send className="h-4 w-4" /> للسواق
+            </WhatsAppButton>
             {trip.driver && (
-              <Button asChild variant="outline" size="sm">
-                <a
-                  href={whatsAppLink(trip.driver.phone, driverReminder(msgData))}
-                  target="_blank"
-                >
-                  <Bell className="h-4 w-4" /> تذكير السواق
-                </a>
-              </Button>
+              <WhatsAppButton
+                phone={trip.driver.phone}
+                message={driverReminder(msgData)}
+                variant="outline"
+                size="sm"
+              >
+                <Bell className="h-4 w-4" /> تذكير السواق
+              </WhatsAppButton>
             )}
             {fin.remainingCollection > 0 && (
-              <Button asChild variant="outline" size="sm">
-                <a
-                  href={whatsAppLink(
-                    trip.contractor.phone,
-                    collectionReminder(msgData, formatMoney(fin.remainingCollection))
-                  )}
-                  target="_blank"
-                >
-                  <Bell className="h-4 w-4" /> تذكير تحصيل
-                </a>
-              </Button>
+              <WhatsAppButton
+                phone={trip.contractor.phone}
+                message={collectionReminder(
+                  msgData,
+                  formatMoney(fin.remainingCollection)
+                )}
+                variant="outline"
+                size="sm"
+              >
+                <Bell className="h-4 w-4" /> تذكير تحصيل
+              </WhatsAppButton>
             )}
           </div>
         </Card>

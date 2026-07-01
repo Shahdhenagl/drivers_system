@@ -25,6 +25,8 @@ export default async function DriversPage({
           OR: [
             { name: { contains: q } },
             { phone: { contains: q } },
+            { altPhone: { contains: q } },
+            { phone3: { contains: q } },
             { vehicleType: { contains: q } },
           ],
         }
@@ -36,6 +38,8 @@ export default async function DriversPage({
           status: true,
           contractorPrice: true,
           driverDue: true,
+          driverTip: true,
+          customerDiscount: true,
           contractorPenalty: true,
           driverPenalty: true,
           driverPayments: { select: { amount: true } },

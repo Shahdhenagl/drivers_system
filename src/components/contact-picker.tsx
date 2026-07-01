@@ -25,11 +25,12 @@ function normalizeEgyptianPhone(raw: string): string {
 /**
  * زر أفاتار لاختيار جهة اتصال من التليفون (Contact Picker API).
  * يعمل على Chrome أندرويد فقط عبر HTTPS.
+ * يرجّع الاسم وكل الأرقام المسجّلة لجهة الاتصال (حتى 3 أرقام، موحّدة وبدون تكرار).
  */
 export function ContactPickerAvatar({
   onPick,
 }: {
-  onPick: (name: string, phone: string) => void;
+  onPick: (name: string, phones: string[]) => void;
 }) {
   const [msg, setMsg] = useState("");
 
@@ -45,8 +46,11 @@ export function ContactPickerAvatar({
       if (!res || res.length === 0) return;
       const c = res[0];
       const name = (c.name && c.name[0]) || "";
-      const phone = normalizeEgyptianPhone((c.tel && c.tel[0]) || "");
-      onPick(name, phone);
+      // توحيد كل الأرقام، إزالة الفارغ والمكرر، وأخذ حتى 3 أرقام
+      const phones = Array.from(
+        new Set((c.tel ?? []).map(normalizeEgyptianPhone).filter(Boolean))
+      ).slice(0, 3);
+      onPick(name, phones);
     } catch {
       // المستخدم ألغى الاختيار — تجاهل
     }

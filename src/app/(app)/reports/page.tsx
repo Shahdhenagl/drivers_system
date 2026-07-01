@@ -40,7 +40,12 @@ export default async function ReportsPage({
     const [trips, collections, driverPayments, expenses] = await Promise.all([
       prisma.trip.findMany({
         where: { date: { gte, lte }, status: { not: "CANCELLED" } },
-        select: { contractorPrice: true, driverDue: true },
+        select: {
+          contractorPrice: true,
+          driverDue: true,
+          driverTip: true,
+          customerDiscount: true,
+        },
       }),
       prisma.collection.aggregate({
         where: { date: { gte, lte } },
@@ -55,8 +60,11 @@ export default async function ReportsPage({
         _sum: { amount: true },
       }),
     ]);
-    const revenue = trips.reduce((a, t) => a + t.contractorPrice, 0);
-    const driverDue = trips.reduce((a, t) => a + t.driverDue, 0);
+    const revenue = trips.reduce(
+      (a, t) => a + t.contractorPrice - t.customerDiscount,
+      0
+    );
+    const driverDue = trips.reduce((a, t) => a + t.driverDue + t.driverTip, 0);
     const exp = expenses._sum.amount ?? 0;
     const profit = revenue - driverDue;
     custom = {
