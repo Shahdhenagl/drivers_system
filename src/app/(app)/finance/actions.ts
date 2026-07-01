@@ -7,7 +7,11 @@ import { recordLedger, planSpend, treasuryByMethod } from "@/lib/finance";
 import { toPiastres, formatMoney } from "@/lib/money";
 import { methodLabel, PAYMENT_METHOD_KEYS } from "@/lib/constants";
 import { sendTelegram } from "@/lib/telegram";
-import { adminExpenseMessage } from "@/lib/messages";
+import {
+  adminExpenseMessage,
+  adminTransferMessage,
+  adminCashAdjustMessage,
+} from "@/lib/messages";
 
 export async function addExpense(formData: FormData) {
   const get = (k: string) => String(formData.get(k) ?? "").trim();
@@ -113,6 +117,13 @@ export async function transferBetweenMethods(formData: FormData) {
   });
 
   await audit("TRANSFER", "Treasury", undefined, { from, to, amount });
+
+  try {
+    await sendTelegram(adminTransferMessage({ from, to, amount }));
+  } catch {
+    // تجاهل فشل الإشعار
+  }
+
   revalidatePath("/finance");
   revalidatePath("/");
 }
@@ -146,6 +157,20 @@ export async function adjustTreasury(formData: FormData) {
     amount,
     method,
   });
+
+  try {
+    await sendTelegram(
+      adminCashAdjustMessage({
+        kind: kind === "withdraw" ? "withdraw" : "deposit",
+        method,
+        amount,
+        note: note || null,
+      })
+    );
+  } catch {
+    // تجاهل فشل الإشعار
+  }
+
   revalidatePath("/finance");
   revalidatePath("/");
 }

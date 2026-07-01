@@ -251,6 +251,41 @@ export function adminAdvanceMessage(d: {
   );
 }
 
+/** إشعار للأدمن بتحويل بين وسائل الدفع */
+export function adminTransferMessage(d: {
+  from: string;
+  to: string;
+  amount: number;
+}): string {
+  return (
+    [
+      "🔄 <b>تحويل بين وسائل الدفع</b>",
+      `↩️ من: ${methodLabel(d.from)}`,
+      `↪️ إلى: ${methodLabel(d.to)}`,
+      `💵 المبلغ: ${formatMoney(d.amount)}`,
+    ].join("\n") + SIGNATURE
+  );
+}
+
+/** إشعار للأدمن بإيداع/سحب نقدي */
+export function adminCashAdjustMessage(d: {
+  kind: "deposit" | "withdraw";
+  method: string;
+  amount: number;
+  note?: string | null;
+}): string {
+  return (
+    [
+      d.kind === "deposit" ? "⬇️ <b>إيداع نقدي</b>" : "⬆️ <b>سحب نقدي</b>",
+      `💵 المبلغ: ${formatMoney(d.amount)}`,
+      `💳 الوسيلة: ${methodLabel(d.method)}`,
+      d.note ? `📝 ${d.note}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n") + SIGNATURE
+  );
+}
+
 /** تذكير للطرف بسداد ما عليه (واتساب) — عندما يكون مدينًا لنا */
 export function advanceReminder(name: string, owedToUs: number): string {
   return (

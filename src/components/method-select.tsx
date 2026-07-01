@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Select,
   SelectContent,
@@ -16,18 +17,24 @@ export function MethodSelect({
   name?: string;
   defaultValue?: string;
 }) {
+  // مضبوط + hidden input لضمان إرسال القيمة الافتراضية مع الفورم بدون اختيار يدوي
+  // (Radix Select لا يُرسل defaultValue بثبات في نماذج Server Actions).
+  const [value, setValue] = useState(defaultValue);
   return (
-    <Select name={name} defaultValue={defaultValue}>
-      <SelectTrigger>
-        <SelectValue placeholder="طريقة الدفع" />
-      </SelectTrigger>
-      <SelectContent>
-        {PAYMENT_METHOD_KEYS.map((m) => (
-          <SelectItem key={m} value={m}>
-            {PAYMENT_METHODS[m]}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <>
+      <input type="hidden" name={name} value={value} />
+      <Select value={value} onValueChange={setValue}>
+        <SelectTrigger>
+          <SelectValue placeholder="طريقة الدفع" />
+        </SelectTrigger>
+        <SelectContent>
+          {PAYMENT_METHOD_KEYS.map((m) => (
+            <SelectItem key={m} value={m}>
+              {PAYMENT_METHODS[m]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </>
   );
 }
