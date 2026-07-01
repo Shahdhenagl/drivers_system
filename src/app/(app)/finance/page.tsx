@@ -19,7 +19,10 @@ export default async function FinancePage() {
     treasuryByMethod(),
     getFinanceOverview(),
     prisma.expense.findMany({ orderBy: { date: "desc" }, take: 30 }),
-    prisma.ledgerEntry.findMany({ orderBy: { date: "desc" }, take: 50 }),
+    prisma.ledgerEntry.findMany({
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+      take: 50,
+    }),
   ]);
 
   return (
