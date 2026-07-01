@@ -25,12 +25,14 @@ export default async function FinancePage() {
     }),
   ]);
 
-  // صافي رأس المال الحقيقي = الخزنة + كل ما لنا − كل ما علينا
+  // صافي الثروة = الخزنة + كل ما لنا − كل ما علينا
   // (الإيرادات المحصّلة والمصروفات داخلة أصلًا في الخزنة، والآجل ضمن "ما لنا")
   const receivables =
     ov.totalDeferred + ov.totalDriverAdvances + ov.totalContractorAdvances;
   const payables = ov.totalRemainingDrivers + ov.totalDriverAdvancesOwed;
-  const netCapital = treasury.total + receivables - payables;
+  const netWorth = treasury.total + receivables - payables;
+  // رأس المال الثابت = الثروة − الربح غير الموزّع (فالربح لا يزيد رأس المال)
+  const baseCapital = netWorth - ov.distributableProfit;
 
   return (
     <>
@@ -65,7 +67,7 @@ export default async function FinancePage() {
           </div>
         </section>
 
-        {/* صافي رأس المال الحقيقي — بالعرض */}
+        {/* رأس المال الثابت — بالعرض (لا يزيد بالربح) */}
         <section>
           <Card className="space-y-2 border-2 border-primary/60 bg-primary/5 p-5">
             <div className="flex items-center justify-between">
@@ -73,16 +75,17 @@ export default async function FinancePage() {
                 رأس المال الحقيقي
               </span>
               <span className="text-3xl font-extrabold tabular-nums text-primary">
-                {formatMoney(netCapital)}
+                {formatMoney(baseCapital)}
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
               <span>الخزنة {formatMoney(treasury.total, false)}</span>
               <span className="text-success">+ لك {formatMoney(receivables, false)}</span>
               <span className="text-destructive">− عليك {formatMoney(payables, false)}</span>
+              <span className="text-warning">− ربح {formatMoney(ov.distributableProfit, false)}</span>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              لو حصّلت كل اللي ليك وسدّدت كل اللي عليك — شامل الإيرادات والمصروفات.
+              رأس المال الثابت لا يزيد بالربح — الربح يظهر منفصلاً ويتوزّع على الشركاء.
             </p>
           </Card>
         </section>
