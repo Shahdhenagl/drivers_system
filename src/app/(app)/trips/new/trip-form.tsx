@@ -137,6 +137,10 @@ export function TripForm({
           <Label htmlFor="distance">المسافة (كم) — اختياري</Label>
           <Input id="distance" name="distance" type="number" step="0.1" inputMode="decimal" />
         </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="notes">ملاحظة</Label>
+          <Textarea id="notes" name="notes" placeholder="أي تفاصيل تحب تحفظها مع الطلب (اختياري)" />
+        </div>
       </Card>
 
       {/* المالية */}
