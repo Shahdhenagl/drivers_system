@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { recordLedger } from "@/lib/finance";
+import { recordLedger, planSpend } from "@/lib/finance";
 import { toPiastres, formatMoney } from "@/lib/money";
+import { methodLabel } from "@/lib/constants";
 import { sendTelegram } from "@/lib/telegram";
 import {
   adminDriverAdvanceMessage,
@@ -99,6 +100,12 @@ export async function payDriverDues(driverId: string, formData: FormData) {
     return { error: "المبلغ أكبر من إجمالي المتبقي للسواق" };
   }
 
+  // منع النزول تحت الصفر وحفظ رأس المال في الكاش
+  const plan = await planSpend(method, amount, false);
+  if (!plan.ok) {
+    return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
+  }
+
   await prisma.$transaction(async (tx) => {
     for (const t of trips) {
       if (remainingToPay <= 0) break;
@@ -149,6 +156,7 @@ async function driverAdvanceOutstanding(driverId: string): Promise<number> {
 export async function addDriverAdvance(driverId: string, formData: FormData) {
   const amount = toPiastres(String(formData.get("amount") ?? "0"));
   const method = String(formData.get("method") ?? "cash");
+  const fallback = String(formData.get("fallback") ?? "") === "1";
   const note = String(formData.get("note") ?? "").trim() || null;
   const dateStr = String(formData.get("date") ?? "");
   const date = dateStr ? new Date(dateStr) : new Date();
@@ -157,20 +165,31 @@ export async function addDriverAdvance(driverId: string, formData: FormData) {
   const driver = await prisma.driver.findUnique({ where: { id: driverId } });
   if (!driver) return { error: "السواق غير موجود" };
 
+  // منع النزول تحت الصفر وحفظ رأس المال (مع إمكان السحب من وسائل أخرى)
+  const plan = await planSpend(method, amount, fallback);
+  if (!plan.ok) {
+    return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
+  }
+
   await prisma.$transaction(async (tx) => {
     const adv = await tx.driverAdvance.create({
       data: { driverId, amount, kind: "ADVANCE", method, note, date },
     });
-    await recordLedger(tx, {
-      type: "DRIVER_ADVANCE",
-      direction: "OUT",
-      amount,
-      method,
-      description: `سلفة سواق — ${driver.name}`,
-      refType: "DriverAdvance",
-      refId: adv.id,
-      date,
-    });
+    for (const e of plan.entries) {
+      await recordLedger(tx, {
+        type: "DRIVER_ADVANCE",
+        direction: "OUT",
+        amount: e.amount,
+        method: e.method,
+        description:
+          plan.entries.length > 1
+            ? `سلفة سواق — ${driver.name} (${methodLabel(e.method)})`
+            : `سلفة سواق — ${driver.name}`,
+        refType: "DriverAdvance",
+        refId: adv.id,
+        date,
+      });
+    }
   });
 
   await audit("ADVANCE", "Driver", driverId, { amount, method });

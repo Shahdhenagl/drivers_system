@@ -25,15 +25,16 @@ import { HandCoins, Wallet } from "lucide-react";
 export function AdvanceForm({ driverId }: { driverId: string }) {
   const [open, setOpen] = useState(false);
   const [err, setErr] = useState("");
+  const [fallbackFd, setFallbackFd] = useState<FormData | null>(null);
   const router = useRouter();
 
-  async function action(fd: FormData) {
-    setErr("");
+  async function run(fd: FormData) {
     try {
       const res = await addDriverAdvance(driverId, fd);
       if (res?.error) {
         playSound("error");
         setErr(res.error);
+        setFallbackFd("canFallback" in res && res.canFallback ? fd : null);
         return;
       }
       playSound("money");
@@ -42,7 +43,23 @@ export function AdvanceForm({ driverId }: { driverId: string }) {
     } catch {
       playSound("error");
       setErr("حصل خطأ غير متوقع، حاول تاني");
+      setFallbackFd(null);
     }
+  }
+
+  async function action(fd: FormData) {
+    setErr("");
+    setFallbackFd(null);
+    await run(fd);
+  }
+
+  async function confirmFallback() {
+    if (!fallbackFd) return;
+    fallbackFd.set("fallback", "1");
+    setErr("");
+    const fd = fallbackFd;
+    setFallbackFd(null);
+    await run(fd);
   }
 
   return (
@@ -82,7 +99,22 @@ export function AdvanceForm({ driverId }: { driverId: string }) {
             <Label htmlFor="note">ملاحظة</Label>
             <Textarea id="note" name="note" placeholder="سبب السلفة (اختياري)" />
           </div>
-          {err && <p className="text-sm text-destructive">{err}</p>}
+          {err && (
+            <div className="space-y-2 rounded-lg bg-destructive/10 p-2">
+              <p className="text-sm text-destructive">{err}</p>
+              {fallbackFd && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={confirmFallback}
+                >
+                  اسحب الباقي من باقي الوسائل (محفظة/انستا/فيزا)
+                </Button>
+              )}
+            </div>
+          )}
           <SubmitButton size="lg" className="w-full">
             تأكيد صرف السلفة
           </SubmitButton>

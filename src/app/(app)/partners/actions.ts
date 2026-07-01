@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { recordLedger } from "@/lib/finance";
+import { recordLedger, planSpend } from "@/lib/finance";
 import { toPiastres } from "@/lib/money";
 
 export async function createPartner(formData: FormData) {
@@ -60,6 +60,11 @@ export async function addWithdrawal(partnerId: string, formData: FormData) {
   const note = String(formData.get("note") ?? "").trim() || null;
   if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
 
+  const plan = await planSpend(method, amount, false);
+  if (!plan.ok) {
+    return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
+  }
+
   await prisma.$transaction(async (tx) => {
     const w = await tx.partnerWithdrawal.create({
       data: { partnerId, amount, method, note },
@@ -94,6 +99,11 @@ export async function distributeProfits(formData: FormData) {
 
   const totalShare = partners.reduce((a, p) => a + p.sharePercent, 0);
   if (totalShare <= 0) return { error: "نسب الشركاء غير صحيحة" };
+
+  const plan = await planSpend(method, amount, false);
+  if (!plan.ok) {
+    return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
+  }
 
   await prisma.$transaction(async (tx) => {
     const settlement = await tx.settlement.create({

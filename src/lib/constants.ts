@@ -70,6 +70,7 @@ export const LEDGER_TYPE = {
   DRIVER_ADVANCE_REPAYMENT: "سداد سلفة سواق",
   EXPENSE: "مصروف",
   PARTNER_WITHDRAWAL: "سحب شريك",
+  TRANSFER: "تحويل بين الوسائل",
   ADJUSTMENT: "تسوية",
 } as const;
 export type LedgerType = keyof typeof LEDGER_TYPE;

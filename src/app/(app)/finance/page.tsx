@@ -2,6 +2,7 @@ import { AppHeader } from "@/components/layout/app-header";
 import { Card } from "@/components/ui/card";
 import { ExpenseForm } from "./expense-form";
 import { DeleteExpenseButton } from "./delete-expense-button";
+import { TransferForm } from "./transfer-form";
 import { prisma } from "@/lib/prisma";
 import { treasuryByMethod } from "@/lib/finance";
 import { getFinanceOverview } from "@/lib/finance-overview";
@@ -26,8 +27,13 @@ export default async function FinancePage() {
       <div className="space-y-5 py-3">
         {/* الخزنة */}
         <section className="rounded-2xl bg-gradient-to-br from-primary to-primary/70 p-5 text-primary-foreground shadow-lg shadow-primary/20">
-          <div className="flex items-center gap-2 text-sm opacity-90">
-            <Wallet className="h-4 w-4" /> رصيد الخزنة (السيولة)
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm opacity-90">
+              <Wallet className="h-4 w-4" /> رصيد الخزنة
+            </div>
+            <div className="print:hidden">
+              <TransferForm />
+            </div>
           </div>
           <div className="mt-1 text-3xl font-extrabold tabular-nums">
             {formatMoney(treasury.total)}
@@ -69,7 +75,7 @@ export default async function FinancePage() {
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                رأس المال ({formatMoney(ov.capital, false)} ج.م) ثابت ومنفصل — والخزنة تعرض السيولة التشغيلية فقط (قد تكون بالسالب).
+                رأس المال ({formatMoney(ov.capital, false)} ج.م) محفوظ في الكاش ولا يُصرف منه — والخزنة لا تنزل بالسالب.
               </p>
             </Card>
           </div>

@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { recordLedger } from "@/lib/finance";
-import { toPiastres } from "@/lib/money";
+import { recordLedger, planSpend, treasuryByMethod } from "@/lib/finance";
+import { toPiastres, formatMoney } from "@/lib/money";
+import { methodLabel, PAYMENT_METHOD_KEYS } from "@/lib/constants";
 import { sendTelegram } from "@/lib/telegram";
 import { adminExpenseMessage } from "@/lib/messages";
 
@@ -12,8 +13,15 @@ export async function addExpense(formData: FormData) {
   const get = (k: string) => String(formData.get(k) ?? "").trim();
   const amount = toPiastres(get("amount") || "0");
   const method = get("method") || "cash";
+  const fallback = get("fallback") === "1";
   const name = get("name");
   if (!name || amount <= 0) return { error: "اكتب اسم المصروف وقيمة صحيحة" };
+
+  // منع النزول تحت الصفر وحفظ رأس المال في الكاش (مع إمكان السحب من وسائل أخرى)
+  const plan = await planSpend(method, amount, fallback);
+  if (!plan.ok) {
+    return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
+  }
 
   const dateStr = get("date");
   const date = dateStr ? new Date(dateStr) : new Date();
@@ -29,16 +37,21 @@ export async function addExpense(formData: FormData) {
         notes: get("notes") || null,
       },
     });
-    await recordLedger(tx, {
-      type: "EXPENSE",
-      direction: "OUT",
-      amount,
-      method,
-      description: `مصروف — ${name}`,
-      refType: "Expense",
-      refId: exp.id,
-      date,
-    });
+    for (const e of plan.entries) {
+      await recordLedger(tx, {
+        type: "EXPENSE",
+        direction: "OUT",
+        amount: e.amount,
+        method: e.method,
+        description:
+          plan.entries.length > 1
+            ? `مصروف — ${name} (${methodLabel(e.method)})`
+            : `مصروف — ${name}`,
+        refType: "Expense",
+        refId: exp.id,
+        date,
+      });
+    }
   });
 
   await audit("CREATE", "Expense", undefined, { name, amount });
@@ -58,6 +71,48 @@ export async function addExpense(formData: FormData) {
     // تجاهل أي فشل في الإشعار
   }
 
+  revalidatePath("/finance");
+  revalidatePath("/");
+}
+
+/** تحويل مبلغ بين وسيلتي دفع — لا يؤثر على الربح ولا على إجمالي الخزنة */
+export async function transferBetweenMethods(formData: FormData) {
+  const from = String(formData.get("from") ?? "");
+  const to = String(formData.get("to") ?? "");
+  const amount = toPiastres(String(formData.get("amount") ?? "0"));
+  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
+  if (!PAYMENT_METHOD_KEYS.includes(from as never) || !PAYMENT_METHOD_KEYS.includes(to as never)) {
+    return { error: "اختر وسيلتي الدفع" };
+  }
+  if (from === to) return { error: "اختر وسيلتين مختلفتين" };
+
+  // التحويل نقل بين وسائلك — يكفي ألا ينزل رصيد المصدر تحت الصفر
+  const treasury = await treasuryByMethod();
+  const available = treasury[from as keyof typeof treasury] ?? 0;
+  if (amount > available) {
+    return {
+      error: `الرصيد لا يكفي في ${methodLabel(from)} — المتاح: ${formatMoney(available)}`,
+    };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await recordLedger(tx, {
+      type: "TRANSFER",
+      direction: "OUT",
+      amount,
+      method: from,
+      description: `تحويل إلى ${methodLabel(to)}`,
+    });
+    await recordLedger(tx, {
+      type: "TRANSFER",
+      direction: "IN",
+      amount,
+      method: to,
+      description: `تحويل من ${methodLabel(from)}`,
+    });
+  });
+
+  await audit("TRANSFER", "Treasury", undefined, { from, to, amount });
   revalidatePath("/finance");
   revalidatePath("/");
 }

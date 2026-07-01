@@ -7,6 +7,7 @@ import { audit } from "@/lib/audit";
 import { toPiastres } from "@/lib/money";
 import {
   recordLedger,
+  planSpend,
   deriveCollectionStatus,
   effectiveAmounts,
 } from "@/lib/finance";
@@ -403,6 +404,12 @@ export async function addDriverPayment(tripId: string, formData: FormData) {
   // قاعدة: لا يمكن دفع أكثر من المتبقي
   if (paid + amount > paidEff.driver) {
     return { error: "المبلغ يتجاوز مستحق السواق المتبقي" };
+  }
+
+  // منع النزول تحت الصفر وحفظ رأس المال في الكاش
+  const plan = await planSpend(method, amount, false);
+  if (!plan.ok) {
+    return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
   }
 
   await prisma.$transaction(async (tx) => {
