@@ -141,3 +141,69 @@ export async function addAdvance(formData: FormData) {
   revalidatePath(base);
   revalidatePath("/finance");
 }
+
+/**
+ * تعديل حركة سلفة/رصيد قائمة (القيمة/الوسيلة/الاتجاه/التاريخ/الملاحظة).
+ * يستبدل قيود دفتر الأستاذ القديمة بقيد جديد يعكس القيم الجديدة،
+ * فينعكس التغيير مباشرةً على الخزنة والميزانية (المشتقّة من الدفتر).
+ */
+export async function editAdvance(id: string, formData: FormData) {
+  const amount = toPiastres(String(formData.get("amount") ?? "0"));
+  const method = String(formData.get("method") ?? "cash");
+  const direction = String(formData.get("direction") ?? "OUT");
+  const note = String(formData.get("note") ?? "").trim() || null;
+  const dateStr = String(formData.get("date") ?? "");
+  const date = dateStr ? new Date(dateStr) : new Date();
+
+  if (direction !== "OUT" && direction !== "IN")
+    return { error: "اتجاه غير صحيح" };
+  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
+
+  const adv = await prisma.advance.findUnique({ where: { id } });
+  if (!adv) return { error: "الحركة غير موجودة" };
+
+  const name = await partyName(adv.partyType, adv.partyId);
+  if (!name) return { error: "الطرف غير موجود" };
+
+  const label = adv.isOpening ? "رصيد افتتاحي" : "سلفة";
+  const pLabel = adv.partyType === "DRIVER" ? "سواق" : "مقاول";
+  const ledgerType = adv.isOpening
+    ? "OPENING_BALANCE"
+    : direction === "OUT"
+      ? "ADVANCE_OUT"
+      : "ADVANCE_IN";
+
+  await prisma.$transaction(async (tx) => {
+    // احذف قيود الدفتر القديمة لهذه الحركة (قد تكون أكثر من قيد لو صُرفت من عدة وسائل)
+    await tx.ledgerEntry.deleteMany({ where: { refType: "Advance", refId: id } });
+    await tx.advance.update({
+      where: { id },
+      data: { amount, method, note, direction, date },
+    });
+    await recordLedger(tx, {
+      type: ledgerType,
+      direction: direction as "IN" | "OUT",
+      amount,
+      method,
+      description:
+        direction === "OUT"
+          ? `${label} ${pLabel} — ${name}`
+          : `${label} من ${pLabel} — ${name}`,
+      refType: "Advance",
+      refId: id,
+      date,
+    });
+  });
+
+  await audit(
+    "EDIT",
+    adv.partyType === "DRIVER" ? "Driver" : "Contractor",
+    adv.partyId,
+    { advanceId: id, amount, direction, method }
+  );
+
+  const base = adv.partyType === "DRIVER" ? "/drivers" : "/contractors";
+  revalidatePath(`${base}/${adv.partyId}`);
+  revalidatePath(base);
+  revalidatePath("/finance");
+}

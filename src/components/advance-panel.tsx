@@ -16,14 +16,14 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SubmitButton } from "@/components/submit-button";
 import { MethodSelect } from "@/components/method-select";
-import { addAdvance } from "@/lib/advance-actions";
+import { addAdvance, editAdvance } from "@/lib/advance-actions";
 import { playSound } from "@/lib/sounds";
-import { formatMoney, toPiastres } from "@/lib/money";
+import { formatMoney, toPiastres, toEgp } from "@/lib/money";
 import { formatShortDate, toDateInput } from "@/lib/format";
 import { methodLabel } from "@/lib/constants";
 import { advanceReminder } from "@/lib/messages";
 import { WhatsAppButton } from "@/components/whatsapp-button";
-import { Wallet, HandCoins, MessageCircle, FileClock } from "lucide-react";
+import { Wallet, HandCoins, MessageCircle, FileClock, Pencil } from "lucide-react";
 
 type AdvanceRow = {
   id: string;
@@ -202,6 +202,143 @@ function AdvanceDialog({
   );
 }
 
+/** تعديل حركة سلفة/رصيد قائمة عبر زر قلم — ينعكس في الميزانية */
+function EditAdvanceDialog({ advance }: { advance: AdvanceRow }) {
+  const [open, setOpen] = useState(false);
+  const [err, setErr] = useState("");
+  const [dir, setDir] = useState<"OUT" | "IN">(
+    advance.direction === "IN" ? "IN" : "OUT"
+  );
+  const [amountEgp, setAmountEgp] = useState(String(toEgp(advance.amount)));
+  const router = useRouter();
+
+  const amountP = toPiastres(amountEgp || "0");
+  const cashEffect = dir === "OUT" ? -amountP : amountP;
+  const title = advance.isOpening ? "تعديل رصيد افتتاحي" : "تعديل سلفة";
+
+  async function action(fd: FormData) {
+    setErr("");
+    fd.set("direction", dir);
+    try {
+      const res = await editAdvance(advance.id, fd);
+      if (res?.error) {
+        playSound("error");
+        setErr(res.error);
+        return;
+      }
+      playSound("money");
+      setOpen(false);
+      router.refresh();
+    } catch {
+      playSound("error");
+      setErr("حصل خطأ غير متوقع، حاول تاني");
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          aria-label="تعديل"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <form action={action} className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setDir("OUT")}
+              className={`rounded-xl border p-3 text-sm font-semibold ${
+                dir === "OUT"
+                  ? "border-warning bg-warning/10 text-warning"
+                  : "border-border text-muted-foreground"
+              }`}
+            >
+              عليه (أخد مننا)
+            </button>
+            <button
+              type="button"
+              onClick={() => setDir("IN")}
+              className={`rounded-xl border p-3 text-sm font-semibold ${
+                dir === "IN"
+                  ? "border-success bg-success/10 text-success"
+                  : "border-border text-muted-foreground"
+              }`}
+            >
+              له (احنا مدينين له)
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`edit-amount-${advance.id}`}>القيمة (ج.م) *</Label>
+            <Input
+              id={`edit-amount-${advance.id}`}
+              name="amount"
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              required
+              autoFocus
+              value={amountEgp}
+              onChange={(e) => setAmountEgp(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>الوسيلة</Label>
+            <MethodSelect defaultValue={advance.method} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`edit-date-${advance.id}`}>التاريخ</Label>
+            <Input
+              id={`edit-date-${advance.id}`}
+              name="date"
+              type="date"
+              defaultValue={toDateInput(new Date(advance.date))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`edit-note-${advance.id}`}>ملاحظة</Label>
+            <Textarea
+              id={`edit-note-${advance.id}`}
+              name="note"
+              placeholder="تفاصيل (اختياري)"
+              defaultValue={advance.note ?? ""}
+            />
+          </div>
+          {amountP > 0 && (
+            <div className="flex items-center justify-between rounded-lg bg-muted p-2 text-sm">
+              <span>التأثير على الخزنة</span>
+              <span
+                className={`font-bold tabular-nums ${
+                  cashEffect >= 0 ? "text-success" : "text-destructive"
+                }`}
+              >
+                {cashEffect >= 0 ? "+" : "−"}
+                {formatMoney(Math.abs(cashEffect), false)}
+              </span>
+            </div>
+          )}
+          {err && (
+            <p className="rounded-lg bg-destructive/10 p-2 text-sm text-destructive">
+              {err}
+            </p>
+          )}
+          <SubmitButton size="lg" className="w-full">
+            حفظ التعديل
+          </SubmitButton>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** لوحة السلف/الأرصدة لطرف (سواق أو مقاول) */
 export function AdvancePanel({
   partyType,
@@ -299,11 +436,16 @@ export function AdvancePanel({
                   {formatShortDate(a.date)} • {methodLabel(a.method)}
                 </div>
               </div>
-              {a.note && (
-                <div className="max-w-[45%] truncate text-xs text-muted-foreground">
-                  {a.note}
+              <div className="flex items-center gap-2">
+                {a.note && (
+                  <div className="max-w-[40%] truncate text-xs text-muted-foreground">
+                    {a.note}
+                  </div>
+                )}
+                <div className="print:hidden">
+                  <EditAdvanceDialog advance={a} />
                 </div>
-              )}
+              </div>
             </div>
           ))}
         </div>
