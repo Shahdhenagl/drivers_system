@@ -40,6 +40,13 @@ type Trip = {
   driverId: string | null;
 };
 
+function weekdayFromDateInput(value: string) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("ar-EG", { weekday: "long" }).format(
+    new Date(`${value}T12:00:00`)
+  );
+}
+
 export function EditTripForm({
   trip,
   drivers,
@@ -51,7 +58,9 @@ export function EditTripForm({
 }) {
   const [open, setOpen] = useState(false);
   const [driverId, setDriverId] = useState(trip.driverId ?? "");
+  const [tripDate, setTripDate] = useState(() => toDateInput(trip.date));
   const router = useRouter();
+  const tripDay = weekdayFromDateInput(tripDate);
 
   async function action(fd: FormData) {
     fd.set("driverId", driverId);
@@ -71,11 +80,18 @@ export function EditTripForm({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="date">التاريخ</Label>
-              <Input id="date" name="date" type="date" defaultValue={toDateInput(trip.date)} />
+              <Input
+                id="date"
+                name="date"
+                type="date"
+                value={tripDate}
+                onChange={(e) => setTripDate(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="time">الوقت</Label>
-              <Input id="time" name="time" type="time" defaultValue={trip.time ?? ""} />
+              <Label htmlFor="day">اليوم</Label>
+              <Input id="day" value={tripDay} readOnly className="bg-muted" />
+              <input type="hidden" name="time" value={tripDay} />
             </div>
           </div>
           <div className="space-y-1.5">

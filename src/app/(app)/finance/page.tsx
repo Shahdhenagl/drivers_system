@@ -109,6 +109,12 @@ export default async function FinancePage() {
             value={ov.totalPenaltyRevenue}
             tone="primary"
           />
+          <Indicator label="سحوبات الشركاء" value={ov.totalPartnerWithdrawals} />
+          <Indicator
+            label="الربح القابل للتوزيع"
+            value={ov.distributableProfit}
+            tone="success"
+          />
           <div className="col-span-2">
             <Card className="space-y-1 bg-primary/10 p-4">
               <div className="flex items-center justify-between">

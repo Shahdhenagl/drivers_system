@@ -92,7 +92,7 @@ export function contractorMessage(t: TripForMsg): string {
   const lines = [
     "🚛 تفاصيل رحلتك",
     `📅 التاريخ: ${formatShortDate(t.date)}`,
-    t.time ? `🕐 الوقت: ${t.time}` : "",
+    t.time ? `🗓️ اليوم: ${t.time}` : "",
     `📍 من: ${t.startPoint}`,
     `🏁 إلى: ${t.endPoint}`,
   ];
@@ -108,7 +108,7 @@ export function driverMessage(t: TripForMsg): string {
   const lines = [
     "🚛 لديك رحلة جديدة",
     `📅 التاريخ: ${formatShortDate(t.date)}`,
-    t.time ? `🕐 الوقت: ${t.time}` : "",
+    t.time ? `🗓️ اليوم: ${t.time}` : "",
     `📍 من: ${t.startPoint}`,
     `🏁 إلى: ${t.endPoint}`,
     `👤 العميل: ${t.contractor.name}`,
@@ -251,6 +251,30 @@ export function adminAdvanceMessage(d: {
       `💳 الطريقة: ${methodLabel(d.method)}`,
       d.note ? `📝 ${d.note}` : "",
       balanceLabel(d.balance),
+    ]
+      .filter(Boolean)
+      .join("\n") + SIGNATURE
+  );
+}
+
+/** تقرير توزيع أرباح على الشركاء (تيليجرام) */
+export function adminDistributionMessage(d: {
+  total: number;
+  method: string;
+  note?: string | null;
+  shares: { name: string; percent: number; amount: number }[];
+}): string {
+  return (
+    [
+      "🥧 <b>توزيع أرباح على الشركاء</b>",
+      `💰 إجمالي الموزّع: ${formatMoney(d.total)}`,
+      `💳 الطريقة: ${methodLabel(d.method)}`,
+      "",
+      "👥 <b>نصيب كل شريك:</b>",
+      ...d.shares.map(
+        (s, i) => `${i + 1}) ${s.name} — ${s.percent}%: ${formatMoney(s.amount)}`
+      ),
+      d.note ? `\n📝 ${d.note}` : "",
     ]
       .filter(Boolean)
       .join("\n") + SIGNATURE

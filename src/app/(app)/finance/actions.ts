@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { recordLedger, planSpend, treasuryByMethod } from "@/lib/finance";
+import { getFinanceOverview } from "@/lib/finance-overview";
 import { toPiastres, formatMoney } from "@/lib/money";
 import { methodLabel, PAYMENT_METHOD_KEYS } from "@/lib/constants";
 import { sendTelegram } from "@/lib/telegram";
@@ -20,6 +21,15 @@ export async function addExpense(formData: FormData) {
   const fallback = get("fallback") === "1";
   const name = get("name");
   if (!name || amount <= 0) return { error: "اكتب اسم المصروف وقيمة صحيحة" };
+
+  // المصروفات تُخصم من الربح فقط — لا تمسّ رأس المال
+  const ov = await getFinanceOverview();
+  const available = Math.max(ov.distributableProfit, 0);
+  if (amount > available) {
+    return {
+      error: `المبلغ المتاح من الربح (${formatMoney(available)}) أقل من المصروف — لا يمكن إتمام العملية`,
+    };
+  }
 
   // منع النزول تحت الصفر وحفظ رأس المال في الكاش (مع إمكان السحب من وسائل أخرى)
   const plan = await planSpend(method, amount, fallback);

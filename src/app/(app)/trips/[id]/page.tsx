@@ -10,7 +10,7 @@ import { EditTripForm } from "./edit-trip";
 import { DeleteTripButton } from "./delete-trip-button";
 import { tripFinancials } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
-import { formatDate, formatShortDate } from "@/lib/format";
+import { formatShortDate } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import {
@@ -130,7 +130,7 @@ export default async function TripDetail({
           <div className="space-y-2 text-sm">
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4 text-muted-foreground" />
-              {formatDate(trip.date)}
+              {formatShortDate(trip.date)}
               {trip.time ? ` - ${trip.time}` : ""}
             </div>
             <div className="flex items-center gap-2">

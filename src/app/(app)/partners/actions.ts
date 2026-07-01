@@ -5,7 +5,10 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { recordLedger, planSpend } from "@/lib/finance";
-import { toPiastres } from "@/lib/money";
+import { getFinanceOverview } from "@/lib/finance-overview";
+import { toPiastres, formatMoney } from "@/lib/money";
+import { sendTelegram } from "@/lib/telegram";
+import { adminDistributionMessage } from "@/lib/messages";
 
 export async function createPartner(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
@@ -87,12 +90,14 @@ export async function addWithdrawal(partnerId: string, formData: FormData) {
   revalidatePath("/finance");
 }
 
-/** تصفية الخزنة: توزيع مبلغ أرباح على الشركاء حسب النسبة (كاش) */
+/**
+ * تصفية الخزنة: توزيع الربح على الشركاء حسب النسبة (كاش).
+ * لو لم يُحدَّد مبلغ يوزّع كامل الربح المتاح. لا يمكن توزيع أكثر من الربح المتاح.
+ * يرسل تقريرًا بالتوزيع والنسب لكل شريك على تيليجرام.
+ */
 export async function distributeProfits(formData: FormData) {
-  const amount = toPiastres(String(formData.get("amount") ?? "0"));
   const method = String(formData.get("method") ?? "cash");
   const note = String(formData.get("note") ?? "").trim() || null;
-  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
 
   const partners = await prisma.partner.findMany();
   if (partners.length === 0) return { error: "لا يوجد شركاء" };
@@ -100,11 +105,27 @@ export async function distributeProfits(formData: FormData) {
   const totalShare = partners.reduce((a, p) => a + p.sharePercent, 0);
   if (totalShare <= 0) return { error: "نسب الشركاء غير صحيحة" };
 
+  // الربح المتاح للتوزيع (صافي الربح − ما سبق سحبه)
+  const ov = await getFinanceOverview();
+  const pool = Math.max(ov.distributableProfit, 0);
+  if (pool <= 0) return { error: "لا يوجد ربح متاح للتوزيع" };
+
+  // لو تُرك المبلغ فارغًا نوزّع كامل الربح المتاح
+  const raw = toPiastres(String(formData.get("amount") ?? "0"));
+  const amount = raw > 0 ? raw : pool;
+  if (amount > pool) {
+    return {
+      error: `الربح المتاح للتوزيع ${formatMoney(pool)} — لا يمكن توزيع أكثر منه`,
+    };
+  }
+
+  // لا بد من توفّر كاش فعلي بالخزنة يغطّي التوزيع
   const plan = await planSpend(method, amount, false);
   if (!plan.ok) {
     return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
   }
 
+  const shares: { name: string; percent: number; amount: number }[] = [];
   await prisma.$transaction(async (tx) => {
     const settlement = await tx.settlement.create({
       data: { totalProfit: amount, note },
@@ -112,6 +133,7 @@ export async function distributeProfits(formData: FormData) {
     for (const p of partners) {
       const share = Math.round((amount * p.sharePercent) / totalShare);
       if (share <= 0) continue;
+      shares.push({ name: p.name, percent: p.sharePercent, amount: share });
       const w = await tx.partnerWithdrawal.create({
         data: {
           partnerId: p.id,
@@ -134,6 +156,16 @@ export async function distributeProfits(formData: FormData) {
   });
 
   await audit("DISTRIBUTE", "Settlement", undefined, { amount });
+
+  // تقرير التوزيع على تيليجرام (لا يعطّل العملية لو فشل)
+  try {
+    await sendTelegram(
+      adminDistributionMessage({ total: amount, method, note, shares })
+    );
+  } catch {
+    // تجاهل فشل الإشعار
+  }
+
   revalidatePath("/partners");
   revalidatePath("/finance");
   revalidatePath("/");

@@ -11,6 +11,11 @@ export function formatShortDate(d: Date | string): string {
   return format(date, "d MMM yyyy", { locale: ar });
 }
 
+export function formatWeekday(d: Date | string): string {
+  const date = typeof d === "string" ? new Date(d) : d;
+  return format(date, "EEEE", { locale: ar });
+}
+
 export function formatDateTime(d: Date | string): string {
   const date = typeof d === "string" ? new Date(d) : d;
   return format(date, "d MMM yyyy - HH:mm", { locale: ar });

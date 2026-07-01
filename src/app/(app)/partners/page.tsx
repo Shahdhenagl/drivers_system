@@ -89,7 +89,9 @@ export default async function PartnersPage() {
           </div>
         )}
 
-        {partners.length > 0 && <DistributeForm netProfit={ov.netProfit} />}
+        {partners.length > 0 && (
+          <DistributeForm distributableProfit={ov.distributableProfit} />
+        )}
       </div>
     </>
   );

@@ -14,6 +14,7 @@ import {
 import { VIA_DRIVER } from "@/lib/constants";
 import { sendTelegram } from "@/lib/telegram";
 import { adminNewTripMessage } from "@/lib/messages";
+import { formatWeekday } from "@/lib/format";
 
 /** إنشاء رحلة جديدة — يدعم إضافة مقاول/سواق أثناء الإنشاء */
 export async function createTrip(formData: FormData) {
@@ -48,12 +49,13 @@ export async function createTrip(formData: FormData) {
   if (!driverId) return { error: "اختر السواق" };
 
   const dateStr = get("date");
+  const tripDate = dateStr ? new Date(dateStr) : new Date();
   const trip = await prisma.trip.create({
     data: {
       contractorId,
       driverId,
-      date: dateStr ? new Date(dateStr) : new Date(),
-      time: get("time") || null,
+      date: tripDate,
+      time: formatWeekday(tripDate),
       startPoint: get("startPoint"),
       endPoint: get("endPoint"),
       description: get("description") || null,
@@ -88,11 +90,12 @@ export async function createTrip(formData: FormData) {
 export async function updateTrip(id: string, formData: FormData) {
   const get = (k: string) => String(formData.get(k) ?? "").trim();
   const dateStr = get("date");
+  const tripDate = dateStr ? new Date(dateStr) : null;
   await prisma.trip.update({
     where: { id },
     data: {
-      date: dateStr ? new Date(dateStr) : undefined,
-      time: get("time") || null,
+      date: tripDate ?? undefined,
+      time: tripDate ? formatWeekday(tripDate) : get("time") || null,
       startPoint: get("startPoint"),
       endPoint: get("endPoint"),
       description: get("description") || null,

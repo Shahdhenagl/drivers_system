@@ -17,13 +17,18 @@ import { SubmitButton } from "@/components/submit-button";
 import { MethodSelect } from "@/components/method-select";
 import { distributeProfits } from "./actions";
 import { playSound } from "@/lib/sounds";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, toEgp } from "@/lib/money";
 import { PieChart } from "lucide-react";
 
-export function DistributeForm({ netProfit }: { netProfit: number }) {
+export function DistributeForm({
+  distributableProfit,
+}: {
+  distributableProfit: number;
+}) {
   const [open, setOpen] = useState(false);
   const [err, setErr] = useState("");
   const router = useRouter();
+  const available = Math.max(distributableProfit, 0);
 
   async function action(fd: FormData) {
     setErr("");
@@ -55,8 +60,8 @@ export function DistributeForm({ netProfit }: { netProfit: number }) {
           <DialogTitle>تصفية الخزنة</DialogTitle>
         </DialogHeader>
         <p className="mb-3 rounded-lg bg-muted p-2 text-center text-sm">
-          صافي الربح الحالي:{" "}
-          <span className="font-bold text-primary">{formatMoney(netProfit)}</span>
+          الربح المتاح للتوزيع:{" "}
+          <span className="font-bold text-primary">{formatMoney(available)}</span>
         </p>
         <form action={action} className="space-y-3">
           <div className="space-y-1.5">
@@ -67,12 +72,14 @@ export function DistributeForm({ netProfit }: { netProfit: number }) {
               type="number"
               step="0.01"
               min="0"
+              max={toEgp(available)}
+              defaultValue={toEgp(available)}
               inputMode="decimal"
               required
               autoFocus
             />
             <p className="text-xs text-muted-foreground">
-              يُقسَّم تلقائيًا على الشركاء حسب نسبهم.
+              مملوء بكامل الربح المتاح — يُقسَّم تلقائيًا على الشركاء حسب نسبهم، ولا يمكن تجاوزه.
             </p>
           </div>
           <div className="space-y-1.5">

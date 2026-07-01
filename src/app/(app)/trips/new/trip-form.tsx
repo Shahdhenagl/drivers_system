@@ -16,6 +16,13 @@ import Link from "next/link";
 
 type Option = { id: string; name: string; phone: string };
 
+function weekdayFromDateInput(value: string) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("ar-EG", { weekday: "long" }).format(
+    new Date(`${value}T12:00:00`)
+  );
+}
+
 export function TripForm({
   contractors,
   drivers,
@@ -25,11 +32,13 @@ export function TripForm({
 }) {
   const [contractorId, setContractorId] = useState<string>("");
   const [driverId, setDriverId] = useState<string>("");
+  const [tripDate, setTripDate] = useState(() => toDateInput(new Date()));
   const [error, setError] = useState("");
 
   const selectedContractor = contractors.find((c) => c.id === contractorId);
   const newContractor = contractorId === "__new__";
   const newDriver = driverId === "__new__";
+  const tripDay = weekdayFromDateInput(tripDate);
 
   async function action(formData: FormData) {
     setError("");
@@ -101,13 +110,15 @@ export function TripForm({
               id="date"
               name="date"
               type="date"
-              defaultValue={toDateInput(new Date())}
+              value={tripDate}
+              onChange={(e) => setTripDate(e.target.value)}
               required
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="time">الوقت</Label>
-            <Input id="time" name="time" type="time" />
+            <Label htmlFor="day">اليوم</Label>
+            <Input id="day" value={tripDay} readOnly className="bg-muted" />
+            <input type="hidden" name="time" value={tripDay} />
           </div>
         </div>
         <div className="space-y-1.5">

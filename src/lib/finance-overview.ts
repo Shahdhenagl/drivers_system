@@ -2,8 +2,15 @@ import { prisma } from "@/lib/prisma";
 import { effectiveAmounts } from "@/lib/finance";
 
 export async function getFinanceOverview() {
-  const [trips, expenseAgg, collectionAgg, driverPayAgg, advanceAgg, capitalSetting] =
-    await Promise.all([
+  const [
+    trips,
+    expenseAgg,
+    collectionAgg,
+    driverPayAgg,
+    advanceAgg,
+    partnerWithdrawalAgg,
+    capitalSetting,
+  ] = await Promise.all([
       prisma.trip.findMany({
         select: {
           status: true,
@@ -34,6 +41,7 @@ export async function getFinanceOverview() {
               _sum: { amount: number | null };
             }[]
         ),
+      prisma.partnerWithdrawal.aggregate({ _sum: { amount: true } }),
       prisma.setting.findUnique({ where: { key: "initial_capital" } }),
     ]);
 
@@ -56,6 +64,11 @@ export async function getFinanceOverview() {
   const grossProfit = totalRevenue - totalDriverDue;
   const netProfit = grossProfit - totalExpenses;
   const capital = Number(capitalSetting?.value ?? "0");
+
+  // ما سحبه الشركاء من الربح (توزيعات + سحوبات فردية)
+  const totalPartnerWithdrawals = partnerWithdrawalAgg._sum.amount ?? 0;
+  // الربح المتاح للتوزيع/المصروفات = صافي الربح − ما سحبه الشركاء بالفعل
+  const distributableProfit = netProfit - totalPartnerWithdrawals;
 
   // صافي رصيد كل طرف على حدة (OUT − IN): موجب = عليه لنا، سالب = لنا عليه (نحن مدينون له)
   const partyNet = new Map<string, number>();
@@ -94,6 +107,8 @@ export async function getFinanceOverview() {
     totalExpenses,
     grossProfit,
     netProfit,
+    totalPartnerWithdrawals,
+    distributableProfit,
     totalPenaltyRevenue,
     totalDriverAdvances,
     totalDriverAdvancesOwed,
