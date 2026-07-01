@@ -66,6 +66,8 @@ export const LEDGER_TYPE = {
   CAPITAL: "رأس المال",
   COLLECTION: "تحصيل من مقاول",
   DRIVER_PAYMENT: "سداد سواق",
+  DRIVER_ADVANCE: "سلفة سواق",
+  DRIVER_ADVANCE_REPAYMENT: "سداد سلفة سواق",
   EXPENSE: "مصروف",
   PARTNER_WITHDRAWAL: "سحب شريك",
   ADJUSTMENT: "تسوية",

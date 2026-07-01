@@ -154,16 +154,113 @@ export function contractorReport(r: PeriodReport): string {
   );
 }
 
-/** تقرير دوري للسواق (أسبوعي/شهري) */
-export function driverReport(r: PeriodReport): string {
+type DriverReportTrip = {
+  date: Date;
+  startPoint: string;
+  endPoint: string;
+  driverDue: number;
+  paid: number;
+};
+
+type DriverReportData = {
+  name: string;
+  periodLabel: string;
+  from: Date;
+  to: Date;
+  trips: DriverReportTrip[];
+  total: number;
+  settled: number;
+  remainingTotal: number;
+  advanceOutstanding: number;
+};
+
+/** تقرير دوري مفصّل للسواق (يشمل كل رحلة وسعرها + السلف) */
+export function driverReport(r: DriverReportData): string {
+  const header = [
+    `📊 تقرير ${r.periodLabel} — ${r.name}`,
+    `🗓️ من ${formatShortDate(r.from)} إلى ${formatShortDate(r.to)}`,
+    `🚛 عدد الرحلات: ${r.trips.length}`,
+  ];
+
+  const tripLines = r.trips.length
+    ? [
+        "",
+        "🚚 <b>تفاصيل الرحلات:</b>",
+        ...r.trips.map((t, i) => {
+          const rem = Math.max(t.driverDue - t.paid, 0);
+          return (
+            `${i + 1}) ${formatShortDate(t.date)} | ${t.startPoint} ← ${t.endPoint}\n` +
+            `    مستحقك: ${formatMoney(t.driverDue)} — مدفوع: ${formatMoney(t.paid)}` +
+            (rem > 0 ? ` — متبقٍّ: ${formatMoney(rem)}` : " ✅")
+          );
+        }),
+      ]
+    : [];
+
+  const totals = [
+    "",
+    `💵 إجمالي مستحقاتك: ${formatMoney(r.total)}`,
+    `✅ المدفوع لك خلال الفترة: ${formatMoney(r.settled)}`,
+    `🟢 إجمالي المتبقي لك: ${formatMoney(r.remainingTotal)}`,
+  ];
+  if (r.advanceOutstanding > 0) {
+    totals.push(`💳 سلف عليك (تُخصم لاحقًا): ${formatMoney(r.advanceOutstanding)}`);
+  }
+
+  return [...header, ...tripLines, ...totals].join("\n") + SIGNATURE;
+}
+
+/** إشعار للأدمن بصرف سلفة لسواق */
+export function adminDriverAdvanceMessage(d: {
+  name: string;
+  amount: number;
+  method: string;
+  note?: string | null;
+  outstanding: number;
+}): string {
   return (
     [
-      `📊 تقرير ${r.periodLabel} — ${r.name}`,
-      `🗓️ من ${formatShortDate(r.from)} إلى ${formatShortDate(r.to)}`,
-      `🚛 عدد الرحلات: ${r.tripsCount}`,
-      `💵 إجمالي مستحقاتك: ${formatMoney(r.total)}`,
-      `✅ المدفوع لك خلال الفترة: ${formatMoney(r.settled)}`,
-      `🟢 إجمالي المتبقي لك: ${formatMoney(r.remainingTotal)}`,
+      "💳 <b>سلفة سواق</b>",
+      `🚚 السواق: ${d.name}`,
+      `💵 المبلغ: ${formatMoney(d.amount)}`,
+      `💳 الطريقة: ${methodLabel(d.method)}`,
+      d.note ? `📝 ${d.note}` : "",
+      `📊 إجمالي السلف عليه الآن: ${formatMoney(d.outstanding)}`,
+    ]
+      .filter(Boolean)
+      .join("\n") + SIGNATURE
+  );
+}
+
+/** إشعار للأدمن بسداد سلفة من سواق (إيراد يدخل الخزنة) */
+export function adminDriverRepaymentMessage(d: {
+  name: string;
+  amount: number;
+  method: string;
+  note?: string | null;
+  outstanding: number;
+}): string {
+  return (
+    [
+      "✅ <b>سداد سلفة سواق (إيراد)</b>",
+      `🚚 السواق: ${d.name}`,
+      `💵 المبلغ المُسدَّد: ${formatMoney(d.amount)}`,
+      `💳 الطريقة: ${methodLabel(d.method)}`,
+      d.note ? `📝 ${d.note}` : "",
+      `📊 المتبقي من السلف عليه: ${formatMoney(d.outstanding)}`,
+    ]
+      .filter(Boolean)
+      .join("\n") + SIGNATURE
+  );
+}
+
+/** تذكير للسواق بسداد ما عليه من سلف (واتساب) */
+export function driverAdvanceReminder(name: string, outstanding: number): string {
+  return (
+    [
+      `السلام عليكم ${name}`,
+      `نذكّر حضرتك بوجود سلفة متبقّية بقيمة ${formatMoney(outstanding)}.`,
+      "برجاء التكرم بالسداد أو التنسيق معنا. شكرًا 🌹",
     ].join("\n") + SIGNATURE
   );
 }

@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { effectiveAmounts } from "@/lib/finance";
 
 export async function getFinanceOverview() {
-  const [trips, expenseAgg, collectionAgg, driverPayAgg, capitalSetting] =
+  const [trips, expenseAgg, collectionAgg, driverPayAgg, advanceAgg, capitalSetting] =
     await Promise.all([
       prisma.trip.findMany({
         select: {
@@ -16,6 +16,10 @@ export async function getFinanceOverview() {
       prisma.expense.aggregate({ _sum: { amount: true } }),
       prisma.collection.aggregate({ _sum: { amount: true } }),
       prisma.driverPayment.aggregate({ _sum: { amount: true } }),
+      // مرن: لو جدول السلف غير موجود بعد (قبل الترحيل) نتعامل معه كصفر
+      prisma.driverAdvance
+        .groupBy({ by: ["kind"], _sum: { amount: true } })
+        .catch(() => [] as { kind: string; _sum: { amount: number | null } }[]),
       prisma.setting.findUnique({ where: { key: "initial_capital" } }),
     ]);
 
@@ -39,6 +43,13 @@ export async function getFinanceOverview() {
   const netProfit = grossProfit - totalExpenses;
   const capital = Number(capitalSetting?.value ?? "0");
 
+  // سلف السواقين المتبقية (المصروف − المسدَّد)
+  const advGiven =
+    advanceAgg.find((a) => a.kind === "ADVANCE")?._sum.amount ?? 0;
+  const advRepaid =
+    advanceAgg.find((a) => a.kind === "REPAYMENT")?._sum.amount ?? 0;
+  const totalDriverAdvances = Math.max(advGiven - advRepaid, 0);
+
   return {
     capital,
     totalRevenue,
@@ -50,5 +61,6 @@ export async function getFinanceOverview() {
     grossProfit,
     netProfit,
     totalPenaltyRevenue,
+    totalDriverAdvances,
   };
 }

@@ -43,6 +43,7 @@ model Driver {
 
   trips    Trip[]
   payments DriverPayment[]
+  advances DriverAdvance[]
 
   @@index([name])
   @@index([phone])
@@ -131,6 +132,21 @@ model DriverPayment {
   createdAt DateTime @default(now())
 
   @@index([tripId])
+  @@index([driverId])
+}
+
+// سلف السواق: صرف سلفة (ADVANCE) أو سداد منها (REPAYMENT)
+model DriverAdvance {
+  id        String   @id @default(cuid())
+  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  driverId  String
+  amount    Int // بالقروش
+  kind      String // ADVANCE = سلفة مصروفة | REPAYMENT = سداد من السواق
+  date      DateTime @default(now())
+  method    String
+  note      String?
+  createdAt DateTime @default(now())
+
   @@index([driverId])
 }
 
