@@ -22,6 +22,8 @@ import {
   addNote,
   collectViaDriver,
   cancelTrip,
+  contractorBorrowFromDriver,
+  contractorBorrowFromOffice,
 } from "../actions";
 import { toPiastres } from "@/lib/money";
 import { formatMoney, toEgp } from "@/lib/money";
@@ -36,6 +38,9 @@ import {
   HandCoins,
   StickyNote,
   ArrowLeftRight,
+  Repeat,
+  Building2,
+  Truck,
 } from "lucide-react";
 
 type Props = {
@@ -121,6 +126,18 @@ export function TripActions(props: Props) {
         remainingCollection={props.remainingCollection}
         remainingDriver={props.remainingDriver}
       />
+
+      {/* تحويلات بين المكتب والمقاول والسواق */}
+      <div className="rounded-xl border border-border p-2">
+        <div className="mb-2 flex items-center gap-1.5 px-1 text-xs font-bold text-muted-foreground">
+          <Repeat className="h-3.5 w-3.5" /> تحويلات
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <BorrowFromDriverDialog tripId={tripId} hasDriver={props.hasDriver} />
+          <BorrowFromOfficeDialog tripId={tripId} />
+        </div>
+      </div>
+
       <NoteDialog tripId={tripId} notes={props.notes} />
     </div>
   );
@@ -433,6 +450,186 @@ function ViaDriverDialog({
           {err && <p className="text-sm text-destructive">{err}</p>}
           <SubmitButton size="lg" className="w-full">
             تأكيد التحصيل عن طريق السواق
+          </SubmitButton>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BorrowFromDriverDialog({
+  tripId,
+  hasDriver,
+}: {
+  tripId: string;
+  hasDriver: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [err, setErr] = useState("");
+  const router = useRouter();
+
+  async function action(fd: FormData) {
+    setErr("");
+    try {
+      const res = await contractorBorrowFromDriver(tripId, fd);
+      if (res?.error) {
+        playSound("error");
+        setErr(res.error);
+        return;
+      }
+      playSound("money");
+      setOpen(false);
+      router.refresh();
+    } catch {
+      playSound("error");
+      setErr("حصل خطأ غير متوقع، حاول تاني");
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="secondary" disabled={!hasDriver} className="w-full">
+          <Truck className="h-4 w-4" /> مقاول استلف من سواق
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>المقاول استلف من السواق</DialogTitle>
+        </DialogHeader>
+        <p className="mb-3 rounded-lg bg-muted p-2 text-center text-xs text-muted-foreground">
+          يزيد سعر المقاول ومستحق السواق بنفس المبلغ — الربح لا يتغيّر، ولا يؤثر على الخزنة.
+        </p>
+        <form action={action} className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="amount">القيمة (ج.م) *</Label>
+            <Input
+              id="amount"
+              name="amount"
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              required
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="date">التاريخ</Label>
+            <Input id="date" name="date" type="date" defaultValue={toDateInput(new Date())} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="note">ملاحظة</Label>
+            <Textarea id="note" name="note" placeholder="تفاصيل (اختياري)" />
+          </div>
+          {err && <p className="text-sm text-destructive">{err}</p>}
+          <SubmitButton size="lg" className="w-full">
+            تأكيد
+          </SubmitButton>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BorrowFromOfficeDialog({ tripId }: { tripId: string }) {
+  const [open, setOpen] = useState(false);
+  const [err, setErr] = useState("");
+  const [fallbackFd, setFallbackFd] = useState<FormData | null>(null);
+  const router = useRouter();
+
+  async function run(fd: FormData) {
+    try {
+      const res = await contractorBorrowFromOffice(tripId, fd);
+      if (res?.error) {
+        playSound("error");
+        setErr(res.error);
+        setFallbackFd("canFallback" in res && res.canFallback ? fd : null);
+        return;
+      }
+      playSound("money");
+      setOpen(false);
+      router.refresh();
+    } catch {
+      playSound("error");
+      setErr("حصل خطأ غير متوقع، حاول تاني");
+      setFallbackFd(null);
+    }
+  }
+
+  async function action(fd: FormData) {
+    setErr("");
+    setFallbackFd(null);
+    await run(fd);
+  }
+
+  async function confirmFallback() {
+    if (!fallbackFd) return;
+    fallbackFd.set("fallback", "1");
+    setErr("");
+    const fd = fallbackFd;
+    setFallbackFd(null);
+    await run(fd);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="secondary" className="w-full">
+          <Building2 className="h-4 w-4" /> مقاول استلف من المكتب
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>المقاول استلف من المكتب</DialogTitle>
+        </DialogHeader>
+        <p className="mb-3 rounded-lg bg-muted p-2 text-center text-xs text-muted-foreground">
+          سلفة تُردّ: كاش يخرج من الخزنة، والمقاول يدين بها للمكتب (تظهر في سلف المقاولين) — لا تزيد الربح.
+        </p>
+        <form action={action} className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="amount">القيمة (ج.م) *</Label>
+            <Input
+              id="amount"
+              name="amount"
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              required
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>الوسيلة</Label>
+            <MethodSelect />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="date">التاريخ</Label>
+            <Input id="date" name="date" type="date" defaultValue={toDateInput(new Date())} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="note">ملاحظة</Label>
+            <Textarea id="note" name="note" placeholder="تفاصيل (اختياري)" />
+          </div>
+          {err && (
+            <div className="space-y-2 rounded-lg bg-destructive/10 p-2">
+              <p className="text-sm text-destructive">{err}</p>
+              {fallbackFd && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={confirmFallback}
+                >
+                  اسحب الباقي من باقي الوسائل (محفظة/انستا/فيزا)
+                </Button>
+              )}
+            </div>
+          )}
+          <SubmitButton size="lg" className="w-full">
+            تأكيد
           </SubmitButton>
         </form>
       </DialogContent>

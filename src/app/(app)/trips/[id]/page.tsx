@@ -25,6 +25,7 @@ import {
   COLLECTION_STATUS,
   COLLECTION_STATUS_COLOR,
   methodLabel,
+  VIA_DRIVER,
   type TripStatus,
   type CollectionStatus,
 } from "@/lib/constants";
@@ -80,6 +81,77 @@ export default async function TripDetail({
     orderBy: { name: "asc" },
     select: { id: true, name: true, phone: true },
   });
+
+  // التحويلات والسلف المربوطة بالرحلة (مرنة لو الجدول/العمود غير موجود قبل الترحيل)
+  const [transfers, tripAdvances] = await Promise.all([
+    prisma.tripTransfer
+      .findMany({ where: { tripId: id }, orderBy: { date: "desc" } })
+      .catch(() => [] as { id: string; type: string; amount: number; method: string | null; date: Date; note: string | null }[]),
+    prisma.advance
+      .findMany({ where: { tripId: id }, orderBy: { date: "desc" } })
+      .catch(() => [] as { id: string; direction: string; amount: number; method: string; date: Date; note: string | null }[]),
+  ]);
+
+  // سجل الحركات المالية الموحّد للرحلة
+  type Movement = {
+    id: string;
+    date: Date;
+    label: string;
+    amount: number;
+    tone: "in" | "out" | "neutral";
+    method?: string | null;
+    note?: string | null;
+  };
+  const movements: Movement[] = [];
+  for (const c of trip.collections) {
+    movements.push({
+      id: "c" + c.id,
+      date: c.date,
+      label: c.method === VIA_DRIVER ? "تحصيل عن طريق السواق" : "تحصيل من المقاول",
+      amount: c.amount,
+      tone: "in",
+      method: c.method,
+      note: c.note,
+    });
+  }
+  for (const p of trip.driverPayments) {
+    if (p.method === VIA_DRIVER) continue; // مشمول ضمن «تحصيل عن طريق السواق»
+    movements.push({
+      id: "p" + p.id,
+      date: p.date,
+      label: "سداد للسواق",
+      amount: p.amount,
+      tone: "out",
+      method: p.method,
+      note: p.note,
+    });
+  }
+  for (const t of transfers) {
+    movements.push({
+      id: "t" + t.id,
+      date: t.date,
+      label:
+        t.type === "CONTRACTOR_FROM_DRIVER"
+          ? "المقاول استلف من السواق"
+          : "المقاول استلف من المكتب",
+      amount: t.amount,
+      tone: "neutral",
+      method: t.method,
+      note: t.note,
+    });
+  }
+  for (const a of tripAdvances) {
+    movements.push({
+      id: "a" + a.id,
+      date: a.date,
+      label: a.direction === "OUT" ? "المقاول استلف من المكتب" : "سداد سلفة المقاول",
+      amount: a.amount,
+      tone: a.direction === "OUT" ? "out" : "in",
+      method: a.method,
+      note: a.note,
+    });
+  }
+  movements.sort((x, y) => new Date(y.date).getTime() - new Date(x.date).getTime());
 
   return (
     <>
@@ -305,20 +377,45 @@ export default async function TripDetail({
           </div>
         </Card>
 
-        {/* سجل التحصيل */}
-        {trip.collections.length > 0 && (
-          <PaymentList
-            title="سجل التحصيل من المقاول"
-            items={trip.collections}
-            tone="success"
-          />
-        )}
-        {trip.driverPayments.length > 0 && (
-          <PaymentList
-            title="سجل سداد السواق"
-            items={trip.driverPayments}
-            tone="warning"
-          />
+        {/* سجل الحركات المالية للرحلة */}
+        {movements.length > 0 && (
+          <section>
+            <h2 className="mb-2 text-sm font-bold text-muted-foreground">
+              سجل الحركات المالية
+            </h2>
+            <Card className="divide-y divide-border">
+              {movements.map((m) => (
+                <div
+                  key={m.id}
+                  className="flex items-center justify-between p-3 text-sm"
+                >
+                  <div className="min-w-0">
+                    <div
+                      className={
+                        m.tone === "in"
+                          ? "font-medium text-success"
+                          : m.tone === "out"
+                            ? "font-medium text-warning"
+                            : "font-medium text-primary"
+                      }
+                    >
+                      {m.tone === "in" ? "+" : m.tone === "out" ? "−" : ""}
+                      {formatMoney(m.amount, false)} — {m.label}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatShortDate(m.date)}
+                      {m.method ? ` • ${methodLabel(m.method)}` : ""}
+                    </div>
+                  </div>
+                  {m.note && (
+                    <div className="max-w-[40%] truncate text-xs text-muted-foreground">
+                      {m.note}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </Card>
+          </section>
         )}
       </div>
     </>
@@ -349,37 +446,3 @@ function Money({
   );
 }
 
-function PaymentList({
-  title,
-  items,
-  tone,
-}: {
-  title: string;
-  items: { id: string; amount: number; date: Date; method: string; note: string | null }[];
-  tone: "success" | "warning";
-}) {
-  return (
-    <section>
-      <h2 className="mb-2 text-sm font-bold text-muted-foreground">{title}</h2>
-      <Card className="divide-y divide-border">
-        {items.map((p) => (
-          <div key={p.id} className="flex items-center justify-between p-3 text-sm">
-            <div>
-              <div className={tone === "success" ? "font-medium text-success" : "font-medium text-warning"}>
-                {formatMoney(p.amount)}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {formatShortDate(p.date)} • {methodLabel(p.method)}
-              </div>
-            </div>
-            {p.note && (
-              <div className="max-w-[45%] truncate text-xs text-muted-foreground">
-                {p.note}
-              </div>
-            )}
-          </div>
-        ))}
-      </Card>
-    </section>
-  );
-}

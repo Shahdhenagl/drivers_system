@@ -102,12 +102,29 @@ model Trip {
 
   collections    Collection[]
   driverPayments DriverPayment[]
+  transfers      TripTransfer[]
 
   @@index([contractorId])
   @@index([driverId])
   @@index([date])
   @@index([status])
   @@index([collectionStatus])
+}
+
+// تحويلات مالية على الرحلة بين المكتب/المقاول/السواق
+// type: CONTRACTOR_FROM_DRIVER (المقاول استلف من السواق) | CONTRACTOR_FROM_OFFICE (المقاول استلف من المكتب)
+model TripTransfer {
+  id        String   @id @default(cuid())
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  tripId    String
+  type      String
+  amount    Int // بالقروش
+  method    String?
+  date      DateTime @default(now())
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([tripId])
 }
 
 // تحصيل من المقاول (دفعة)
@@ -157,10 +174,13 @@ model Advance {
   sourceType String? // OFFICE | DRIVER | CONTRACTOR | PARTNER
   sourceId   String?
   sourceName String?
+  // ربط اختياري بالرحلة (مثلاً: المقاول استلف من المكتب على رحلة معيّنة)
+  tripId     String?
   date       DateTime @default(now())
   createdAt  DateTime @default(now())
 
   @@index([partyType, partyId])
+  @@index([tripId])
 }
 
 // ===================== المصروفات =====================

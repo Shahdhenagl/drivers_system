@@ -11,7 +11,7 @@ import {
   deriveCollectionStatus,
   effectiveAmounts,
 } from "@/lib/finance";
-import { VIA_DRIVER } from "@/lib/constants";
+import { VIA_DRIVER, methodLabel } from "@/lib/constants";
 import { sendTelegram } from "@/lib/telegram";
 import { adminNewTripMessage } from "@/lib/messages";
 import { formatWeekday } from "@/lib/format";
@@ -438,6 +438,128 @@ export async function addDriverPayment(tripId: string, formData: FormData) {
   await audit("DRIVER_PAY", "Trip", tripId, { amount, method });
   revalidatePath(`/trips/${tripId}`);
   revalidatePath("/trips");
+  revalidatePath("/finance");
+  revalidatePath("/");
+}
+
+/**
+ * تحويل: المقاول يستلف من السواق.
+ * السواق يقرض المقاول مبلغًا: يزيد سعر المقاول ويزيد مستحق السواق بنفس القيمة.
+ * الربح لا يتغيّر (الطرفان يزيدان بالتساوي). لا يؤثر على الخزنة.
+ */
+export async function contractorBorrowFromDriver(
+  tripId: string,
+  formData: FormData
+) {
+  const amount = toPiastres(String(formData.get("amount") ?? "0"));
+  const dateStr = String(formData.get("date") ?? "");
+  const date = dateStr ? new Date(dateStr) : new Date();
+  const note = String(formData.get("note") ?? "").trim() || null;
+  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
+
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
+    include: { collections: true },
+  });
+  if (!trip) return { error: "الرحلة غير موجودة" };
+  if (trip.status === "CANCELLED")
+    return { error: "الطلب ملغي — لا يمكن إجراء أي عملية عليه" };
+  if (!trip.driverId) return { error: "لا يوجد سواق على الرحلة" };
+
+  const collected = trip.collections.reduce((a, c) => a + c.amount, 0);
+  const newEffContractor =
+    trip.contractorPrice + amount - trip.customerDiscount;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.trip.update({
+      where: { id: tripId },
+      data: {
+        contractorPrice: { increment: amount },
+        driverDue: { increment: amount },
+        collectionStatus: deriveCollectionStatus(newEffContractor, collected),
+      },
+    });
+    await tx.tripTransfer.create({
+      data: { tripId, type: "CONTRACTOR_FROM_DRIVER", amount, date, note },
+    });
+  });
+
+  await audit("TRIP_TRANSFER", "Trip", tripId, {
+    type: "CONTRACTOR_FROM_DRIVER",
+    amount,
+  });
+  revalidatePath(`/trips/${tripId}`);
+  revalidatePath("/trips");
+  revalidatePath("/finance");
+  revalidatePath("/");
+}
+
+/**
+ * تحويل: المقاول يستلف من المكتب (سلفة تُردّ — لا تزيد الربح).
+ * كاش يخرج من الخزنة، ويُسجَّل كسلفة على المقاول (يدين للمكتب) مربوطة بالرحلة.
+ * لا يمسّ سعر المقاول ولا الربح — تُسدَّد لاحقًا من صفحة المقاول.
+ */
+export async function contractorBorrowFromOffice(
+  tripId: string,
+  formData: FormData
+) {
+  const amount = toPiastres(String(formData.get("amount") ?? "0"));
+  const method = String(formData.get("method") ?? "cash");
+  const fallback = String(formData.get("fallback") ?? "") === "1";
+  const dateStr = String(formData.get("date") ?? "");
+  const date = dateStr ? new Date(dateStr) : new Date();
+  const note = String(formData.get("note") ?? "").trim() || null;
+  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
+
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
+    include: { contractor: true },
+  });
+  if (!trip) return { error: "الرحلة غير موجودة" };
+  if (trip.status === "CANCELLED")
+    return { error: "الطلب ملغي — لا يمكن إجراء أي عملية عليه" };
+
+  const plan = await planSpend(method, amount, fallback);
+  if (!plan.ok) {
+    return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const adv = await tx.advance.create({
+      data: {
+        partyType: "CONTRACTOR",
+        partyId: trip.contractorId,
+        amount,
+        direction: "OUT",
+        method,
+        note: note ?? `سلفة على رحلة ${trip.startPoint} ← ${trip.endPoint}`,
+        tripId,
+        date,
+      },
+    });
+    for (const e of plan.entries) {
+      await recordLedger(tx, {
+        type: "ADVANCE_OUT",
+        direction: "OUT",
+        amount: e.amount,
+        method: e.method,
+        description:
+          `المقاول استلف من المكتب — ${trip.contractor.name}` +
+          (plan.entries.length > 1 ? ` (${methodLabel(e.method)})` : ""),
+        refType: "Advance",
+        refId: adv.id,
+        date,
+      });
+    }
+  });
+
+  await audit("TRIP_TRANSFER", "Trip", tripId, {
+    type: "CONTRACTOR_FROM_OFFICE",
+    amount,
+  });
+  revalidatePath(`/trips/${tripId}`);
+  revalidatePath("/trips");
+  revalidatePath(`/contractors/${trip.contractorId}`);
   revalidatePath("/finance");
   revalidatePath("/");
 }
