@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SubmitButton } from "@/components/submit-button";
+import { ContactPickerAvatar } from "@/components/contact-picker";
 import { createContractor, updateContractor } from "./actions";
 
 type Contractor = {
@@ -32,6 +33,8 @@ export function ContractorForm({
   trigger: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [name, setName] = useState(contractor?.name ?? "");
+  const [phone, setPhone] = useState(contractor?.phone ?? "");
   const router = useRouter();
   const isEdit = !!contractor;
 
@@ -50,9 +53,25 @@ export function ContractorForm({
           <DialogTitle>{isEdit ? "تعديل مقاول" : "مقاول جديد"}</DialogTitle>
         </DialogHeader>
         <form action={action} className="space-y-3">
+          {!isEdit && (
+            <div className="flex justify-center pb-1">
+              <ContactPickerAvatar
+                onPick={(n, p) => {
+                  if (n) setName(n);
+                  if (p) setPhone(p);
+                }}
+              />
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="name">الاسم *</Label>
-            <Input id="name" name="name" defaultValue={contractor?.name} required />
+            <Input
+              id="name"
+              name="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="phone">رقم الموبايل *</Label>
@@ -61,10 +80,12 @@ export function ContractorForm({
               name="phone"
               inputMode="tel"
               placeholder="01xxxxxxxxx"
-              defaultValue={contractor?.phone}
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
               required
             />
           </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="altPhone">رقم إضافي (اختياري)</Label>
             <Input

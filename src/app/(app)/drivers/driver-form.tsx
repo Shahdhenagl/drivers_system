@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SubmitButton } from "@/components/submit-button";
+import { ContactPickerAvatar } from "@/components/contact-picker";
 import { createDriver, updateDriver } from "./actions";
 
 type Driver = {
@@ -33,6 +34,8 @@ export function DriverForm({
   trigger: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [name, setName] = useState(driver?.name ?? "");
+  const [phone, setPhone] = useState(driver?.phone ?? "");
   const router = useRouter();
   const isEdit = !!driver;
 
@@ -51,9 +54,25 @@ export function DriverForm({
           <DialogTitle>{isEdit ? "تعديل سواق" : "سواق جديد"}</DialogTitle>
         </DialogHeader>
         <form action={action} className="space-y-3">
+          {!isEdit && (
+            <div className="flex justify-center pb-1">
+              <ContactPickerAvatar
+                onPick={(n, p) => {
+                  if (n) setName(n);
+                  if (p) setPhone(p);
+                }}
+              />
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="name">الاسم *</Label>
-            <Input id="name" name="name" defaultValue={driver?.name} required />
+            <Input
+              id="name"
+              name="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="phone">رقم الموبايل *</Label>
@@ -62,7 +81,8 @@ export function DriverForm({
               name="phone"
               inputMode="tel"
               placeholder="01xxxxxxxxx"
-              defaultValue={driver?.phone}
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
               required
             />
           </div>
