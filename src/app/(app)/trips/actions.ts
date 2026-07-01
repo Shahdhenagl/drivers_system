@@ -32,7 +32,7 @@ export async function createTrip(formData: FormData) {
     await audit("CREATE", "Contractor", c.id, { via: "trip" });
   }
 
-  // السواق (اختياري)
+  // السواق (إجباري)
   let driverId: string | null = get("driverId") || null;
   if (driverId === "__new__") {
     const name = get("newDriverName");
@@ -45,7 +45,7 @@ export async function createTrip(formData: FormData) {
     driverId = dr.id;
     await audit("CREATE", "Driver", dr.id, { via: "trip" });
   }
-  if (driverId === "") driverId = null;
+  if (!driverId) return { error: "اختر السواق" };
 
   const dateStr = get("date");
   const trip = await prisma.trip.create({

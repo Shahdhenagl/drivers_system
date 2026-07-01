@@ -200,10 +200,10 @@ export function TripForm({
 
       {/* السواق */}
       <Card className="space-y-3 p-4">
-        <Label>السواق</Label>
+        <Label>السواق *</Label>
         <Select value={driverId} onValueChange={setDriverId}>
           <SelectTrigger>
-            <SelectValue placeholder="اختر السواق (اختياري)" />
+            <SelectValue placeholder="اختر السواق" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__new__">
@@ -239,7 +239,7 @@ export function TripForm({
         </p>
       )}
 
-      <SubmitButton size="lg" className="w-full" disabled={!contractorId}>
+      <SubmitButton size="lg" className="w-full" disabled={!contractorId || !driverId}>
         حفظ الطلب
       </SubmitButton>
     </form>
