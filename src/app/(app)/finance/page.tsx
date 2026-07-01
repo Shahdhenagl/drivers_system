@@ -25,6 +25,13 @@ export default async function FinancePage() {
     }),
   ]);
 
+  // صافي رأس المال الحقيقي = الخزنة + كل ما لنا − كل ما علينا
+  // (الإيرادات المحصّلة والمصروفات داخلة أصلًا في الخزنة، والآجل ضمن "ما لنا")
+  const receivables =
+    ov.totalDeferred + ov.totalDriverAdvances + ov.totalContractorAdvances;
+  const payables = ov.totalRemainingDrivers + ov.totalDriverAdvancesOwed;
+  const netCapital = treasury.total + receivables - payables;
+
   return (
     <>
       <AppHeader title="الماليات" />
@@ -58,9 +65,31 @@ export default async function FinancePage() {
           </div>
         </section>
 
+        {/* صافي رأس المال الحقيقي — بالعرض */}
+        <section>
+          <Card className="space-y-2 border-2 border-primary/60 bg-primary/5 p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-muted-foreground">
+                رأس المال الحقيقي
+              </span>
+              <span className="text-3xl font-extrabold tabular-nums text-primary">
+                {formatMoney(netCapital)}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+              <span>الخزنة {formatMoney(treasury.total, false)}</span>
+              <span className="text-success">+ لك {formatMoney(receivables, false)}</span>
+              <span className="text-destructive">− عليك {formatMoney(payables, false)}</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              لو حصّلت كل اللي ليك وسدّدت كل اللي عليك — شامل الإيرادات والمصروفات.
+            </p>
+          </Card>
+        </section>
+
         {/* المؤشرات */}
         <section className="grid grid-cols-2 gap-3">
-          <Indicator label="رأس المال" value={ov.capital} />
+          <Indicator label="رأس المال المبدئي" value={ov.capital} />
           <Indicator label="إجمالي الإيرادات" value={ov.totalRevenue} />
           <Indicator label="إجمالي المحصّل" value={ov.totalCollected} tone="success" />
           <Indicator label="إجمالي الآجل" value={ov.totalDeferred} tone="destructive" />
