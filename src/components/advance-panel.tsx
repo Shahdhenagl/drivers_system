@@ -16,14 +16,14 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SubmitButton } from "@/components/submit-button";
 import { MethodSelect } from "@/components/method-select";
-import { addAdvance, editAdvance } from "@/lib/advance-actions";
+import { addAdvance, deleteAdvance, editAdvance } from "@/lib/advance-actions";
 import { playSound } from "@/lib/sounds";
 import { formatMoney, toPiastres, toEgp } from "@/lib/money";
 import { formatShortDate, toDateInput } from "@/lib/format";
 import { methodLabel } from "@/lib/constants";
 import { advanceReminder } from "@/lib/messages";
 import { WhatsAppButton } from "@/components/whatsapp-button";
-import { Wallet, HandCoins, MessageCircle, FileClock, Pencil } from "lucide-react";
+import { Wallet, HandCoins, MessageCircle, FileClock, Pencil, Trash2 } from "lucide-react";
 
 type AdvanceRow = {
   id: string;
@@ -340,6 +340,43 @@ function EditAdvanceDialog({ advance }: { advance: AdvanceRow }) {
 }
 
 /** لوحة السلف/الأرصدة لطرف (سواق أو مقاول) */
+function DeleteAdvanceButton({ advance }: { advance: AdvanceRow }) {
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  async function onDelete() {
+    if (!confirm("حذف هذه المعاملة؟ سيتم حذف تأثيرها من الحسابات والخزنة.")) return;
+    setLoading(true);
+    try {
+      const res = await deleteAdvance(advance.id);
+      if (res?.error) {
+        playSound("error");
+        alert(res.error);
+        return;
+      }
+      playSound("success");
+      router.refresh();
+    } catch {
+      playSound("error");
+      alert("تعذّر حذف المعاملة");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onDelete}
+      disabled={loading}
+      className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+      aria-label="حذف المعاملة"
+    >
+      <Trash2 className="h-4 w-4" />
+    </button>
+  );
+}
+
 export function AdvancePanel({
   partyType,
   partyId,
@@ -442,8 +479,9 @@ export function AdvancePanel({
                     {a.note}
                   </div>
                 )}
-                <div className="print:hidden">
+                <div className="flex items-center print:hidden">
                   <EditAdvanceDialog advance={a} />
+                  <DeleteAdvanceButton advance={a} />
                 </div>
               </div>
             </div>

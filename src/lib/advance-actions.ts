@@ -207,3 +207,31 @@ export async function editAdvance(id: string, formData: FormData) {
   revalidatePath(base);
   revalidatePath("/finance");
 }
+
+/** حذف حركة سلفة/رصيد ومعها قيود دفتر الأستاذ المرتبطة بها، فتتحدث الخزنة والأرصدة تلقائيًا. */
+export async function deleteAdvance(id: string) {
+  const adv = await prisma.advance.findUnique({ where: { id } });
+  if (!adv) return { error: "الحركة غير موجودة" };
+
+  await prisma.$transaction(async (tx) => {
+    await tx.ledgerEntry.deleteMany({ where: { refType: "Advance", refId: id } });
+    await tx.advance.delete({ where: { id } });
+  });
+
+  await audit(
+    "DELETE",
+    adv.partyType === "DRIVER" ? "Driver" : "Contractor",
+    adv.partyId,
+    {
+      advanceId: id,
+      amount: adv.amount,
+      direction: adv.direction,
+      method: adv.method,
+    }
+  );
+
+  const base = adv.partyType === "DRIVER" ? "/drivers" : "/contractors";
+  revalidatePath(`${base}/${adv.partyId}`);
+  revalidatePath(base);
+  revalidatePath("/finance");
+}
