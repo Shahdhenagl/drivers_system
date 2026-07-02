@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { recordLedger, planSpend } from "@/lib/finance";
+import { recordLedger, planSpend, effectiveAmounts } from "@/lib/finance";
 import { toPiastres } from "@/lib/money";
 
 export async function createDriver(formData: FormData) {
@@ -88,7 +88,7 @@ export async function payDriverDues(driverId: string, formData: FormData) {
   let remainingToPay = amount;
   const totalDue = trips.reduce((a, t) => {
     const paid = t.driverPayments.reduce((s, p) => s + p.amount, 0);
-    return a + Math.max(t.driverDue - paid, 0);
+    return a + Math.max(effectiveAmounts(t).driver - paid, 0);
   }, 0);
 
   // قاعدة: لا يُدفع أكثر من المتبقي للسواق
@@ -106,7 +106,7 @@ export async function payDriverDues(driverId: string, formData: FormData) {
     for (const t of trips) {
       if (remainingToPay <= 0) break;
       const paid = t.driverPayments.reduce((s, p) => s + p.amount, 0);
-      const rem = Math.max(t.driverDue - paid, 0);
+      const rem = Math.max(effectiveAmounts(t).driver - paid, 0);
       if (rem <= 0) continue;
       const pay = Math.min(rem, remainingToPay);
       const dp = await tx.driverPayment.create({

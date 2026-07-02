@@ -9,6 +9,7 @@ import { PrintButton } from "@/components/print-button";
 import { ContractorForm } from "../contractor-form";
 import { DeleteContractorButton } from "../delete-contractor-button";
 import { AdvancePanel } from "@/components/advance-panel";
+import { CollectAllForm } from "./collect-all-form";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate, startOfDay, endOfDay, addDays } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
@@ -204,6 +205,13 @@ export default async function ContractorProfile({
           <SummaryBox label="إجمالي الآجل" value={totalDeferred} tone="destructive" />
           <SummaryBox label="أرباحنا منه" value={totalProfit} tone="primary" />
         </div>
+
+        {/* تحصيل الكل */}
+        {totalDeferred > 0 && (
+          <div className="print:hidden">
+            <CollectAllForm contractorId={c.id} remaining={totalDeferred} />
+          </div>
+        )}
 
         {/* السلف والأرصدة */}
         <AdvancePanel
