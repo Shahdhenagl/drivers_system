@@ -97,6 +97,17 @@ export async function getFinanceOverview() {
   const totalDriverAdvancesOwed = weOweDrivers;
   const totalContractorAdvances = contractorOwesUs;
 
+  // الربح المحصّل نقدًا (القابل للتوزيع فعليًا):
+  // الجزء من الربح النازل كاش في الخزنة = الربح الدفتري − ما لنا (آجل/سلف) + ما علينا
+  const receivables =
+    totalDeferred + totalDriverAdvances + totalContractorAdvances;
+  const payables = totalRemainingDrivers + totalDriverAdvancesOwed;
+  const cashProfit = distributableProfit - receivables + payables;
+  const realizedProfit = Math.max(
+    0,
+    Math.min(distributableProfit, cashProfit)
+  );
+
   return {
     capital,
     totalRevenue,
@@ -109,6 +120,7 @@ export async function getFinanceOverview() {
     netProfit,
     totalPartnerWithdrawals,
     distributableProfit,
+    realizedProfit,
     totalPenaltyRevenue,
     totalDriverAdvances,
     totalDriverAdvancesOwed,

@@ -55,7 +55,7 @@ export default async function PartnersPage() {
           <div className="space-y-2.5">
             {partners.map((p) => {
               const entitlement = Math.round(
-                (ov.netProfit * p.sharePercent) / 100
+                (ov.realizedProfit * p.sharePercent) / 100
               );
               const withdrawn = p.withdrawals.reduce((a, w) => a + w.amount, 0);
               const balance = entitlement - withdrawn;
@@ -90,7 +90,7 @@ export default async function PartnersPage() {
         )}
 
         {partners.length > 0 && (
-          <DistributeForm distributableProfit={ov.distributableProfit} />
+          <DistributeForm distributableProfit={ov.realizedProfit} />
         )}
       </div>
     </>
