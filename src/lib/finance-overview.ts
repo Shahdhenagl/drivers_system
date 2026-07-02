@@ -97,15 +97,12 @@ export async function getFinanceOverview() {
   const totalDriverAdvancesOwed = weOweDrivers;
   const totalContractorAdvances = contractorOwesUs;
 
-  // الربح المحصّل نقدًا (القابل للتوزيع فعليًا):
-  // الجزء من الربح النازل كاش في الخزنة = الربح الدفتري − ما لنا (آجل/سلف) + ما علينا
-  const receivables =
-    totalDeferred + totalDriverAdvances + totalContractorAdvances;
-  const payables = totalRemainingDrivers + totalDriverAdvancesOwed;
-  const cashProfit = distributableProfit - receivables + payables;
+  // الربح المحصّل نقدًا (القابل للتوزيع فعليًا) — من عمليات الرحلات فقط،
+  // معزولًا عن رأس المال والسلف: المحصّل − مستحقات السواقين − المصروفات − ما وُزّع على الشركاء.
+  // (السواقون تُحجَز مستحقاتهم كاملةً، فلا يُوزَّع ربح قبل تغطية ما عليهم.)
   const realizedProfit = Math.max(
     0,
-    Math.min(distributableProfit, cashProfit)
+    totalCollected - totalDriverDue - totalExpenses - totalPartnerWithdrawals
   );
 
   return {
