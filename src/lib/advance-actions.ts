@@ -7,7 +7,7 @@ import { recordLedger, planSpend } from "@/lib/finance";
 import { toPiastres } from "@/lib/money";
 import { methodLabel } from "@/lib/constants";
 import { sendTelegram } from "@/lib/telegram";
-import { adminAdvanceMessage } from "@/lib/messages";
+import { adminAdvanceDeleteMessage, adminAdvanceMessage } from "@/lib/messages";
 
 async function partyName(
   partyType: string,
@@ -213,6 +213,10 @@ export async function deleteAdvance(id: string) {
   const adv = await prisma.advance.findUnique({ where: { id } });
   if (!adv) return { error: "الحركة غير موجودة" };
 
+  const name = await partyName(adv.partyType, adv.partyId);
+  if (!name) return { error: "الطرف غير موجود" };
+  const pLabel = adv.partyType === "DRIVER" ? "سواق" : "مقاول";
+
   await prisma.$transaction(async (tx) => {
     await tx.ledgerEntry.deleteMany({ where: { refType: "Advance", refId: id } });
     await tx.advance.delete({ where: { id } });
@@ -229,6 +233,24 @@ export async function deleteAdvance(id: string) {
       method: adv.method,
     }
   );
+
+  try {
+    const balance = await advanceBalance(adv.partyType, adv.partyId);
+    await sendTelegram(
+      adminAdvanceDeleteMessage({
+        partyLabel: pLabel,
+        name,
+        amount: adv.amount,
+        method: adv.method,
+        note: adv.note,
+        direction: adv.direction,
+        isOpening: adv.isOpening,
+        balance,
+      })
+    );
+  } catch {
+    // تجاهل فشل الإشعار
+  }
 
   const base = adv.partyType === "DRIVER" ? "/drivers" : "/contractors";
   revalidatePath(`${base}/${adv.partyId}`);

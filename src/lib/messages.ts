@@ -257,6 +257,41 @@ export function adminAdvanceMessage(d: {
   );
 }
 
+/** إشعار للأدمن بحذف حركة سلفة/رصيد */
+export function adminAdvanceDeleteMessage(d: {
+  partyLabel: string;
+  name: string;
+  amount: number;
+  method: string;
+  note?: string | null;
+  direction: string;
+  isOpening: boolean;
+  balance: number;
+}): string {
+  const kind = d.isOpening
+    ? "رصيد افتتاحي"
+    : d.direction === "OUT"
+      ? "صرف سلفة"
+      : "استلام/سداد";
+  const effect =
+    d.direction === "OUT"
+      ? `كانت خارجة من الخزنة: ${formatMoney(d.amount)}`
+      : `كانت داخلة للخزنة: ${formatMoney(d.amount)}`;
+  return (
+    [
+      "🗑️ <b>حذف معاملة سلفة/رصيد</b>",
+      `👤 ${d.partyLabel}: ${d.name}`,
+      `🧾 النوع: ${kind}`,
+      `💵 ${effect}`,
+      `💳 الطريقة: ${methodLabel(d.method)}`,
+      d.note ? `📝 ${d.note}` : "",
+      balanceLabel(d.balance),
+    ]
+      .filter(Boolean)
+      .join("\n") + SIGNATURE
+  );
+}
+
 /** تقرير توزيع أرباح على الشركاء (تيليجرام) */
 export function adminDistributionMessage(d: {
   total: number;
