@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { TripActions } from "./trip-actions";
 import { EditTripForm } from "./edit-trip";
 import { DeleteTripButton } from "./delete-trip-button";
+import { MovementActions, type MovementActionData } from "./movement-actions";
 import { tripFinancials } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate } from "@/lib/format";
@@ -95,6 +96,7 @@ export default async function TripDetail({
   // سجل الحركات المالية الموحّد للرحلة
   type Movement = {
     id: string;
+    kind: MovementActionData["kind"];
     date: Date;
     label: string;
     amount: number;
@@ -105,7 +107,8 @@ export default async function TripDetail({
   const movements: Movement[] = [];
   for (const c of trip.collections) {
     movements.push({
-      id: "c" + c.id,
+      id: c.id,
+      kind: "collection",
       date: c.date,
       label: c.method === VIA_DRIVER ? "تحصيل عن طريق السواق" : "تحصيل من المقاول",
       amount: c.amount,
@@ -117,7 +120,8 @@ export default async function TripDetail({
   for (const p of trip.driverPayments) {
     if (p.method === VIA_DRIVER) continue; // مشمول ضمن «تحصيل عن طريق السواق»
     movements.push({
-      id: "p" + p.id,
+      id: p.id,
+      kind: "driverPayment",
       date: p.date,
       label: "سداد للسواق",
       amount: p.amount,
@@ -128,7 +132,8 @@ export default async function TripDetail({
   }
   for (const t of transfers) {
     movements.push({
-      id: "t" + t.id,
+      id: t.id,
+      kind: "transfer",
       date: t.date,
       label:
         t.type === "CONTRACTOR_FROM_DRIVER"
@@ -142,7 +147,8 @@ export default async function TripDetail({
   }
   for (const a of tripAdvances) {
     movements.push({
-      id: "a" + a.id,
+      id: a.id,
+      kind: "advance",
       date: a.date,
       label: a.direction === "OUT" ? "المقاول استلف من المكتب" : "سداد سلفة المقاول",
       amount: a.amount,
@@ -386,7 +392,7 @@ export default async function TripDetail({
             <Card className="divide-y divide-border">
               {movements.map((m) => (
                 <div
-                  key={m.id}
+                  key={`${m.kind}-${m.id}`}
                   className="flex items-center justify-between p-3 text-sm"
                 >
                   <div className="min-w-0">
@@ -407,11 +413,14 @@ export default async function TripDetail({
                       {m.method ? ` • ${methodLabel(m.method)}` : ""}
                     </div>
                   </div>
-                  {m.note && (
-                    <div className="max-w-[40%] truncate text-xs text-muted-foreground">
-                      {m.note}
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {m.note && (
+                      <div className="max-w-[120px] truncate text-xs text-muted-foreground sm:max-w-[180px]">
+                        {m.note}
+                      </div>
+                    )}
+                    <MovementActions movement={m} />
+                  </div>
                 </div>
               ))}
             </Card>
@@ -445,4 +454,3 @@ function Money({
     </div>
   );
 }
-
