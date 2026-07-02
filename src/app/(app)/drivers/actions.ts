@@ -5,7 +5,9 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { recordLedger, planSpend, effectiveAmounts } from "@/lib/finance";
+import { advanceBalance } from "@/lib/advance-actions";
 import { toPiastres } from "@/lib/money";
+import { OFFSET } from "@/lib/constants";
 
 export async function createDriver(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
@@ -69,7 +71,11 @@ export async function deleteDriver(id: string) {
   redirect("/drivers");
 }
 
-/** سداد مستحقات السواق — يوزَّع على الرحلات الأقدم أولًا */
+/**
+ * سداد مستحقات السواق — يوزَّع على الرحلات الأقدم أولًا.
+ * أي زيادة عن إجمالي المستحق تُسجَّل تلقائيًا كسلفة على السواق (يدين بها لنا).
+ * مثال: مستحقه 2000 وأعطيته 2500 → 2000 سداد مشاوير + 500 سلفة.
+ */
 export async function payDriverDues(driverId: string, formData: FormData) {
   const amount = toPiastres(String(formData.get("amount") ?? "0"));
   const method = String(formData.get("method") ?? "cash");
@@ -85,30 +91,30 @@ export async function payDriverDues(driverId: string, formData: FormData) {
     include: { driverPayments: true },
   });
 
-  let remainingToPay = amount;
   const totalDue = trips.reduce((a, t) => {
     const paid = t.driverPayments.reduce((s, p) => s + p.amount, 0);
     return a + Math.max(effectiveAmounts(t).driver - paid, 0);
   }, 0);
 
-  // قاعدة: لا يُدفع أكثر من المتبقي للسواق
-  if (amount > totalDue) {
-    return { error: "المبلغ أكبر من إجمالي المتبقي للسواق" };
-  }
+  // يغطّي المبلغ المستحقات أولًا، والزيادة تُسجَّل سلفة
+  const duePortion = Math.min(amount, totalDue);
+  const advancePortion = amount - duePortion;
 
-  // منع النزول تحت الصفر وحفظ رأس المال في الكاش
+  // منع النزول تحت الصفر (كامل المبلغ يخرج كاش)
   const plan = await planSpend(method, amount, false);
   if (!plan.ok) {
     return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
   }
 
   await prisma.$transaction(async (tx) => {
+    let left = duePortion;
     for (const t of trips) {
-      if (remainingToPay <= 0) break;
+      if (left <= 0) break;
       const paid = t.driverPayments.reduce((s, p) => s + p.amount, 0);
       const rem = Math.max(effectiveAmounts(t).driver - paid, 0);
       if (rem <= 0) continue;
-      const pay = Math.min(rem, remainingToPay);
+      const pay = Math.min(rem, left);
+      left -= pay;
       const dp = await tx.driverPayment.create({
         data: { tripId: t.id, driverId, amount: pay, method, date, note },
       });
@@ -122,11 +128,94 @@ export async function payDriverDues(driverId: string, formData: FormData) {
         refId: dp.id,
         date,
       });
-      remainingToPay -= pay;
+    }
+    // الزيادة عن المستحق → سلفة على السواق
+    if (advancePortion > 0) {
+      const adv = await tx.advance.create({
+        data: {
+          partyType: "DRIVER",
+          partyId: driverId,
+          amount: advancePortion,
+          direction: "OUT",
+          method,
+          note: note ?? "سلفة (زيادة عن المستحق)",
+          date,
+        },
+      });
+      await recordLedger(tx, {
+        type: "ADVANCE_OUT",
+        direction: "OUT",
+        amount: advancePortion,
+        method,
+        description: "سلفة سواق (زيادة عن المستحق)",
+        refType: "Advance",
+        refId: adv.id,
+        date,
+      });
     }
   });
 
-  await audit("PAY", "Driver", driverId, { amount, method });
+  await audit("PAY", "Driver", driverId, { amount, method, advancePortion });
+  revalidatePath(`/drivers/${driverId}`);
+  revalidatePath("/drivers");
+  revalidatePath("/finance");
+}
+
+/**
+ * مقاصّة: خصم سلفة السواق من مستحقاته (بدون نقدية).
+ * يقلّل مستحقاته وسلفته بنفس المبلغ = min(المستحق، السلفة).
+ */
+export async function offsetDriverAdvance(driverId: string) {
+  const trips = await prisma.trip.findMany({
+    where: { driverId, status: { not: "CANCELLED" } },
+    orderBy: { date: "asc" },
+    include: { driverPayments: true },
+  });
+  const totalDue = trips.reduce((a, t) => {
+    const paid = t.driverPayments.reduce((s, p) => s + p.amount, 0);
+    return a + Math.max(effectiveAmounts(t).driver - paid, 0);
+  }, 0);
+  if (totalDue <= 0) return { error: "لا توجد مستحقات للسواق" };
+
+  const debt = await advanceBalance("DRIVER", driverId); // موجب = عليه سلفة لنا
+  if (debt <= 0) return { error: "لا توجد سلفة على السواق" };
+
+  const offset = Math.min(totalDue, debt);
+
+  await prisma.$transaction(async (tx) => {
+    // خصم من المستحقات (بدون خزنة)
+    let left = offset;
+    for (const t of trips) {
+      if (left <= 0) break;
+      const paid = t.driverPayments.reduce((s, p) => s + p.amount, 0);
+      const rem = Math.max(effectiveAmounts(t).driver - paid, 0);
+      if (rem <= 0) continue;
+      const pay = Math.min(rem, left);
+      left -= pay;
+      await tx.driverPayment.create({
+        data: {
+          tripId: t.id,
+          driverId,
+          amount: pay,
+          method: OFFSET,
+          note: "خصم من السلفة",
+        },
+      });
+    }
+    // خفض السلفة (استلام) بنفس المبلغ بدون خزنة
+    await tx.advance.create({
+      data: {
+        partyType: "DRIVER",
+        partyId: driverId,
+        amount: offset,
+        direction: "IN",
+        method: OFFSET,
+        note: "سداد سلفة من مستحقاته",
+      },
+    });
+  });
+
+  await audit("OFFSET", "Driver", driverId, { offset });
   revalidatePath(`/drivers/${driverId}`);
   revalidatePath("/drivers");
   revalidatePath("/finance");

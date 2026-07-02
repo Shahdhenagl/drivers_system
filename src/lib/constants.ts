@@ -45,10 +45,13 @@ export const PAYMENT_METHOD_KEYS = Object.keys(PAYMENT_METHODS) as PaymentMethod
 
 // طريقة خاصة: التحصيل عن طريق السواق (لا تدخل الخزنة)
 export const VIA_DRIVER = "via_driver";
+// طريقة خاصة: مقاصّة مستحقات السواق مع سلفته (لا تدخل الخزنة)
+export const OFFSET = "offset";
 
 /** اسم طريقة الدفع للعرض (يشمل الطرق الخاصة) */
 export function methodLabel(m: string): string {
   if (m === VIA_DRIVER) return "عن طريق السواق";
+  if (m === OFFSET) return "خصم من السلفة";
   return PAYMENT_METHODS[m as PaymentMethod] ?? m;
 }
 

@@ -196,7 +196,11 @@ export default async function DriverProfile({
         </div>
 
         <div className="print:hidden">
-          <PayDriverForm driverId={d.id} remaining={remaining} />
+          <PayDriverForm
+            driverId={d.id}
+            remaining={remaining}
+            advanceBalance={advanceBalance}
+          />
         </div>
 
         {/* السلف والأرصدة */}

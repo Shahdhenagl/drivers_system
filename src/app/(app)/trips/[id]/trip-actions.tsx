@@ -237,7 +237,12 @@ function DriverPayDialog({
         <p className="mb-3 rounded-lg bg-muted p-2 text-center text-sm">
           المتبقي: <span className="font-bold text-warning">{formatMoney(remaining)}</span>
         </p>
-        <PaymentFields action={action} max={toEgp(remaining)} err={err} submit="تأكيد السداد" />
+        <PaymentFields
+          action={action}
+          err={err}
+          submit="تأكيد السداد"
+          hint="أي زيادة عن المتبقي تُسجَّل تلقائيًا كسلفة على السواق."
+        />
       </DialogContent>
     </Dialog>
   );
@@ -642,11 +647,13 @@ function PaymentFields({
   max,
   err,
   submit,
+  hint,
 }: {
   action: (fd: FormData) => Promise<void>;
-  max: number;
+  max?: number;
   err: string;
   submit: string;
+  hint?: string;
 }) {
   return (
     <form action={action} className="space-y-3">
@@ -663,6 +670,7 @@ function PaymentFields({
           required
           autoFocus
         />
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
       <div className="space-y-1.5">
         <Label>طريقة الدفع</Label>
