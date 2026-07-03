@@ -168,7 +168,7 @@ export function TripForm({
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="driverTip">اكرامية للسواق</Label>
+          <Label htmlFor="driverTip">زيادة للسواق</Label>
           <Input
             id="driverTip"
             name="driverTip"
@@ -182,7 +182,7 @@ export function TripForm({
           </p>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="customerDiscount">خصم على العميل</Label>
+          <Label htmlFor="customerDiscount">خصم للمقاول</Label>
           <Input
             id="customerDiscount"
             name="customerDiscount"
@@ -192,7 +192,21 @@ export function TripForm({
             placeholder="0"
           />
           <p className="text-[11px] text-muted-foreground">
-            يقلّل سعر العميل ويُخصم من ربحك
+            يقلّل سعر المقاول ويُخصم من ربحك
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="contractorSurcharge">زيادة على المقاول</Label>
+          <Input
+            id="contractorSurcharge"
+            name="contractorSurcharge"
+            type="number"
+            step="0.01"
+            inputMode="decimal"
+            placeholder="0"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            تزيد سعر المقاول وتزيد ربحك
           </p>
         </div>
       </Card>

@@ -18,6 +18,7 @@ export async function getFinanceOverview() {
           driverDue: true,
           driverTip: true,
           customerDiscount: true,
+          contractorSurcharge: true,
           contractorPenalty: true,
           driverPenalty: true,
         },

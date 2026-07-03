@@ -126,8 +126,9 @@ export type TripAmounts = {
   status: string;
   contractorPrice: number;
   driverDue: number;
-  driverTip?: number | null; // اكرامية للسواق
-  customerDiscount?: number | null; // خصم على العميل
+  driverTip?: number | null; // زيادة للسواق
+  customerDiscount?: number | null; // خصم للمقاول
+  contractorSurcharge?: number | null; // زيادة على المقاول
   contractorPenalty?: number | null;
   driverPenalty?: number | null;
 };
@@ -145,7 +146,10 @@ export function effectiveAmounts(trip: TripAmounts) {
     };
   }
   return {
-    contractor: trip.contractorPrice - (trip.customerDiscount ?? 0),
+    contractor:
+      trip.contractorPrice -
+      (trip.customerDiscount ?? 0) +
+      (trip.contractorSurcharge ?? 0),
     driver: trip.driverDue + (trip.driverTip ?? 0),
   };
 }

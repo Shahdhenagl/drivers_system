@@ -184,6 +184,7 @@ export default async function TripDetail({
               driverDue: trip.driverDue,
               driverTip: trip.driverTip,
               customerDiscount: trip.customerDiscount,
+              contractorSurcharge: trip.contractorSurcharge,
               driverId: trip.driverId,
             }}
             drivers={drivers}
@@ -280,11 +281,13 @@ export default async function TripDetail({
             )}
           </div>
           {st !== "CANCELLED" &&
-            (trip.driverTip > 0 || trip.customerDiscount > 0) && (
+            (trip.driverTip > 0 ||
+              trip.customerDiscount > 0 ||
+              trip.contractorSurcharge > 0) && (
               <div className="space-y-1 rounded-lg bg-muted/60 p-2 text-xs">
                 {trip.driverTip > 0 && (
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">اكرامية للسواق</span>
+                    <span className="text-muted-foreground">زيادة للسواق</span>
                     <span className="font-semibold text-warning">
                       +{formatMoney(trip.driverTip, false)} — السواق يقبض{" "}
                       {formatMoney(fin.effDriver, false)}
@@ -293,9 +296,18 @@ export default async function TripDetail({
                 )}
                 {trip.customerDiscount > 0 && (
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">خصم على العميل</span>
+                    <span className="text-muted-foreground">خصم للمقاول</span>
                     <span className="font-semibold text-destructive">
-                      −{formatMoney(trip.customerDiscount, false)} — العميل يدفع{" "}
+                      −{formatMoney(trip.customerDiscount, false)} — المقاول يدفع{" "}
+                      {formatMoney(fin.effContractor, false)}
+                    </span>
+                  </div>
+                )}
+                {trip.contractorSurcharge > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">زيادة على المقاول</span>
+                    <span className="font-semibold text-success">
+                      +{formatMoney(trip.contractorSurcharge, false)} — المقاول يدفع{" "}
                       {formatMoney(fin.effContractor, false)}
                     </span>
                   </div>
@@ -341,7 +353,11 @@ export default async function TripDetail({
           <div className="text-sm font-bold text-muted-foreground">إرسال واتساب</div>
           <div className="grid grid-cols-2 gap-2">
             <WhatsAppButton
-              phone={trip.contractor.phone}
+              phones={[
+                trip.contractor.phone,
+                trip.contractor.altPhone,
+                trip.contractor.phone3,
+              ]}
               message={contractorMessage(msgData)}
               variant="success"
               size="sm"
@@ -349,7 +365,11 @@ export default async function TripDetail({
               <Send className="h-4 w-4" /> للمقاول
             </WhatsAppButton>
             <WhatsAppButton
-              phone={trip.driver?.phone ?? ""}
+              phones={
+                trip.driver
+                  ? [trip.driver.phone, trip.driver.altPhone, trip.driver.phone3]
+                  : []
+              }
               message={trip.driver ? driverMessage(msgData) : ""}
               variant="success"
               size="sm"
@@ -359,7 +379,7 @@ export default async function TripDetail({
             </WhatsAppButton>
             {trip.driver && (
               <WhatsAppButton
-                phone={trip.driver.phone}
+                phones={[trip.driver.phone, trip.driver.altPhone, trip.driver.phone3]}
                 message={driverReminder(msgData)}
                 variant="outline"
                 size="sm"
@@ -369,7 +389,11 @@ export default async function TripDetail({
             )}
             {fin.remainingCollection > 0 && (
               <WhatsAppButton
-                phone={trip.contractor.phone}
+                phones={[
+                  trip.contractor.phone,
+                  trip.contractor.altPhone,
+                  trip.contractor.phone3,
+                ]}
                 message={collectionReminder(
                   msgData,
                   formatMoney(fin.remainingCollection)

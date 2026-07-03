@@ -64,6 +64,7 @@ export async function createTrip(formData: FormData) {
       driverDue: toPiastres(get("driverDue") || "0"),
       driverTip: toPiastres(get("driverTip") || "0"),
       customerDiscount: toPiastres(get("customerDiscount") || "0"),
+      contractorSurcharge: toPiastres(get("contractorSurcharge") || "0"),
       notes: get("notes") || null,
       status: "NEW",
       collectionStatus: "NONE",
@@ -104,6 +105,7 @@ export async function updateTrip(id: string, formData: FormData) {
       driverDue: toPiastres(get("driverDue") || "0"),
       driverTip: toPiastres(get("driverTip") || "0"),
       customerDiscount: toPiastres(get("customerDiscount") || "0"),
+      contractorSurcharge: toPiastres(get("contractorSurcharge") || "0"),
       driverId: get("driverId") || null,
     },
   });
