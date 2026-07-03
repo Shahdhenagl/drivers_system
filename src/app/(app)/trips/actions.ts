@@ -13,7 +13,7 @@ import {
 } from "@/lib/finance";
 import { VIA_DRIVER, methodLabel } from "@/lib/constants";
 import { sendTelegram } from "@/lib/telegram";
-import { adminNewTripMessage } from "@/lib/messages";
+import { adminExternalAdvanceMessage, adminNewTripMessage } from "@/lib/messages";
 import { formatWeekday } from "@/lib/format";
 
 /** إنشاء رحلة جديدة — يدعم إضافة مقاول/سواق أثناء الإنشاء */
@@ -241,7 +241,7 @@ export async function cancelTrip(id: string, formData: FormData) {
 
   const trip = await prisma.trip.findUnique({
     where: { id },
-    include: { collections: true, driverPayments: true },
+    include: { collections: true, driverPayments: true, contractor: true, driver: true },
   });
   if (!trip) return { error: "الرحلة غير موجودة" };
   if (trip.status === "CANCELLED") return { error: "الطلب ملغي بالفعل" };
@@ -448,7 +448,7 @@ export async function collectViaDriver(tripId: string, formData: FormData) {
 
   const trip = await prisma.trip.findUnique({
     where: { id: tripId },
-    include: { collections: true, driverPayments: true },
+    include: { collections: true, driverPayments: true, contractor: true, driver: true },
   });
   if (!trip) return { error: "الرحلة غير موجودة" };
   if (trip.status === "CANCELLED") {
@@ -465,19 +465,59 @@ export async function collectViaDriver(tripId: string, formData: FormData) {
   if (amount > remainingCollection) {
     return { error: "المبلغ أكبر من المتبقي على المقاول" };
   }
-  if (amount > remainingDriver) {
-    return { error: "المبلغ أكبر من مستحق السواق المتبقي لهذا الطلب" };
-  }
+  const driverPayAmount = Math.min(amount, Math.max(remainingDriver, 0));
+  const externalDebt = Math.max(amount - Math.max(remainingDriver, 0), 0);
+  const externalRows: {
+    borrowerName: string;
+    borrowerType: string;
+    lenderName: string;
+    lenderType: string;
+    amount: number;
+    date: Date;
+    note: string | null;
+    settledAt: Date | null;
+  }[] = [];
 
   await prisma.$transaction(async (tx) => {
     // تحصيل من المقاول (بطريقة خاصة لا تدخل الخزنة)
-    await tx.collection.create({
+    const col = await tx.collection.create({
       data: { tripId, amount, method: VIA_DRIVER, date, note },
     });
-    // خصم من مستحق السواق (بنفس الطريقة الخاصة)
-    await tx.driverPayment.create({
-      data: { tripId, driverId: trip.driverId!, amount, method: VIA_DRIVER, date, note },
+    const marker = viaDriverMarker(col.id);
+    const markedNote = `${note} ${marker}`;
+    await tx.collection.update({
+      where: { id: col.id },
+      data: { note: markedNote },
     });
+    // خصم من مستحق السواق (بنفس الطريقة الخاصة)
+    if (driverPayAmount > 0) {
+      await tx.driverPayment.create({
+        data: {
+          tripId,
+          driverId: trip.driverId!,
+          amount: driverPayAmount,
+          method: VIA_DRIVER,
+          date,
+          note: markedNote,
+        },
+      });
+    }
+    if (externalDebt > 0 && trip.driver) {
+      const row = await tx.externalAdvance.create({
+        data: {
+          borrowerType: "DRIVER",
+          borrowerId: trip.driverId!,
+          borrowerName: trip.driver.name,
+          lenderType: "CONTRACTOR",
+          lenderId: trip.contractorId,
+          lenderName: trip.contractor.name,
+          amount: externalDebt,
+          date,
+          note: `زيادة تحصيل عن طريق السواق لرحلة ${trip.startPoint} ← ${trip.endPoint} ${marker}`,
+        },
+      });
+      externalRows.push(row);
+    }
     // تحديث حالة التحصيل
     const newStatus = deriveCollectionStatus(eff.contractor, collected + amount);
     await tx.trip.update({
@@ -486,9 +526,31 @@ export async function collectViaDriver(tripId: string, formData: FormData) {
     });
   });
 
-  await audit("COLLECT_VIA_DRIVER", "Trip", tripId, { amount });
+  await audit("COLLECT_VIA_DRIVER", "Trip", tripId, { amount, externalDebt });
+  const createdExternalRow = externalRows[0];
+  if (createdExternalRow) {
+    try {
+      await sendTelegram(
+        adminExternalAdvanceMessage({
+          action: "CREATE",
+          borrowerName: createdExternalRow.borrowerName,
+          borrowerType: createdExternalRow.borrowerType,
+          lenderName: createdExternalRow.lenderName,
+          lenderType: createdExternalRow.lenderType,
+          amount: createdExternalRow.amount,
+          date: createdExternalRow.date,
+          note: createdExternalRow.note,
+          settledAt: createdExternalRow.settledAt,
+        })
+      );
+    } catch {
+      // تجاهل فشل إشعار البوت
+    }
+  }
   revalidatePath(`/trips/${tripId}`);
   revalidatePath("/trips");
+  revalidatePath(`/drivers/${trip.driverId}`);
+  revalidatePath(`/contractors/${trip.contractorId}`);
   revalidatePath("/finance");
   revalidatePath("/");
 }
@@ -704,6 +766,14 @@ async function revalidateTripMoney(tripId: string, contractorId?: string | null)
   revalidatePath("/");
 }
 
+function viaDriverMarker(collectionId: string) {
+  return `[via-driver:${collectionId}]`;
+}
+
+function hasViaDriverMarker(note: string | null | undefined, collectionId: string) {
+  return (note ?? "").includes(viaDriverMarker(collectionId));
+}
+
 export async function updateTripCollection(id: string, formData: FormData) {
   const amount = toPiastres(String(formData.get("amount") ?? "0"));
   const method = String(formData.get("method") ?? "cash");
@@ -715,7 +785,14 @@ export async function updateTripCollection(id: string, formData: FormData) {
   const current = await prisma.collection.findUnique({
     where: { id },
     include: {
-      trip: { include: { collections: true } },
+      trip: {
+        include: {
+          collections: true,
+          driverPayments: true,
+          contractor: true,
+          driver: true,
+        },
+      },
     },
   });
   if (!current) return { error: "حركة التحصيل غير موجودة" };
@@ -728,9 +805,35 @@ export async function updateTripCollection(id: string, formData: FormData) {
   if (otherCollected + amount > eff.contractor) {
     return { error: "المبلغ يتجاوز قيمة الرحلة المتبقية" };
   }
+  const marker = viaDriverMarker(id);
+  const linkedPayment =
+    current.trip.driverPayments.find((p) => hasViaDriverMarker(p.note, id)) ??
+    current.trip.driverPayments.find(
+      (p) =>
+        current.method === VIA_DRIVER &&
+        p.method === VIA_DRIVER &&
+        p.amount === current.amount &&
+        +new Date(p.date) === +new Date(current.date) &&
+        p.note === current.note
+    );
+  const otherPaid = current.trip.driverPayments
+    .filter((p) => p.id !== linkedPayment?.id)
+    .reduce((a, p) => a + p.amount, 0);
+  const remainingDriverBefore = Math.max(eff.driver - otherPaid, 0);
+  const driverPayAmount =
+    method === VIA_DRIVER ? Math.min(amount, remainingDriverBefore) : 0;
+  const externalDebt =
+    method === VIA_DRIVER ? Math.max(amount - remainingDriverBefore, 0) : 0;
+  const markedNote =
+    method === VIA_DRIVER
+      ? `${note ?? "تحصيل عن طريق السواق"} ${marker}`
+      : note;
 
   await prisma.$transaction(async (tx) => {
-    await tx.collection.update({ where: { id }, data: { amount, method, note, date } });
+    await tx.collection.update({
+      where: { id },
+      data: { amount, method, note: markedNote, date },
+    });
     await tx.ledgerEntry.deleteMany({ where: { refType: "Collection", refId: id } });
     if (method !== VIA_DRIVER) {
       await recordLedger(tx, {
@@ -744,17 +847,57 @@ export async function updateTripCollection(id: string, formData: FormData) {
         date,
       });
     }
-    if (current.method === VIA_DRIVER) {
-      await tx.driverPayment.updateMany({
-        where: {
-          tripId: current.tripId,
-          method: VIA_DRIVER,
-          amount: current.amount,
-          date: current.date,
-          note: current.note,
-        },
-        data: { amount, date, note, method: VIA_DRIVER },
+    if (method === VIA_DRIVER && current.trip.driverId) {
+      if (linkedPayment && driverPayAmount > 0) {
+        await tx.driverPayment.update({
+          where: { id: linkedPayment.id },
+          data: { amount: driverPayAmount, date, note: markedNote, method: VIA_DRIVER },
+        });
+      } else if (driverPayAmount > 0) {
+        await tx.driverPayment.create({
+          data: {
+            tripId: current.tripId,
+            driverId: current.trip.driverId,
+            amount: driverPayAmount,
+            method: VIA_DRIVER,
+            date,
+            note: markedNote,
+          },
+        });
+      } else if (linkedPayment) {
+        await tx.driverPayment.delete({ where: { id: linkedPayment.id } });
+      }
+      const existingExternal = await tx.externalAdvance.findFirst({
+        where: { note: { contains: marker } },
       });
+      if (externalDebt > 0 && current.trip.driver) {
+        const externalNote = `زيادة تحصيل عن طريق السواق لرحلة ${current.trip.startPoint} ← ${current.trip.endPoint} ${marker}`;
+        if (existingExternal) {
+          await tx.externalAdvance.update({
+            where: { id: existingExternal.id },
+            data: { amount: externalDebt, date, note: externalNote, status: "OPEN", settledAt: null },
+          });
+        } else {
+          await tx.externalAdvance.create({
+            data: {
+              borrowerType: "DRIVER",
+              borrowerId: current.trip.driverId,
+              borrowerName: current.trip.driver.name,
+              lenderType: "CONTRACTOR",
+              lenderId: current.trip.contractorId,
+              lenderName: current.trip.contractor.name,
+              amount: externalDebt,
+              date,
+              note: externalNote,
+            },
+          });
+        }
+      } else if (existingExternal) {
+        await tx.externalAdvance.delete({ where: { id: existingExternal.id } });
+      }
+    } else if (linkedPayment) {
+      await tx.driverPayment.delete({ where: { id: linkedPayment.id } });
+      await tx.externalAdvance.deleteMany({ where: { note: { contains: marker } } });
     }
     await tx.trip.update({
       where: { id: current.tripId },
@@ -769,7 +912,7 @@ export async function updateTripCollection(id: string, formData: FormData) {
 export async function deleteTripCollection(id: string) {
   const current = await prisma.collection.findUnique({
     where: { id },
-    include: { trip: { include: { collections: true } } },
+    include: { trip: { include: { collections: true, driverPayments: true } } },
   });
   if (!current) return { error: "حركة التحصيل غير موجودة" };
   if (current.trip.status === "CANCELLED") return { error: "الطلب ملغي" };
@@ -783,15 +926,20 @@ export async function deleteTripCollection(id: string) {
     await tx.ledgerEntry.deleteMany({ where: { refType: "Collection", refId: id } });
     await tx.collection.delete({ where: { id } });
     if (current.method === VIA_DRIVER) {
-      await tx.driverPayment.deleteMany({
-        where: {
-          tripId: current.tripId,
-          method: VIA_DRIVER,
-          amount: current.amount,
-          date: current.date,
-          note: current.note,
-        },
-      });
+      const marker = viaDriverMarker(id);
+      const linkedPayment =
+        current.trip.driverPayments.find((p) => hasViaDriverMarker(p.note, id)) ??
+        current.trip.driverPayments.find(
+          (p) =>
+            p.method === VIA_DRIVER &&
+            p.amount === current.amount &&
+            +new Date(p.date) === +new Date(current.date) &&
+            p.note === current.note
+        );
+      if (linkedPayment) {
+        await tx.driverPayment.delete({ where: { id: linkedPayment.id } });
+      }
+      await tx.externalAdvance.deleteMany({ where: { note: { contains: marker } } });
     }
     await tx.trip.update({
       where: { id: current.tripId },

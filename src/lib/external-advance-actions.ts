@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { toPiastres } from "@/lib/money";
+import { sendTelegram } from "@/lib/telegram";
+import { adminExternalAdvanceMessage } from "@/lib/messages";
 
 type PartyType = "DRIVER" | "CONTRACTOR";
 
@@ -91,6 +93,7 @@ export async function addExternalAdvance(formData: FormData) {
     borrower,
     lender,
   });
+  await notifyExternalAdvance("CREATE", row);
   await revalidateParties([
     { type: borrower.type, id: borrower.id },
     { type: lender.type, id: lender.id },
@@ -120,7 +123,7 @@ export async function editExternalAdvance(id: string, formData: FormData) {
   ]);
   if (!borrowerName || !lenderName) return { error: "أحد الأطراف غير موجود" };
 
-  await prisma.externalAdvance.update({
+  const row = await prisma.externalAdvance.update({
     where: { id },
     data: {
       borrowerType: borrower.type,
@@ -136,6 +139,7 @@ export async function editExternalAdvance(id: string, formData: FormData) {
   });
 
   await audit("EDIT", "ExternalAdvance", id, { amount, borrower, lender });
+  await notifyExternalAdvance("EDIT", row);
   await revalidateParties([
     { type: current.borrowerType, id: current.borrowerId },
     { type: current.lenderType, id: current.lenderId },
@@ -148,12 +152,13 @@ export async function settleExternalAdvance(id: string) {
   const current = await prisma.externalAdvance.findUnique({ where: { id } });
   if (!current) return { error: "السلفة الخارجية غير موجودة" };
 
-  await prisma.externalAdvance.update({
+  const row = await prisma.externalAdvance.update({
     where: { id },
     data: { status: "SETTLED", settledAt: new Date() },
   });
 
   await audit("SETTLE", "ExternalAdvance", id);
+  await notifyExternalAdvance("SETTLE", row);
   await revalidateParties([
     { type: current.borrowerType, id: current.borrowerId },
     { type: current.lenderType, id: current.lenderId },
@@ -164,12 +169,13 @@ export async function reopenExternalAdvance(id: string) {
   const current = await prisma.externalAdvance.findUnique({ where: { id } });
   if (!current) return { error: "السلفة الخارجية غير موجودة" };
 
-  await prisma.externalAdvance.update({
+  const row = await prisma.externalAdvance.update({
     where: { id },
     data: { status: "OPEN", settledAt: null },
   });
 
   await audit("REOPEN", "ExternalAdvance", id);
+  await notifyExternalAdvance("REOPEN", row);
   await revalidateParties([
     { type: current.borrowerType, id: current.borrowerId },
     { type: current.lenderType, id: current.lenderId },
@@ -182,8 +188,29 @@ export async function deleteExternalAdvance(id: string) {
 
   await prisma.externalAdvance.delete({ where: { id } });
   await audit("DELETE", "ExternalAdvance", id, { amount: current.amount });
+  await notifyExternalAdvance("DELETE", current);
   await revalidateParties([
     { type: current.borrowerType, id: current.borrowerId },
     { type: current.lenderType, id: current.lenderId },
   ]);
+}
+
+async function notifyExternalAdvance(
+  action: "CREATE" | "EDIT" | "SETTLE" | "REOPEN" | "DELETE",
+  row: {
+    borrowerName: string;
+    borrowerType: string;
+    lenderName: string;
+    lenderType: string;
+    amount: number;
+    date: Date;
+    note: string | null;
+    settledAt: Date | null;
+  }
+) {
+  try {
+    await sendTelegram(adminExternalAdvanceMessage({ action, ...row }));
+  } catch {
+    // Ignore notification failures; the external advance itself is already saved.
+  }
 }

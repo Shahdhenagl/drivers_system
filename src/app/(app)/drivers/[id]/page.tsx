@@ -11,6 +11,7 @@ import { DeleteDriverButton } from "../delete-driver-button";
 import { PayDriverForm } from "../pay-driver-form";
 import { AdvancePanel } from "@/components/advance-panel";
 import { ExternalAdvancePanel } from "@/components/external-advance-panel";
+import { AccountTotalSummary } from "@/components/account-total-summary";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate, startOfDay, endOfDay, addDays } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
@@ -117,6 +118,21 @@ export default async function DriverProfile({
     .filter((a) => a.direction === "IN")
     .reduce((s, a) => s + a.amount, 0);
   const advanceBalance = advOut - advIn;
+  const externalFor = externalAdvances
+    .filter(
+      (a) => a.status === "OPEN" && a.lenderType === "DRIVER" && a.lenderId === id
+    )
+    .reduce((s, a) => s + a.amount, 0);
+  const externalOn = externalAdvances
+    .filter(
+      (a) =>
+        a.status === "OPEN" && a.borrowerType === "DRIVER" && a.borrowerId === id
+    )
+    .reduce((s, a) => s + a.amount, 0);
+  const officeFor = Math.max(-advanceBalance, 0);
+  const officeOn = Math.max(advanceBalance, 0);
+  const totalForDriver = remaining + officeFor + externalFor;
+  const totalOnDriver = officeOn + externalOn;
 
   // تقارير واتساب دورية
   const now = new Date();
@@ -147,6 +163,8 @@ export default async function DriverProfile({
       settled,
       remainingTotal: remaining,
       advanceBalance,
+      externalFor,
+      externalOn,
     });
     return { label: p.label, message: msg };
   });
@@ -229,6 +247,18 @@ export default async function DriverProfile({
           <SummaryBox label="المدفوع" value={totalPaid} tone="success" />
           <SummaryBox label="المتبقي" value={remaining} tone="warning" />
         </div>
+
+        <AccountTotalSummary
+          forParty={totalForDriver}
+          onParty={totalOnDriver}
+          rows={[
+            { label: "متبقي رحلات له", value: remaining, side: "for" },
+            { label: "رصيد/سلف مكتب له", value: officeFor, side: "for" },
+            { label: "سلف خارجية له", value: externalFor, side: "for" },
+            { label: "سلف مكتب عليه", value: officeOn, side: "on" },
+            { label: "سلف خارجية عليه", value: externalOn, side: "on" },
+          ]}
+        />
 
         <div className="print:hidden">
           <PayDriverForm

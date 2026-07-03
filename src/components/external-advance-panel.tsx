@@ -347,13 +347,13 @@ export function ExternalAdvancePanel({
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-center">
-        <div className="rounded-lg bg-success/10 p-2">
-          <div className="text-[11px] text-muted-foreground">له خارجيًا</div>
-          <div className="font-bold text-success">{formatMoney(totals.forHim)}</div>
-        </div>
         <div className="rounded-lg bg-destructive/10 p-2">
+          <div className="text-[11px] text-muted-foreground">له خارجيًا</div>
+          <div className="font-bold text-destructive">{formatMoney(totals.forHim)}</div>
+        </div>
+        <div className="rounded-lg bg-success/10 p-2">
           <div className="text-[11px] text-muted-foreground">عليه خارجيًا</div>
-          <div className="font-bold text-destructive">{formatMoney(totals.onHim)}</div>
+          <div className="font-bold text-success">{formatMoney(totals.onHim)}</div>
         </div>
       </div>
 
@@ -406,7 +406,7 @@ function ExternalRows({
             <div className="min-w-0">
               <div
                 className={`flex items-center gap-1 font-medium ${
-                  isBorrower ? "text-destructive" : "text-success"
+                  isBorrower ? "text-success" : "text-destructive"
                 }`}
               >
                 {isBorrower ? (

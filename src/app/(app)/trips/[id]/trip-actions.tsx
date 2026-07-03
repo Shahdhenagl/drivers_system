@@ -384,8 +384,12 @@ function ViaDriverDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [err, setErr] = useState("");
+  const [amountEgp, setAmountEgp] = useState("");
   const router = useRouter();
-  const max = Math.min(remainingCollection, remainingDriver);
+  const max = remainingCollection;
+  const amount = toPiastres(amountEgp || "0");
+  const driverPart = Math.min(amount, remainingDriver);
+  const externalDebt = Math.max(amount - remainingDriver, 0);
 
   async function action(fd: FormData) {
     setErr("");
@@ -398,6 +402,7 @@ function ViaDriverDialog({
       }
       playSound("money");
       setOpen(false);
+      setAmountEgp("");
       router.refresh();
     } catch {
       playSound("error");
@@ -411,7 +416,7 @@ function ViaDriverDialog({
         <Button
           variant="secondary"
           className="w-full"
-          disabled={!hasDriver || max <= 0}
+          disabled={!hasDriver || remainingCollection <= 0}
         >
           <ArrowLeftRight className="h-4 w-4" /> تحصيل عن طريق السواق
         </Button>
@@ -423,10 +428,15 @@ function ViaDriverDialog({
         <div className="mb-3 space-y-1 rounded-lg bg-muted p-2 text-center text-sm">
           <p>المبلغ الذي سلّمه المقاول للسواق مباشرة.</p>
           <p className="text-xs text-muted-foreground">
-            يُخصم من مديونية المقاول ومن مستحق السواق — ولا يؤثر على الخزنة.
+            يُخصم من مديونية المقاول، ويسدد مستحق السواق فقط. أي زيادة
+            تتحسب سلفة خارجية على السواق للمقاول.
           </p>
           <p className="font-bold">
-            الحد الأقصى: <span className="text-primary">{formatMoney(max)}</span>
+            متبقي على المقاول:{" "}
+            <span className="text-primary">{formatMoney(remainingCollection)}</span>
+          </p>
+          <p className="text-xs text-muted-foreground">
+            مستحق السواق المتبقي: {formatMoney(remainingDriver)}
           </p>
         </div>
         <form action={action} className="space-y-3">
@@ -442,7 +452,27 @@ function ViaDriverDialog({
               inputMode="decimal"
               required
               autoFocus
+              value={amountEgp}
+              onChange={(e) => setAmountEgp(e.target.value)}
             />
+            {amount > 0 && (
+              <div className="rounded-lg bg-muted/70 p-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span>سداد من مستحق السواق</span>
+                  <span className="font-semibold">
+                    {formatMoney(driverPart, false)}
+                  </span>
+                </div>
+                {externalDebt > 0 && (
+                  <div className="flex items-center justify-between text-warning">
+                    <span>مديونية خارجية على السواق للمقاول</span>
+                    <span className="font-semibold">
+                      {formatMoney(externalDebt, false)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="date">التاريخ</Label>

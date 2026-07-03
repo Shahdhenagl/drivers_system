@@ -145,6 +145,8 @@ type PeriodReport = {
   settled: number;
   remainingTotal: number;
   advanceBalance: number;
+  externalFor: number;
+  externalOn: number;
 };
 
 /** تقرير دوري للمقاول (أسبوعي/شهري) */
@@ -152,7 +154,9 @@ export function contractorReport(r: PeriodReport): string {
   const advanceDebt = Math.max(r.advanceBalance, 0);
   const advanceCredit = Math.max(-r.advanceBalance, 0);
   const totalOnContractor = r.remainingTotal + advanceDebt;
-  const net = totalOnContractor - advanceCredit;
+  const totalForContractor = advanceCredit + r.externalFor;
+  const fullOnContractor = totalOnContractor + r.externalOn;
+  const net = fullOnContractor - totalForContractor;
   return (
     [
       `📊 تقرير ${r.periodLabel} — ${r.name}`,
@@ -164,12 +168,15 @@ export function contractorReport(r: PeriodReport): string {
       "🧾 ملخص الحساب الحالي:",
       `• متبقي رحلات عليك: ${formatMoney(r.remainingTotal)}`,
       advanceDebt > 0 ? `• سلف/رصيد عليك: ${formatMoney(advanceDebt)}` : "",
-      advanceCredit > 0 ? `• رصيد لك عندنا: ${formatMoney(advanceCredit)}` : "",
-      `• إجمالي المطلوب قبل أي رصيد لك: ${formatMoney(totalOnContractor)}`,
+      r.externalOn > 0 ? `• سلف خارجية عليك: ${formatMoney(r.externalOn)}` : "",
+      advanceCredit > 0 ? `• رصيد لك عند المكتب: ${formatMoney(advanceCredit)}` : "",
+      r.externalFor > 0 ? `• سلف خارجية لك: ${formatMoney(r.externalFor)}` : "",
+      `• إجمالي اللي عليك: ${formatMoney(fullOnContractor)}`,
+      `• إجمالي اللي لك: ${formatMoney(totalForContractor)}`,
       net > 0
-        ? `🔴 الصافي المطلوب عليك: ${formatMoney(net)}`
+        ? `🟢 الصافي المطلوب عليك: ${formatMoney(net)}`
         : net < 0
-          ? `🟢 الصافي لك عندنا: ${formatMoney(-net)}`
+          ? `🔴 الصافي لك عندنا: ${formatMoney(-net)}`
           : "🟢 الحساب متعادل ولا يوجد صافي مستحق",
     ]
       .filter(Boolean)
@@ -195,14 +202,17 @@ type DriverReportData = {
   settled: number;
   remainingTotal: number;
   advanceBalance: number;
+  externalFor: number;
+  externalOn: number;
 };
 
 /** تقرير دوري مفصّل للسواق (يشمل كل رحلة وسعرها + السلف) */
 export function driverReport(r: DriverReportData): string {
   const advanceDebt = Math.max(r.advanceBalance, 0);
   const advanceCredit = Math.max(-r.advanceBalance, 0);
-  const totalForDriver = r.remainingTotal + advanceCredit;
-  const net = totalForDriver - advanceDebt;
+  const totalForDriver = r.remainingTotal + advanceCredit + r.externalFor;
+  const totalOnDriver = advanceDebt + r.externalOn;
+  const net = totalForDriver - totalOnDriver;
   const header = [
     `📊 تقرير ${r.periodLabel} — ${r.name}`,
     `🗓️ من ${formatShortDate(r.from)} إلى ${formatShortDate(r.to)}`,
@@ -232,12 +242,15 @@ export function driverReport(r: DriverReportData): string {
     "🧾 ملخص الحساب الحالي:",
     `• متبقي رحلات لك: ${formatMoney(r.remainingTotal)}`,
     advanceDebt > 0 ? `• سلف عليك: ${formatMoney(advanceDebt)}` : "",
-    advanceCredit > 0 ? `• رصيد لك عندنا: ${formatMoney(advanceCredit)}` : "",
-    `• إجمالي مستحق لك قبل خصم السلف: ${formatMoney(totalForDriver)}`,
+    r.externalOn > 0 ? `• سلف خارجية عليك: ${formatMoney(r.externalOn)}` : "",
+    advanceCredit > 0 ? `• رصيد لك عند المكتب: ${formatMoney(advanceCredit)}` : "",
+    r.externalFor > 0 ? `• سلف خارجية لك: ${formatMoney(r.externalFor)}` : "",
+    `• إجمالي اللي لك: ${formatMoney(totalForDriver)}`,
+    `• إجمالي اللي عليك: ${formatMoney(totalOnDriver)}`,
     net > 0
-      ? `🟢 الصافي المستحق لك: ${formatMoney(net)}`
+      ? `🔴 الصافي المستحق لك: ${formatMoney(net)}`
       : net < 0
-        ? `🔴 الصافي عليك: ${formatMoney(-net)}`
+        ? `🟢 الصافي عليك: ${formatMoney(-net)}`
         : "🟢 الحساب متعادل ولا يوجد صافي مستحق",
   ];
 
@@ -249,6 +262,42 @@ function balanceLabel(balance: number): string {
   if (balance > 0) return `📊 عليه لنا الآن: ${formatMoney(balance)}`;
   if (balance < 0) return `📊 لنا عليه (مدينون له): ${formatMoney(-balance)}`;
   return "📊 الحساب صفر";
+}
+
+export function adminExternalAdvanceMessage(d: {
+  action: "CREATE" | "EDIT" | "SETTLE" | "REOPEN" | "DELETE";
+  borrowerName: string;
+  borrowerType: string;
+  lenderName: string;
+  lenderType: string;
+  amount: number;
+  date: Date;
+  note?: string | null;
+  settledAt?: Date | null;
+}): string {
+  const actionLabel = {
+    CREATE: "➕ <b>سلفة خارجية جديدة</b>",
+    EDIT: "✏️ <b>تعديل سلفة خارجية</b>",
+    SETTLE: "✅ <b>سداد سلفة خارجية</b>",
+    REOPEN: "↩️ <b>إعادة فتح سلفة خارجية</b>",
+    DELETE: "🗑️ <b>حذف سلفة خارجية</b>",
+  }[d.action];
+  const typeLabel = (type: string) => (type === "DRIVER" ? "سواق" : "مقاول");
+
+  return (
+    [
+      actionLabel,
+      `👤 المستلف: ${d.borrowerName} (${typeLabel(d.borrowerType)})`,
+      `🤝 المستلف منه: ${d.lenderName} (${typeLabel(d.lenderType)})`,
+      `💵 القيمة: ${formatMoney(d.amount)}`,
+      `📅 تاريخ السلفة: ${formatShortDate(d.date)}`,
+      d.settledAt ? `✅ تاريخ السداد: ${formatShortDate(d.settledAt)}` : "",
+      d.note ? `📝 ${d.note}` : "",
+      "ℹ️ هذه السلفة خارجية ولا تؤثر على خزنة المكتب.",
+    ]
+      .filter(Boolean)
+      .join("\n") + SIGNATURE
+  );
 }
 
 /** إشعار للأدمن بحركة سلفة/رصيد لطرف (سواق أو مقاول) في أي اتجاه */

@@ -10,6 +10,7 @@ import { ContractorForm } from "../contractor-form";
 import { DeleteContractorButton } from "../delete-contractor-button";
 import { AdvancePanel } from "@/components/advance-panel";
 import { ExternalAdvancePanel } from "@/components/external-advance-panel";
+import { AccountTotalSummary } from "@/components/account-total-summary";
 import { CollectAllForm } from "./collect-all-form";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate, startOfDay, endOfDay, addDays } from "@/lib/format";
@@ -108,6 +109,24 @@ export default async function ContractorProfile({
     .filter((a) => a.direction === "IN")
     .reduce((s, a) => s + a.amount, 0);
   const advanceBalance = advOut - advIn;
+  const externalFor = externalAdvances
+    .filter(
+      (a) =>
+        a.status === "OPEN" &&
+        a.lenderType === "CONTRACTOR" &&
+        a.lenderId === id
+    )
+    .reduce((s, a) => s + a.amount, 0);
+  const externalOn = externalAdvances
+    .filter(
+      (a) =>
+        a.status === "OPEN" &&
+        a.borrowerType === "CONTRACTOR" &&
+        a.borrowerId === id
+    )
+    .reduce((s, a) => s + a.amount, 0);
+  const officeFor = Math.max(-advanceBalance, 0);
+  const officeOn = Math.max(advanceBalance, 0);
 
   // تشمل الرحلات النشطة وغرامات الإلغاء (السماح = صفر)
   const totalRequired = c.trips.reduce(
@@ -123,6 +142,8 @@ export default async function ContractorProfile({
     const e = effectiveAmounts(t);
     return a + (e.contractor - e.driver);
   }, 0);
+  const totalForContractor = officeFor + externalFor;
+  const totalOnContractor = totalDeferred + officeOn + externalOn;
 
   const payments = c.trips
     .flatMap((t) =>
@@ -156,6 +177,8 @@ export default async function ContractorProfile({
       settled,
       remainingTotal: totalDeferred,
       advanceBalance,
+      externalFor,
+      externalOn,
     });
     return { label: p.label, message: msg };
   });
@@ -242,6 +265,18 @@ export default async function ContractorProfile({
           <SummaryBox label="إجمالي الآجل" value={totalDeferred} tone="destructive" />
           <SummaryBox label="أرباحنا منه" value={totalProfit} tone="primary" />
         </div>
+
+        <AccountTotalSummary
+          forParty={totalForContractor}
+          onParty={totalOnContractor}
+          rows={[
+            { label: "رصيد/سلف مكتب له", value: officeFor, side: "for" },
+            { label: "سلف خارجية له", value: externalFor, side: "for" },
+            { label: "متبقي رحلات عليه", value: totalDeferred, side: "on" },
+            { label: "سلف مكتب عليه", value: officeOn, side: "on" },
+            { label: "سلف خارجية عليه", value: externalOn, side: "on" },
+          ]}
+        />
 
         {/* تحصيل الكل */}
         {totalDeferred > 0 && (
