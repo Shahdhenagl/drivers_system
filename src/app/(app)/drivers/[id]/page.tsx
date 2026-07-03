@@ -10,6 +10,7 @@ import { DriverForm } from "../driver-form";
 import { DeleteDriverButton } from "../delete-driver-button";
 import { PayDriverForm } from "../pay-driver-form";
 import { AdvancePanel } from "@/components/advance-panel";
+import { ExternalAdvancePanel } from "@/components/external-advance-panel";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate, startOfDay, endOfDay, addDays } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
@@ -67,6 +68,41 @@ export default async function DriverProfile({
           date: Date;
         }[]
     );
+  const [allContractors, allDrivers, externalAdvances] = await Promise.all([
+    prisma.contractor.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    prisma.driver.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    prisma.externalAdvance
+      .findMany({
+        where: {
+          OR: [
+            { borrowerType: "DRIVER", borrowerId: id },
+            { lenderType: "DRIVER", lenderId: id },
+          ],
+        },
+        orderBy: [{ status: "asc" }, { date: "desc" }],
+      })
+      .catch(() => []),
+  ]);
+  const externalParties = [
+    ...allContractors.map((p) => ({
+      type: "CONTRACTOR" as const,
+      id: p.id,
+      name: p.name,
+      label: `مقاول - ${p.name}`,
+    })),
+    ...allDrivers.map((p) => ({
+      type: "DRIVER" as const,
+      id: p.id,
+      name: p.name,
+      label: `سواق - ${p.name}`,
+    })),
+  ];
 
   // تشمل الرحلات النشطة ونصيب السواق من غرامات الإلغاء
   const totalDue = d.trips.reduce((a, t) => a + effectiveAmounts(t).driver, 0);
@@ -81,7 +117,6 @@ export default async function DriverProfile({
     .filter((a) => a.direction === "IN")
     .reduce((s, a) => s + a.amount, 0);
   const advanceBalance = advOut - advIn;
-  const advanceOutstanding = Math.max(advanceBalance, 0);
 
   // تقارير واتساب دورية
   const now = new Date();
@@ -111,7 +146,7 @@ export default async function DriverProfile({
       total,
       settled,
       remainingTotal: remaining,
-      advanceOutstanding,
+      advanceBalance,
     });
     return { label: p.label, message: msg };
   });
@@ -170,7 +205,7 @@ export default async function DriverProfile({
           {d.notes && <p className="rounded-lg bg-muted p-2 text-sm">{d.notes}</p>}
           <div className="flex gap-2 print:hidden">
             <WhatsAppButton
-              phone={d.phone}
+              phones={[d.phone, d.altPhone, d.phone3]}
               message={`مرحبًا ${d.name}`}
               variant="success"
               size="sm"
@@ -209,8 +244,15 @@ export default async function DriverProfile({
           partyId={d.id}
           name={d.name}
           phone={d.phone}
+          phones={[d.phone, d.altPhone, d.phone3]}
           balance={advanceBalance}
           advances={advances}
+        />
+
+        <ExternalAdvancePanel
+          currentParty={{ type: "DRIVER", id: d.id, name: d.name }}
+          parties={externalParties}
+          advances={externalAdvances}
         />
 
         {/* تقرير واتساب دوري */}
@@ -222,7 +264,7 @@ export default async function DriverProfile({
             {reports.map((r) => (
               <WhatsAppButton
                 key={r.label}
-                phone={d.phone}
+                phones={[d.phone, d.altPhone, d.phone3]}
                 message={r.message}
                 variant="success"
                 size="sm"

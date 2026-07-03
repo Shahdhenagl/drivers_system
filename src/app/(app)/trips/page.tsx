@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AppHeader } from "@/components/layout/app-header";
 import { SearchBar } from "@/components/search-bar";
 import { TripCard } from "@/components/trip-card";
+import { TripGroupCard } from "@/components/trip-group-card";
 import { prisma } from "@/lib/prisma";
 import { startOfDay, endOfDay, addDays } from "@/lib/format";
 import { TRIP_STATUS } from "@/lib/constants";
@@ -114,9 +115,36 @@ export default async function TripsPage({
           </div>
         ) : (
           <div className="space-y-3">
-            {trips.map((t) => (
-              <TripCard key={t.id} trip={t} />
-            ))}
+            {(() => {
+              // تجميع أيام الحجز الواحد (نفس groupId) في كارت واحد
+              const groups = new Map<string, typeof trips>();
+              const items: (
+                | { type: "single"; trip: (typeof trips)[number] }
+                | { type: "group"; groupId: string }
+              )[] = [];
+              for (const t of trips) {
+                if (t.groupId) {
+                  if (!groups.has(t.groupId)) {
+                    groups.set(t.groupId, []);
+                    items.push({ type: "group", groupId: t.groupId });
+                  }
+                  groups.get(t.groupId)!.push(t);
+                } else {
+                  items.push({ type: "single", trip: t });
+                }
+              }
+              return items.map((it) =>
+                it.type === "single" ? (
+                  <TripCard key={it.trip.id} trip={it.trip} />
+                ) : (
+                  <TripGroupCard
+                    key={it.groupId}
+                    groupId={it.groupId}
+                    trips={groups.get(it.groupId)!}
+                  />
+                )
+              );
+            })()}
           </div>
         )}
       </div>

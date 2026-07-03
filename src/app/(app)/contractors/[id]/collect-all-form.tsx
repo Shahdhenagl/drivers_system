@@ -24,13 +24,19 @@ import { Banknote } from "lucide-react";
 export function CollectAllForm({
   contractorId,
   remaining,
+  advanceBalance = 0,
 }: {
   contractorId: string;
   remaining: number;
+  advanceBalance?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+  const advanceDebt = Math.max(advanceBalance, 0);
+  const advanceCredit = Math.max(-advanceBalance, 0);
+  const totalOnContractor = remaining + advanceDebt;
+  const net = totalOnContractor - advanceCredit;
 
   async function action(formData: FormData) {
     setError("");
@@ -62,12 +68,43 @@ export function CollectAllForm({
         <DialogHeader>
           <DialogTitle>تحصيل من المقاول</DialogTitle>
         </DialogHeader>
-        <p className="mb-3 rounded-lg bg-muted p-2 text-center text-sm">
-          إجمالي المتبقي عليه:{" "}
-          <span className="font-bold text-destructive">{formatMoney(remaining)}</span>
-        </p>
+        <div className="mb-3 space-y-1 rounded-lg bg-muted p-2 text-sm">
+          <div className="flex items-center justify-between">
+            <span>متبقي رحلات عليه</span>
+            <span className="font-bold text-destructive">
+              {formatMoney(remaining)}
+            </span>
+          </div>
+          {advanceDebt > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span>سلف/رصيد عليه</span>
+              <span className="font-bold text-destructive">
+                {formatMoney(advanceDebt)}
+              </span>
+            </div>
+          )}
+          {advanceCredit > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span>رصيد له عندنا</span>
+              <span className="font-bold text-success">
+                {formatMoney(advanceCredit)}
+              </span>
+            </div>
+          )}
+          <div className="flex items-center justify-between border-t border-border pt-1 font-bold">
+            <span>صافي الحساب</span>
+            <span className={net >= 0 ? "text-destructive" : "text-success"}>
+              {net > 0
+                ? `عليه ${formatMoney(net)}`
+                : net < 0
+                  ? `له ${formatMoney(-net)}`
+                  : formatMoney(0)}
+            </span>
+          </div>
+        </div>
         <p className="mb-3 text-center text-xs text-muted-foreground">
-          يُوزَّع تلقائيًا على رحلاته المستحقة (الأقدم أولًا)، وتقدر تحصّل جزء ويفضل الباقي عليه.
+          المبلغ هنا يتحصل على الرحلات المستحقة فقط. السلف والأرصدة تظهر في
+          الإجمالي وتدار من لوحة السلف والأرصدة.
         </p>
         <form action={action} className="space-y-3">
           <div className="space-y-1.5">

@@ -9,6 +9,7 @@ import { PrintButton } from "@/components/print-button";
 import { ContractorForm } from "../contractor-form";
 import { DeleteContractorButton } from "../delete-contractor-button";
 import { AdvancePanel } from "@/components/advance-panel";
+import { ExternalAdvancePanel } from "@/components/external-advance-panel";
 import { CollectAllForm } from "./collect-all-form";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate, startOfDay, endOfDay, addDays } from "@/lib/format";
@@ -65,6 +66,41 @@ export default async function ContractorProfile({
           date: Date;
         }[]
     );
+  const [allContractors, allDrivers, externalAdvances] = await Promise.all([
+    prisma.contractor.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    prisma.driver.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    prisma.externalAdvance
+      .findMany({
+        where: {
+          OR: [
+            { borrowerType: "CONTRACTOR", borrowerId: id },
+            { lenderType: "CONTRACTOR", lenderId: id },
+          ],
+        },
+        orderBy: [{ status: "asc" }, { date: "desc" }],
+      })
+      .catch(() => []),
+  ]);
+  const externalParties = [
+    ...allContractors.map((p) => ({
+      type: "CONTRACTOR" as const,
+      id: p.id,
+      name: p.name,
+      label: `مقاول - ${p.name}`,
+    })),
+    ...allDrivers.map((p) => ({
+      type: "DRIVER" as const,
+      id: p.id,
+      name: p.name,
+      label: `سواق - ${p.name}`,
+    })),
+  ];
   const advOut = advances
     .filter((a) => a.direction === "OUT")
     .reduce((s, a) => s + a.amount, 0);
@@ -119,6 +155,7 @@ export default async function ContractorProfile({
       total,
       settled,
       remainingTotal: totalDeferred,
+      advanceBalance,
     });
     return { label: p.label, message: msg };
   });
@@ -179,7 +216,7 @@ export default async function ContractorProfile({
           )}
           <div className="flex gap-2 print:hidden">
             <WhatsAppButton
-              phone={c.phone}
+              phones={[c.phone, c.altPhone, c.phone3]}
               message={`مرحبًا أ. ${c.name}`}
               variant="success"
               size="sm"
@@ -209,7 +246,11 @@ export default async function ContractorProfile({
         {/* تحصيل الكل */}
         {totalDeferred > 0 && (
           <div className="print:hidden">
-            <CollectAllForm contractorId={c.id} remaining={totalDeferred} />
+            <CollectAllForm
+              contractorId={c.id}
+              remaining={totalDeferred}
+              advanceBalance={advanceBalance}
+            />
           </div>
         )}
 
@@ -219,8 +260,15 @@ export default async function ContractorProfile({
           partyId={c.id}
           name={c.name}
           phone={c.phone}
+          phones={[c.phone, c.altPhone, c.phone3]}
           balance={advanceBalance}
           advances={advances}
+        />
+
+        <ExternalAdvancePanel
+          currentParty={{ type: "CONTRACTOR", id: c.id, name: c.name }}
+          parties={externalParties}
+          advances={externalAdvances}
         />
 
         {/* تقرير واتساب دوري */}
@@ -232,7 +280,7 @@ export default async function ContractorProfile({
             {reports.map((r) => (
               <WhatsAppButton
                 key={r.label}
-                phone={c.phone}
+                phones={[c.phone, c.altPhone, c.phone3]}
                 message={r.message}
                 variant="success"
                 size="sm"

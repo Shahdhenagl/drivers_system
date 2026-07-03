@@ -38,6 +38,10 @@ export function PayDriverForm({
   const amountP = toPiastres(amountEgp || "0");
   const duePortion = Math.min(amountP, remaining);
   const advancePortion = Math.max(amountP - remaining, 0);
+  const advanceDebt = Math.max(advanceBalance, 0);
+  const advanceCredit = Math.max(-advanceBalance, 0);
+  const totalForDriver = remaining + advanceCredit;
+  const net = totalForDriver - advanceDebt;
 
   async function action(formData: FormData) {
     setError("");
@@ -89,27 +93,37 @@ export function PayDriverForm({
           <DialogTitle>سداد مستحقات السواق</DialogTitle>
         </DialogHeader>
 
-        <div className="mb-3 space-y-1 rounded-lg bg-muted p-2 text-center text-sm">
-          <div>
-            المتبقي للسواق:{" "}
+        <div className="mb-3 space-y-1 rounded-lg bg-muted p-2 text-sm">
+          <div className="flex items-center justify-between">
+            <span>متبقي رحلات له</span>
             <span className="font-bold text-warning">{formatMoney(remaining)}</span>
           </div>
-          {advanceBalance > 0 && (
-            <div className="text-xs">
-              عليه سلفة:{" "}
+          {advanceDebt > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span>سلف عليه</span>
               <span className="font-bold text-destructive">
-                {formatMoney(advanceBalance)}
+                {formatMoney(advanceDebt)}
               </span>
             </div>
           )}
-          {advanceBalance < 0 && (
-            <div className="text-xs">
-              له علينا:{" "}
+          {advanceCredit > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span>رصيد له عندنا</span>
               <span className="font-bold text-success">
-                {formatMoney(-advanceBalance)}
+                {formatMoney(advanceCredit)}
               </span>
             </div>
           )}
+          <div className="flex items-center justify-between border-t border-border pt-1 font-bold">
+            <span>صافي الحساب</span>
+            <span className={net >= 0 ? "text-success" : "text-destructive"}>
+              {net > 0
+                ? `له ${formatMoney(net)}`
+                : net < 0
+                  ? `عليه ${formatMoney(-net)}`
+                  : formatMoney(0)}
+            </span>
+          </div>
         </div>
 
         {/* خصم السلفة من مستحقاته (بدون نقدية) */}
@@ -140,11 +154,23 @@ export function PayDriverForm({
               value={amountEgp}
               onChange={(e) => setAmountEgp(e.target.value)}
             />
-            {advancePortion > 0 && (
-              <p className="text-xs text-warning">
-                منها {formatMoney(duePortion, false)} سداد مشاوير و{" "}
-                {formatMoney(advancePortion, false)} سلفة جديدة عليه.
-              </p>
+            {amountP > 0 && (
+              <div className="rounded-lg bg-muted/70 p-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span>منه سداد رحلات</span>
+                  <span className="font-semibold">
+                    {formatMoney(duePortion, false)}
+                  </span>
+                </div>
+                {advancePortion > 0 && (
+                  <div className="flex items-center justify-between text-warning">
+                    <span>زيادة هتتحسب سلفة عليه</span>
+                    <span className="font-semibold">
+                      {formatMoney(advancePortion, false)}
+                    </span>
+                  </div>
+                )}
+              </div>
             )}
           </div>
           <div className="space-y-1.5">

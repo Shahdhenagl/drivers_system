@@ -382,6 +382,7 @@ export function AdvancePanel({
   partyId,
   name,
   phone,
+  phones,
   balance,
   advances,
 }: {
@@ -389,6 +390,7 @@ export function AdvancePanel({
   partyId: string;
   name: string;
   phone: string;
+  phones?: Array<string | null | undefined>;
   balance: number; // + = عليه لنا، − = لنا عليه
   advances: AdvanceRow[];
 }) {
@@ -446,7 +448,7 @@ export function AdvancePanel({
 
       {balance > 0 && (
         <WhatsAppButton
-          phone={phone}
+          phones={phones ?? [phone]}
           message={advanceReminder(name, balance)}
           variant="outline"
           size="sm"

@@ -9,19 +9,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { whatsAppLink } from "@/lib/phone";
+import { displayPhone, toWhatsAppNumber, whatsAppLink } from "@/lib/phone";
 import { waAppLink, WA_PREF_KEY, type WaApp } from "@/lib/whatsapp";
 
 type ButtonVariant = React.ComponentProps<typeof Button>["variant"];
 type ButtonSize = React.ComponentProps<typeof Button>["size"];
 
-/**
- * زر واتساب يخيّر بين التطبيق العادي والبزنس.
- * على أندرويد يفتح تطبيق واتساب المحدد؛ على غيره يفتح wa.me مباشرة.
- * يمكن حفظ اختيار افتراضي حتى لا يسأل كل مرة.
- */
 export function WhatsAppButton({
   phone,
+  phones,
   message,
   children,
   variant = "success",
@@ -29,7 +25,8 @@ export function WhatsAppButton({
   className,
   disabled,
 }: {
-  phone: string;
+  phone?: string;
+  phones?: Array<string | null | undefined>;
   message: string;
   children: React.ReactNode;
   variant?: ButtonVariant;
@@ -37,31 +34,51 @@ export function WhatsAppButton({
   className?: string;
   disabled?: boolean;
 }) {
-  const [choosing, setChoosing] = useState(false);
+  const [choosingPhone, setChoosingPhone] = useState(false);
+  const [choosingApp, setChoosingApp] = useState(false);
+  const [selectedPhone, setSelectedPhone] = useState("");
   const [remember, setRemember] = useState(false);
 
-  function openApp(app: WaApp) {
-    window.location.href = waAppLink(app, phone, message);
+  const phoneChoices = uniquePhones(phones?.length ? phones : [phone]);
+
+  function openApp(app: WaApp, targetPhone = selectedPhone) {
+    window.location.href = waAppLink(app, targetPhone, message);
   }
 
-  function handleClick() {
-    if (disabled) return;
+  function openWhatsApp(targetPhone: string) {
+    if (!targetPhone) return;
+    setSelectedPhone(targetPhone);
+
     const isAndroid =
       typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
-    // خارج أندرويد: افتح wa.me مباشرة (تحديد التطبيق غير متاح)
     if (!isAndroid) {
-      window.open(whatsAppLink(phone, message), "_blank");
+      window.open(whatsAppLink(targetPhone, message), "_blank");
       return;
     }
+
     const pref =
       typeof localStorage !== "undefined"
         ? localStorage.getItem(WA_PREF_KEY)
         : null;
     if (pref === "normal" || pref === "business") {
-      openApp(pref);
+      openApp(pref, targetPhone);
       return;
     }
-    setChoosing(true);
+    setChoosingApp(true);
+  }
+
+  function handleClick() {
+    if (disabled || phoneChoices.length === 0) return;
+    if (phoneChoices.length > 1) {
+      setChoosingPhone(true);
+      return;
+    }
+    openWhatsApp(phoneChoices[0]);
+  }
+
+  function choosePhone(targetPhone: string) {
+    setChoosingPhone(false);
+    openWhatsApp(targetPhone);
   }
 
   function choose(app: WaApp) {
@@ -69,10 +86,10 @@ export function WhatsAppButton({
       try {
         localStorage.setItem(WA_PREF_KEY, app);
       } catch {
-        // تجاهل لو التخزين غير متاح
+        // Local storage can be unavailable in private modes.
       }
     }
-    setChoosing(false);
+    setChoosingApp(false);
     openApp(app);
   }
 
@@ -80,14 +97,38 @@ export function WhatsAppButton({
     <>
       <button
         type="button"
-        disabled={disabled}
+        disabled={disabled || phoneChoices.length === 0}
         onClick={handleClick}
         className={cn(buttonVariants({ variant, size }), className)}
       >
         {children}
       </button>
 
-      <Dialog open={choosing} onOpenChange={setChoosing}>
+      <Dialog open={choosingPhone} onOpenChange={setChoosingPhone}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>اختار رقم واتساب</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 pt-1">
+            {phoneChoices.map((p, i) => (
+              <Button
+                key={`${toWhatsAppNumber(p)}-${i}`}
+                variant="outline"
+                size="lg"
+                className="w-full justify-between"
+                onClick={() => choosePhone(p)}
+              >
+                <span>{i === 0 ? "الرقم الأساسي" : `رقم إضافي ${i}`}</span>
+                <span dir="ltr" className="tabular-nums">
+                  {displayPhone(p)}
+                </span>
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={choosingApp} onOpenChange={setChoosingApp}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>تفتح واتساب بأنهي تطبيق؟</DialogTitle>
@@ -117,4 +158,18 @@ export function WhatsAppButton({
       </Dialog>
     </>
   );
+}
+
+function uniquePhones(items: Array<string | null | undefined>) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of items) {
+    const value = (item ?? "").trim();
+    if (!value) continue;
+    const normalized = toWhatsAppNumber(value);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(value);
+  }
+  return result;
 }

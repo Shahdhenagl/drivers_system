@@ -144,19 +144,36 @@ type PeriodReport = {
   total: number;
   settled: number;
   remainingTotal: number;
+  advanceBalance: number;
 };
 
 /** تقرير دوري للمقاول (أسبوعي/شهري) */
 export function contractorReport(r: PeriodReport): string {
+  const advanceDebt = Math.max(r.advanceBalance, 0);
+  const advanceCredit = Math.max(-r.advanceBalance, 0);
+  const totalOnContractor = r.remainingTotal + advanceDebt;
+  const net = totalOnContractor - advanceCredit;
   return (
     [
       `📊 تقرير ${r.periodLabel} — ${r.name}`,
       `🗓️ من ${formatShortDate(r.from)} إلى ${formatShortDate(r.to)}`,
       `🚛 عدد الرحلات: ${r.tripsCount}`,
-      `💰 إجمالي قيمة الرحلات: ${formatMoney(r.total)}`,
+      `💰 قيمة رحلات الفترة: ${formatMoney(r.total)}`,
       `✅ المحصّل خلال الفترة: ${formatMoney(r.settled)}`,
-      `🔴 إجمالي المتبقي عليك: ${formatMoney(r.remainingTotal)}`,
-    ].join("\n") + SIGNATURE
+      "",
+      "🧾 ملخص الحساب الحالي:",
+      `• متبقي رحلات عليك: ${formatMoney(r.remainingTotal)}`,
+      advanceDebt > 0 ? `• سلف/رصيد عليك: ${formatMoney(advanceDebt)}` : "",
+      advanceCredit > 0 ? `• رصيد لك عندنا: ${formatMoney(advanceCredit)}` : "",
+      `• إجمالي المطلوب قبل أي رصيد لك: ${formatMoney(totalOnContractor)}`,
+      net > 0
+        ? `🔴 الصافي المطلوب عليك: ${formatMoney(net)}`
+        : net < 0
+          ? `🟢 الصافي لك عندنا: ${formatMoney(-net)}`
+          : "🟢 الحساب متعادل ولا يوجد صافي مستحق",
+    ]
+      .filter(Boolean)
+      .join("\n") + SIGNATURE
   );
 }
 
@@ -177,11 +194,15 @@ type DriverReportData = {
   total: number;
   settled: number;
   remainingTotal: number;
-  advanceOutstanding: number;
+  advanceBalance: number;
 };
 
 /** تقرير دوري مفصّل للسواق (يشمل كل رحلة وسعرها + السلف) */
 export function driverReport(r: DriverReportData): string {
+  const advanceDebt = Math.max(r.advanceBalance, 0);
+  const advanceCredit = Math.max(-r.advanceBalance, 0);
+  const totalForDriver = r.remainingTotal + advanceCredit;
+  const net = totalForDriver - advanceDebt;
   const header = [
     `📊 تقرير ${r.periodLabel} — ${r.name}`,
     `🗓️ من ${formatShortDate(r.from)} إلى ${formatShortDate(r.to)}`,
@@ -205,13 +226,20 @@ export function driverReport(r: DriverReportData): string {
 
   const totals = [
     "",
-    `💵 إجمالي مستحقاتك: ${formatMoney(r.total)}`,
+    `💵 مستحقات رحلات الفترة: ${formatMoney(r.total)}`,
     `✅ المدفوع لك خلال الفترة: ${formatMoney(r.settled)}`,
-    `🟢 إجمالي المتبقي لك: ${formatMoney(r.remainingTotal)}`,
+    "",
+    "🧾 ملخص الحساب الحالي:",
+    `• متبقي رحلات لك: ${formatMoney(r.remainingTotal)}`,
+    advanceDebt > 0 ? `• سلف عليك: ${formatMoney(advanceDebt)}` : "",
+    advanceCredit > 0 ? `• رصيد لك عندنا: ${formatMoney(advanceCredit)}` : "",
+    `• إجمالي مستحق لك قبل خصم السلف: ${formatMoney(totalForDriver)}`,
+    net > 0
+      ? `🟢 الصافي المستحق لك: ${formatMoney(net)}`
+      : net < 0
+        ? `🔴 الصافي عليك: ${formatMoney(-net)}`
+        : "🟢 الحساب متعادل ولا يوجد صافي مستحق",
   ];
-  if (r.advanceOutstanding > 0) {
-    totals.push(`💳 سلف عليك (تُخصم لاحقًا): ${formatMoney(r.advanceOutstanding)}`);
-  }
 
   return [...header, ...tripLines, ...totals].join("\n") + SIGNATURE;
 }

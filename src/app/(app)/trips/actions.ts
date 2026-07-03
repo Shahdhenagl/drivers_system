@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { toPiastres } from "@/lib/money";
+import { toPiastres, formatMoney } from "@/lib/money";
 import {
   recordLedger,
   planSpend,
@@ -86,6 +86,110 @@ export async function createTrip(formData: FormData) {
   revalidatePath("/trips");
   revalidatePath("/");
   redirect(`/trips/${trip.id}`);
+}
+
+/**
+ * إنشاء حجز متعدد الأيام: كل يوم رحلة مستقلة (بتاريخها وسواقها وأسعارها)
+ * لكن مرتبطة بنفس groupId. تُحسب مستحقات كل سواق وأرباح المكتب لكل يوم عاديًا.
+ */
+export async function createMultiDayTrip(formData: FormData) {
+  const get = (k: string) => String(formData.get(k) ?? "").trim();
+
+  // المقاول (موجود أو جديد)
+  let contractorId = get("contractorId");
+  if (contractorId === "__new__" || !contractorId) {
+    const name = get("newContractorName");
+    const phone = get("newContractorPhone");
+    if (!name || !phone) return { error: "اكتب اسم المقاول ورقم موبايله" };
+    const c = await prisma.contractor.create({
+      data: { name, phone, company: get("newContractorCompany") || null },
+    });
+    contractorId = c.id;
+    await audit("CREATE", "Contractor", c.id, { via: "trip" });
+  }
+
+  const startPoint = get("startPoint");
+  const endPoint = get("endPoint");
+  const description = get("description") || null;
+  const notes = get("notes") || null;
+  if (!startPoint || !endPoint)
+    return { error: "اكتب نقطة البداية والنهاية" };
+
+  type Day = {
+    date: string;
+    driverId: string;
+    contractorPrice: string;
+    driverDue: string;
+  };
+  let days: Day[] = [];
+  try {
+    days = JSON.parse(get("days") || "[]");
+  } catch {
+    return { error: "بيانات الأيام غير صحيحة" };
+  }
+  if (!Array.isArray(days) || days.length === 0)
+    return { error: "أضف يومًا واحدًا على الأقل" };
+  for (const d of days) {
+    if (!d.date) return { error: "اختر تاريخ كل يوم" };
+    if (!d.driverId) return { error: "اختر سواق لكل يوم" };
+  }
+
+  const groupId = crypto.randomUUID();
+  await prisma.$transaction(async (tx) => {
+    for (const d of days) {
+      const dt = new Date(d.date);
+      await tx.trip.create({
+        data: {
+          contractorId,
+          driverId: d.driverId,
+          date: dt,
+          time: formatWeekday(dt),
+          startPoint,
+          endPoint,
+          description,
+          notes,
+          contractorPrice: toPiastres(d.contractorPrice || "0"),
+          driverDue: toPiastres(d.driverDue || "0"),
+          status: "NEW",
+          collectionStatus: "NONE",
+          groupId,
+        },
+      });
+    }
+  });
+  await audit("CREATE", "Trip", groupId, { multiDay: days.length });
+
+  // إشعار الأدمن بملخص الحجز (لا يعطّل الإنشاء لو فشل)
+  try {
+    const contractor = await prisma.contractor.findUnique({
+      where: { id: contractorId },
+      select: { name: true },
+    });
+    const totalContractor = days.reduce(
+      (a, d) => a + toPiastres(d.contractorPrice || "0"),
+      0
+    );
+    const totalDriver = days.reduce(
+      (a, d) => a + toPiastres(d.driverDue || "0"),
+      0
+    );
+    await sendTelegram(
+      [
+        `🆕 <b>حجز متعدد الأيام (${days.length} أيام)</b>`,
+        `👤 المقاول: ${contractor?.name ?? ""}`,
+        `📍 ${startPoint} ← ${endPoint}`,
+        `💰 إجمالي المقاول: ${formatMoney(totalContractor)}`,
+        `💵 إجمالي السواقين: ${formatMoney(totalDriver)}`,
+        `📈 الربح: ${formatMoney(totalContractor - totalDriver)}`,
+      ].join("\n")
+    );
+  } catch {
+    // تجاهل أي فشل في الإشعار
+  }
+
+  revalidatePath("/trips");
+  revalidatePath("/");
+  redirect(`/trips/group/${groupId}`);
 }
 
 export async function updateTrip(id: string, formData: FormData) {

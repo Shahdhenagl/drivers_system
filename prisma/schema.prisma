@@ -98,6 +98,9 @@ model Trip {
   status           String @default("NEW")
   collectionStatus String @default("NONE")
 
+  // ربط أيام الحجز الواحد متعدد الأيام (كل يوم رحلة مستقلة بنفس groupId)
+  groupId String?
+
   notes     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -111,6 +114,7 @@ model Trip {
   @@index([date])
   @@index([status])
   @@index([collectionStatus])
+  @@index([groupId])
 }
 
 // تحويلات مالية على الرحلة بين المكتب/المقاول/السواق
@@ -183,6 +187,30 @@ model Advance {
 
   @@index([partyType, partyId])
   @@index([tripId])
+}
+
+// سلف خارجية بين المقاولين والسواقين فقط، لا تؤثر على خزنة المكتب أو Ledger.
+// borrower = الطرف الذي استلف، lender = الطرف الذي أعطى السلفة.
+model ExternalAdvance {
+  id           String    @id @default(cuid())
+  borrowerType String // DRIVER | CONTRACTOR
+  borrowerId   String
+  borrowerName String
+  lenderType   String // DRIVER | CONTRACTOR
+  lenderId     String
+  lenderName   String
+  amount       Int // بالقروش
+  date         DateTime  @default(now())
+  note         String?
+  status       String    @default("OPEN") // OPEN | SETTLED
+  settledAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([borrowerType, borrowerId])
+  @@index([lenderType, lenderId])
+  @@index([status])
+  @@index([date])
 }
 
 // ===================== المصروفات =====================
