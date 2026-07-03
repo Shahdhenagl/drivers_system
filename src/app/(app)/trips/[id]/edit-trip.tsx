@@ -9,13 +9,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchSelect } from "@/components/ui/search-select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,7 +17,6 @@ import { SubmitButton } from "@/components/submit-button";
 import { updateTrip } from "../actions";
 import { toEgp } from "@/lib/money";
 import { toDateInput } from "@/lib/format";
-import { displayPhone } from "@/lib/phone";
 
 type Trip = {
   id: string;
@@ -173,18 +166,12 @@ export function EditTripForm({
           </div>
           <div className="space-y-1.5">
             <Label>السواق</Label>
-            <Select value={driverId} onValueChange={setDriverId}>
-              <SelectTrigger>
-                <SelectValue placeholder="اختر السواق" />
-              </SelectTrigger>
-              <SelectContent>
-                {drivers.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name} — {displayPhone(d.phone)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchSelect
+              value={driverId}
+              onChange={setDriverId}
+              options={drivers}
+              placeholder="اختر السواق"
+            />
           </div>
           <SubmitButton size="lg" className="w-full">
             حفظ التعديلات
