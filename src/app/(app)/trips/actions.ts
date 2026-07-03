@@ -458,15 +458,19 @@ export async function collectViaDriver(tripId: string, formData: FormData) {
 
   const eff = effectiveAmounts(trip);
   const collected = trip.collections.reduce((a, c) => a + c.amount, 0);
-  const remainingCollection = eff.contractor - collected;
+  const remainingCollection = Math.max(eff.contractor - collected, 0);
   const paid = trip.driverPayments.reduce((a, p) => a + p.amount, 0);
-  const remainingDriver = eff.driver - paid;
+  const remainingDriver = Math.max(eff.driver - paid, 0);
 
-  if (amount > remainingCollection) {
-    return { error: "المبلغ أكبر من المتبقي على المقاول" };
+  if (remainingCollection <= 0) {
+    return { error: "لا يوجد متبقٍّ على المقاول" };
   }
-  const driverPayAmount = Math.min(amount, Math.max(remainingDriver, 0));
-  const externalDebt = Math.max(amount - Math.max(remainingDriver, 0), 0);
+  // القدر المُسوّى: يُحصَّل من المقاول ويُسدَّد للسواق بنفس القيمة (أقل المتبقيين)
+  const settle = Math.min(amount, remainingCollection, remainingDriver);
+  const driverPayAmount = settle;
+  const collectAmount = settle;
+  // الزيادة التي سلّمها المقاول للسواق فوق التسوية = سلفة خارجية على السواق للمقاول
+  const externalDebt = Math.max(amount - settle, 0);
   const externalRows: {
     borrowerName: string;
     borrowerType: string;
@@ -479,9 +483,9 @@ export async function collectViaDriver(tripId: string, formData: FormData) {
   }[] = [];
 
   await prisma.$transaction(async (tx) => {
-    // تحصيل من المقاول (بطريقة خاصة لا تدخل الخزنة)
+    // تحصيل من المقاول (بطريقة خاصة لا تدخل الخزنة) — بقدر التسوية فقط
     const col = await tx.collection.create({
-      data: { tripId, amount, method: VIA_DRIVER, date, note },
+      data: { tripId, amount: collectAmount, method: VIA_DRIVER, date, note },
     });
     const marker = viaDriverMarker(col.id);
     const markedNote = `${note} ${marker}`;
@@ -519,7 +523,7 @@ export async function collectViaDriver(tripId: string, formData: FormData) {
       externalRows.push(row);
     }
     // تحديث حالة التحصيل
-    const newStatus = deriveCollectionStatus(eff.contractor, collected + amount);
+    const newStatus = deriveCollectionStatus(eff.contractor, collected + collectAmount);
     await tx.trip.update({
       where: { id: tripId },
       data: { collectionStatus: newStatus },

@@ -386,10 +386,9 @@ function ViaDriverDialog({
   const [err, setErr] = useState("");
   const [amountEgp, setAmountEgp] = useState("");
   const router = useRouter();
-  const max = remainingCollection;
   const amount = toPiastres(amountEgp || "0");
-  const driverPart = Math.min(amount, remainingDriver);
-  const externalDebt = Math.max(amount - remainingDriver, 0);
+  const settle = Math.min(amount, remainingCollection, remainingDriver);
+  const externalDebt = Math.max(amount - settle, 0);
 
   async function action(fd: FormData) {
     setErr("");
@@ -448,7 +447,6 @@ function ViaDriverDialog({
               type="number"
               step="0.01"
               min="0"
-              max={toEgp(max)}
               inputMode="decimal"
               required
               autoFocus
@@ -456,16 +454,18 @@ function ViaDriverDialog({
               onChange={(e) => setAmountEgp(e.target.value)}
             />
             {amount > 0 && (
-              <div className="rounded-lg bg-muted/70 p-2 text-xs">
+              <div className="space-y-1 rounded-lg bg-muted/70 p-2 text-xs">
                 <div className="flex items-center justify-between">
-                  <span>سداد من مستحق السواق</span>
-                  <span className="font-semibold">
-                    {formatMoney(driverPart, false)}
-                  </span>
+                  <span>محصّل من المقاول</span>
+                  <span className="font-semibold">{formatMoney(settle, false)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>سداد مستحق السواق</span>
+                  <span className="font-semibold">{formatMoney(settle, false)}</span>
                 </div>
                 {externalDebt > 0 && (
                   <div className="flex items-center justify-between text-warning">
-                    <span>مديونية خارجية على السواق للمقاول</span>
+                    <span>سلفة خارجية على السواق للمقاول</span>
                     <span className="font-semibold">
                       {formatMoney(externalDebt, false)}
                     </span>
