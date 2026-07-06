@@ -122,6 +122,64 @@ export async function planSpend(
   };
 }
 
+/** صافي رصيد سلف المكتب لكل طرف من نوع معيّن: OUT − IN (موجب = عليه لنا) */
+export async function advanceBalancesByParty(
+  partyType: "CONTRACTOR" | "DRIVER"
+): Promise<Map<string, number>> {
+  const rows = await prisma.advance
+    .groupBy({ by: ["partyId", "direction"], where: { partyType }, _sum: { amount: true } })
+    .catch(
+      () =>
+        [] as { partyId: string; direction: string; _sum: { amount: number | null } }[]
+    );
+  const m = new Map<string, number>();
+  for (const r of rows) {
+    const cur = m.get(r.partyId) ?? 0;
+    const amt = r._sum.amount ?? 0;
+    m.set(r.partyId, cur + (r.direction === "OUT" ? amt : -amt));
+  }
+  return m;
+}
+
+/**
+ * المتبقي على السلف الخارجية (غير المسدَّدة) لكل طرف من نوع معيّن:
+ * forMap = له (مُقرِض، amount−paidAmount)، onMap = عليه (مستلِف، amount−collectedAmount).
+ */
+export async function externalRemainingByParty(
+  partyType: "CONTRACTOR" | "DRIVER"
+): Promise<{ forMap: Map<string, number>; onMap: Map<string, number> }> {
+  const rows = await prisma.externalAdvance
+    .findMany({
+      where: {
+        status: { not: "SETTLED" },
+        OR: [{ borrowerType: partyType }, { lenderType: partyType }],
+      },
+      select: {
+        borrowerType: true,
+        borrowerId: true,
+        lenderType: true,
+        lenderId: true,
+        amount: true,
+        collectedAmount: true,
+        paidAmount: true,
+      },
+    })
+    .catch(() => [] as never[]);
+  const forMap = new Map<string, number>();
+  const onMap = new Map<string, number>();
+  for (const e of rows) {
+    if (e.lenderType === partyType) {
+      const rem = Math.max(e.amount - (e.paidAmount ?? 0), 0);
+      forMap.set(e.lenderId, (forMap.get(e.lenderId) ?? 0) + rem);
+    }
+    if (e.borrowerType === partyType) {
+      const rem = Math.max(e.amount - (e.collectedAmount ?? 0), 0);
+      onMap.set(e.borrowerId, (onMap.get(e.borrowerId) ?? 0) + rem);
+    }
+  }
+  return { forMap, onMap };
+}
+
 export type TripAmounts = {
   status: string;
   contractorPrice: number;

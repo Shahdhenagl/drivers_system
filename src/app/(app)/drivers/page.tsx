@@ -7,7 +7,11 @@ import { Card } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { formatMoney } from "@/lib/money";
 import { displayPhone } from "@/lib/phone";
-import { effectiveAmounts } from "@/lib/finance";
+import {
+  effectiveAmounts,
+  advanceBalancesByParty,
+  externalRemainingByParty,
+} from "@/lib/finance";
 import { Plus, Phone, Truck, ChevronLeft } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +65,12 @@ export default async function DriversPage({
   ]);
   const seqMap = new Map(allIds.map((d, i) => [d.id, i + 1]));
 
+  // أرصدة السلف (المكتب + الخارجية) لحساب الصافي له/عليه لكل سواق
+  const [advBalById, extRem] = await Promise.all([
+    advanceBalancesByParty("DRIVER"),
+    externalRemainingByParty("DRIVER"),
+  ]);
+
   return (
     <>
       <AppHeader title="السواقين" />
@@ -91,6 +101,14 @@ export default async function DriversPage({
                 const paid = t.driverPayments.reduce((s, x) => s + x.amount, 0);
                 return a + Math.max(eff.driver - paid, 0);
               }, 0);
+              // الصافي: له (متبقي رحلات + سلف مكتب له + خارجية له) − عليه (سلف مكتب عليه + خارجية عليه)
+              const advBal = advBalById.get(d.id) ?? 0;
+              const officeOn = Math.max(advBal, 0);
+              const officeFor = Math.max(-advBal, 0);
+              const extOn = extRem.onMap.get(d.id) ?? 0;
+              const extFor = extRem.forMap.get(d.id) ?? 0;
+              // net موجب = له (مستحق له)، سالب = عليه
+              const net = remaining + officeFor + extFor - officeOn - extOn;
               return (
                 <Link key={d.id} href={`/drivers/${d.id}`}>
                   <Card className="flex items-center gap-3 p-3.5 active:scale-[0.99] transition-transform">
@@ -107,13 +125,17 @@ export default async function DriversPage({
                         <span className="truncate">{d.vehicleType}</span>
                       </div>
                     </div>
-                    {remaining > 0 && (
+                    {net !== 0 && (
                       <div className="text-left">
                         <div className="text-[10px] text-muted-foreground">
-                          مستحق له
+                          {net > 0 ? "له" : "عليه"}
                         </div>
-                        <div className="text-sm font-bold text-warning tabular-nums">
-                          {formatMoney(remaining, false)}
+                        <div
+                          className={`text-sm font-bold tabular-nums ${
+                            net > 0 ? "text-warning" : "text-destructive"
+                          }`}
+                        >
+                          {formatMoney(Math.abs(net), false)}
                         </div>
                       </div>
                     )}

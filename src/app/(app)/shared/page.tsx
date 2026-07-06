@@ -7,7 +7,11 @@ import { Card } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { formatMoney } from "@/lib/money";
 import { displayPhone } from "@/lib/phone";
-import { effectiveAmounts } from "@/lib/finance";
+import {
+  effectiveAmounts,
+  advanceBalancesByParty,
+  externalRemainingByParty,
+} from "@/lib/finance";
 import { Plus, Phone, ChevronLeft, UsersRound } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -40,21 +44,30 @@ export default async function SharedPage({
     prisma.driver.findMany({
       where: { linkId: { not: null } },
       select: {
+        id: true,
         linkId: true,
         trips: { select: { status: true, driverDue: true, driverTip: true, contractorPrice: true, customerDiscount: true, contractorSurcharge: true, contractorPenalty: true, driverPenalty: true, driverPayments: { select: { amount: true } } } },
       },
     }),
   ]);
 
-  // متبقّي السواق لكل linkId
-  const driverRemainingByLink = new Map<string, number>();
+  // أرصدة السلف (مكتب + خارجية) للجانبين لحساب الصافي الموحّد
+  const [cAdv, cExt, dAdv, dExt] = await Promise.all([
+    advanceBalancesByParty("CONTRACTOR"),
+    externalRemainingByParty("CONTRACTOR"),
+    advanceBalancesByParty("DRIVER"),
+    externalRemainingByParty("DRIVER"),
+  ]);
+
+  // بيانات السواق لكل linkId (المتبقي ومعرّفه)
+  const driverByLink = new Map<string, { id: string; remaining: number }>();
   for (const d of drivers) {
     if (!d.linkId) continue;
     const rem = d.trips.reduce((a, t) => {
       const paid = t.driverPayments.reduce((s, x) => s + x.amount, 0);
       return a + Math.max(effectiveAmounts(t).driver - paid, 0);
     }, 0);
-    driverRemainingByLink.set(d.linkId, rem);
+    driverByLink.set(d.linkId, { id: d.id, remaining: rem });
   }
 
   return (
@@ -87,9 +100,24 @@ export default async function SharedPage({
                 const collected = t.collections.reduce((s, x) => s + x.amount, 0);
                 return a + Math.max(effectiveAmounts(t).contractor - collected, 0);
               }, 0);
-              const driverRem = c.linkId
-                ? driverRemainingByLink.get(c.linkId) ?? 0
-                : 0;
+              const dInfo = c.linkId ? driverByLink.get(c.linkId) : undefined;
+              const driverRem = dInfo?.remaining ?? 0;
+              // الصافي الموحّد للجانبين: عليه − له
+              const cBal = cAdv.get(c.id) ?? 0;
+              const dBal = dInfo ? dAdv.get(dInfo.id) ?? 0 : 0;
+              const onParty =
+                deferred +
+                Math.max(cBal, 0) +
+                (cExt.onMap.get(c.id) ?? 0) +
+                Math.max(dBal, 0) +
+                (dInfo ? dExt.onMap.get(dInfo.id) ?? 0 : 0);
+              const forParty =
+                driverRem +
+                Math.max(-cBal, 0) +
+                (cExt.forMap.get(c.id) ?? 0) +
+                Math.max(-dBal, 0) +
+                (dInfo ? dExt.forMap.get(dInfo.id) ?? 0 : 0);
+              const net = onParty - forParty; // موجب = عليه
               return (
                 <Link key={c.id} href={`/shared/${c.linkId}`}>
                   <Card className="flex items-center gap-3 p-3.5 active:scale-[0.99] transition-transform">
@@ -108,18 +136,20 @@ export default async function SharedPage({
                         {displayPhone(c.phone)}
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-0.5">
-                      {deferred > 0 && (
-                        <span className="text-xs font-bold text-destructive tabular-nums">
-                          عليه {formatMoney(deferred, false)}
-                        </span>
-                      )}
-                      {driverRem > 0 && (
-                        <span className="text-xs font-bold text-warning tabular-nums">
-                          له {formatMoney(driverRem, false)}
-                        </span>
-                      )}
-                    </div>
+                    {net !== 0 && (
+                      <div className="text-left">
+                        <div className="text-[10px] text-muted-foreground">
+                          {net > 0 ? "عليه" : "له"}
+                        </div>
+                        <div
+                          className={`text-sm font-bold tabular-nums ${
+                            net > 0 ? "text-destructive" : "text-success"
+                          }`}
+                        >
+                          {formatMoney(Math.abs(net), false)}
+                        </div>
+                      </div>
+                    )}
                     <ChevronLeft className="h-4 w-4 text-muted-foreground" />
                   </Card>
                 </Link>

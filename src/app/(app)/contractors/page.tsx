@@ -7,7 +7,11 @@ import { Card } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { formatMoney } from "@/lib/money";
 import { displayPhone } from "@/lib/phone";
-import { effectiveAmounts } from "@/lib/finance";
+import {
+  effectiveAmounts,
+  advanceBalancesByParty,
+  externalRemainingByParty,
+} from "@/lib/finance";
 import { Plus, Phone, Building2, ChevronLeft, Users } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +65,12 @@ export default async function ContractorsPage({
   ]);
   const seqMap = new Map(allIds.map((c, i) => [c.id, i + 1]));
 
+  // أرصدة السلف (المكتب + الخارجية) لحساب الصافي له/عليه لكل مقاول
+  const [advBalById, extRem] = await Promise.all([
+    advanceBalancesByParty("CONTRACTOR"),
+    externalRemainingByParty("CONTRACTOR"),
+  ]);
+
   return (
     <>
       <AppHeader title="المقاولين" />
@@ -88,6 +98,13 @@ export default async function ContractorsPage({
                 const collected = t.collections.reduce((s, x) => s + x.amount, 0);
                 return a + Math.max(eff.contractor - collected, 0);
               }, 0);
+              // الصافي: عليه (آجل + سلف مكتب عليه + سلف خارجية عليه) − له (سلف مكتب له + خارجية له)
+              const advBal = advBalById.get(c.id) ?? 0;
+              const officeOn = Math.max(advBal, 0);
+              const officeFor = Math.max(-advBal, 0);
+              const extOn = extRem.onMap.get(c.id) ?? 0;
+              const extFor = extRem.forMap.get(c.id) ?? 0;
+              const net = due + officeOn + extOn - officeFor - extFor;
               return (
                 <Link key={c.id} href={`/contractors/${c.id}`}>
                   <Card className="flex items-center gap-3 p-3.5 active:scale-[0.99] transition-transform">
@@ -109,11 +126,17 @@ export default async function ContractorsPage({
                         )}
                       </div>
                     </div>
-                    {due > 0 && (
+                    {net !== 0 && (
                       <div className="text-left">
-                        <div className="text-[10px] text-muted-foreground">آجل</div>
-                        <div className="text-sm font-bold text-destructive tabular-nums">
-                          {formatMoney(due, false)}
+                        <div className="text-[10px] text-muted-foreground">
+                          {net > 0 ? "عليه" : "له"}
+                        </div>
+                        <div
+                          className={`text-sm font-bold tabular-nums ${
+                            net > 0 ? "text-destructive" : "text-success"
+                          }`}
+                        >
+                          {formatMoney(Math.abs(net), false)}
                         </div>
                       </div>
                     )}
