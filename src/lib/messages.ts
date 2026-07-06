@@ -46,6 +46,60 @@ export function adminNewTripMessage(t: AdminTripMsg): string {
   );
 }
 
+export function adminDriverPaymentEditMessage(d: {
+  driverName?: string | null;
+  contractorName: string;
+  startPoint: string;
+  endPoint: string;
+  oldAmount: number;
+  newAmount: number;
+  method: string;
+  date: Date;
+  note?: string | null;
+}): string {
+  return (
+    [
+      "✏️ <b>تعديل سداد السائق</b>",
+      `👤 السائق: ${d.driverName ?? "غير محدد"}`,
+      `👤 المقاول: ${d.contractorName}`,
+      `🧾 الرحلة: ${d.startPoint} ← ${d.endPoint}`,
+      `💵 القيمة القديمة: ${formatMoney(d.oldAmount)}`,
+      `💵 القيمة الجديدة: ${formatMoney(d.newAmount)}`,
+      `💳 الطريقة: ${methodLabel(d.method)}`,
+      `📅 تاريخ الحركة: ${formatShortDate(d.date)}`,
+      d.note ? `📝 ${d.note}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n") + SIGNATURE
+  );
+}
+
+export function adminDriverPaymentDeleteMessage(d: {
+  driverName?: string | null;
+  contractorName: string;
+  startPoint: string;
+  endPoint: string;
+  amount: number;
+  method: string;
+  date: Date;
+  note?: string | null;
+}): string {
+  return (
+    [
+      "🗑️ <b>حذف سداد السائق</b>",
+      `👤 السائق: ${d.driverName ?? "غير محدد"}`,
+      `👤 المقاول: ${d.contractorName}`,
+      `🧾 الرحلة: ${d.startPoint} ← ${d.endPoint}`,
+      `💵 القيمة المحذوفة: ${formatMoney(d.amount)}`,
+      `💳 الطريقة: ${methodLabel(d.method)}`,
+      `📅 تاريخ الحركة: ${formatShortDate(d.date)}`,
+      d.note ? `📝 ${d.note}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n") + SIGNATURE
+  );
+}
+
 /** تذكير للأدمن برحلة بعد ساعتين تقريبًا — يشمل الأرقام والسعر */
 export function adminTripReminder(t: AdminTripMsg): string {
   return (

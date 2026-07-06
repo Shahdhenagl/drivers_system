@@ -13,7 +13,12 @@ import {
 } from "@/lib/finance";
 import { VIA_DRIVER, methodLabel } from "@/lib/constants";
 import { sendTelegram } from "@/lib/telegram";
-import { adminExternalAdvanceMessage, adminNewTripMessage } from "@/lib/messages";
+import {
+  adminDriverPaymentDeleteMessage,
+  adminDriverPaymentEditMessage,
+  adminExternalAdvanceMessage,
+  adminNewTripMessage,
+} from "@/lib/messages";
 import { formatWeekday } from "@/lib/format";
 
 /** إنشاء رحلة جديدة — يدعم إضافة مقاول/سواق أثناء الإنشاء */
@@ -965,7 +970,15 @@ export async function updateTripDriverPayment(id: string, formData: FormData) {
 
   const current = await prisma.driverPayment.findUnique({
     where: { id },
-    include: { trip: { include: { driverPayments: true } } },
+    include: {
+      trip: {
+        include: {
+          driver: { select: { name: true } },
+          contractor: { select: { name: true } },
+          driverPayments: true,
+        },
+      },
+    },
   });
   if (!current) return { error: "حركة السداد غير موجودة" };
   if (current.trip.status === "CANCELLED") return { error: "الطلب ملغي" };
@@ -996,12 +1009,36 @@ export async function updateTripDriverPayment(id: string, formData: FormData) {
 
   await audit("EDIT_DRIVER_PAY", "Trip", current.tripId, { paymentId: id, amount, method });
   await revalidateTripMoney(current.tripId, current.trip.contractorId);
+  try {
+    await sendTelegram(
+      adminDriverPaymentEditMessage({
+        driverName: current.trip.driver?.name ?? null,
+        contractorName: current.trip.contractor.name,
+        startPoint: current.trip.startPoint,
+        endPoint: current.trip.endPoint,
+        oldAmount: current.amount,
+        newAmount: amount,
+        method,
+        date,
+        note,
+      })
+    );
+  } catch {
+    // Ignore notification failures.
+  }
 }
 
 export async function deleteTripDriverPayment(id: string) {
   const current = await prisma.driverPayment.findUnique({
     where: { id },
-    include: { trip: true },
+    include: {
+      trip: {
+        include: {
+          driver: { select: { name: true } },
+          contractor: { select: { name: true } },
+        },
+      },
+    },
   });
   if (!current) return { error: "حركة السداد غير موجودة" };
   if (current.trip.status === "CANCELLED") return { error: "الطلب ملغي" };
@@ -1014,6 +1051,22 @@ export async function deleteTripDriverPayment(id: string) {
 
   await audit("DELETE_DRIVER_PAY", "Trip", current.tripId, { paymentId: id });
   await revalidateTripMoney(current.tripId, current.trip.contractorId);
+  try {
+    await sendTelegram(
+      adminDriverPaymentDeleteMessage({
+        driverName: current.trip.driver?.name ?? null,
+        contractorName: current.trip.contractor.name,
+        startPoint: current.trip.startPoint,
+        endPoint: current.trip.endPoint,
+        amount: current.amount,
+        method: current.method,
+        date: current.date,
+        note: current.note ?? undefined,
+      })
+    );
+  } catch {
+    // Ignore notification failures.
+  }
 }
 
 export async function updateTripTransfer(id: string, formData: FormData) {
