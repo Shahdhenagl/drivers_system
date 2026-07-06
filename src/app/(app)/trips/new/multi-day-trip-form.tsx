@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { SearchSelect } from "@/components/ui/search-select";
+import { RouteFields, type RouteMemory } from "@/components/route-fields";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,9 +33,11 @@ function newDay(offset: number): Day {
 export function MultiDayTripForm({
   contractors,
   drivers,
+  routes,
 }: {
   contractors: Option[];
   drivers: Option[];
+  routes: RouteMemory[];
 }) {
   const [contractorId, setContractorId] = useState("");
   const [days, setDays] = useState<Day[]>([newDay(0), newDay(1)]);
@@ -112,14 +115,18 @@ export function MultiDayTripForm({
 
       {/* المسار المشترك */}
       <Card className="space-y-3 p-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="startPoint">نقطة البداية *</Label>
-          <Input id="startPoint" name="startPoint" required />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="endPoint">نقطة النهاية *</Label>
-          <Input id="endPoint" name="endPoint" required />
-        </div>
+        <RouteFields
+          routes={routes}
+          onPickRoute={(c, d) =>
+            setDays((prev) =>
+              prev.map((day) => ({
+                ...day,
+                contractorPrice: day.contractorPrice || c,
+                driverDue: day.driverDue || d,
+              }))
+            )
+          }
+        />
         <div className="space-y-1.5">
           <Label htmlFor="description">وصف الرحلة</Label>
           <Textarea id="description" name="description" />

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { SearchSelect } from "@/components/ui/search-select";
+import { RouteFields, type RouteMemory } from "@/components/route-fields";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,13 +27,17 @@ function weekdayFromDateInput(value: string) {
 export function TripForm({
   contractors,
   drivers,
+  routes,
 }: {
   contractors: Option[];
   drivers: Option[];
+  routes: RouteMemory[];
 }) {
   const [contractorId, setContractorId] = useState<string>("");
   const [driverId, setDriverId] = useState<string>("");
   const [tripDate, setTripDate] = useState(() => toDateInput(new Date()));
+  const [contractorPrice, setContractorPrice] = useState("");
+  const [driverDue, setDriverDue] = useState("");
   const [error, setError] = useState("");
 
   const selectedContractor = contractors.find((c) => c.id === contractorId);
@@ -121,14 +126,13 @@ export function TripForm({
             <input type="hidden" name="time" value={tripDay} />
           </div>
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="startPoint">نقطة البداية *</Label>
-          <Input id="startPoint" name="startPoint" required />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="endPoint">نقطة النهاية *</Label>
-          <Input id="endPoint" name="endPoint" required />
-        </div>
+        <RouteFields
+          routes={routes}
+          onPickRoute={(c, d) => {
+            setContractorPrice(c);
+            setDriverDue(d);
+          }}
+        />
         <div className="space-y-1.5">
           <Label htmlFor="description">وصف الرحلة</Label>
           <Textarea id="description" name="description" />
@@ -153,6 +157,8 @@ export function TripForm({
             type="number"
             step="0.01"
             inputMode="decimal"
+            value={contractorPrice}
+            onChange={(e) => setContractorPrice(e.target.value)}
             required
           />
         </div>
@@ -164,6 +170,8 @@ export function TripForm({
             type="number"
             step="0.01"
             inputMode="decimal"
+            value={driverDue}
+            onChange={(e) => setDriverDue(e.target.value)}
             required
           />
         </div>

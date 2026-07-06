@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { TripForm } from "./trip-form";
 import { MultiDayTripForm } from "./multi-day-trip-form";
+import type { RouteMemory } from "@/components/route-fields";
 import { CalendarDays, CalendarRange } from "lucide-react";
 
 type Option = { id: string; name: string; phone: string };
@@ -10,9 +11,11 @@ type Option = { id: string; name: string; phone: string };
 export function NewTripTabs({
   contractors,
   drivers,
+  routes,
 }: {
   contractors: Option[];
   drivers: Option[];
+  routes: RouteMemory[];
 }) {
   const [mode, setMode] = useState<"single" | "multi">("single");
 
@@ -44,9 +47,9 @@ export function NewTripTabs({
       </div>
 
       {mode === "single" ? (
-        <TripForm contractors={contractors} drivers={drivers} />
+        <TripForm contractors={contractors} drivers={drivers} routes={routes} />
       ) : (
-        <MultiDayTripForm contractors={contractors} drivers={drivers} />
+        <MultiDayTripForm contractors={contractors} drivers={drivers} routes={routes} />
       )}
     </div>
   );
