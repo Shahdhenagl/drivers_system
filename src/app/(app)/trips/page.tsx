@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { AppHeader } from "@/components/layout/app-header";
 import { SearchBar } from "@/components/search-bar";
+import { MonthFilter } from "@/components/month-filter";
 import { TripCard } from "@/components/trip-card";
 import { TripGroupCard } from "@/components/trip-group-card";
 import { prisma } from "@/lib/prisma";
-import { startOfDay, endOfDay, addDays } from "@/lib/format";
+import { startOfDay, endOfDay, addDays, monthBounds, monthLabel } from "@/lib/format";
 import { TRIP_STATUS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import type { Prisma } from "@prisma/client";
@@ -29,6 +30,7 @@ export default async function TripsPage({
     status?: string;
     filter?: string;
     collection?: string;
+    m?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -37,10 +39,37 @@ export default async function TripsPage({
   // الطلبات الملغية لا تظهر في "الكل" — فقط عند اختيار فلتر "ملغية"
   if (sp.status) where.status = sp.status;
   else where.status = { not: "CANCELLED" };
+
+  // قائمة الشهور المتاحة (من أقدم طلب حتى الشهر الحالي)
+  const minAgg = await prisma.trip.aggregate({ _min: { date: true } });
+  const now = new Date();
+  const monthValues: string[] = [];
+  {
+    const minDate = minAgg._min.date ?? now;
+    let y = now.getUTCFullYear();
+    let mo = now.getUTCMonth();
+    const minY = minDate.getUTCFullYear();
+    const minMo = minDate.getUTCMonth();
+    while ((y > minY || (y === minY && mo >= minMo)) && monthValues.length < 240) {
+      monthValues.push(`${y}-${String(mo + 1).padStart(2, "0")}`);
+      mo -= 1;
+      if (mo < 0) {
+        mo = 11;
+        y -= 1;
+      }
+    }
+  }
+  const months = monthValues.map((v) => ({ value: v, label: monthLabel(v) }));
+  const selectedMonth =
+    sp.m && monthValues.includes(sp.m) ? sp.m : "all";
+
   if (sp.filter === "today") {
     where.date = { gte: startOfDay(), lte: endOfDay() };
   } else if (sp.filter === "tomorrow") {
     where.date = { gte: startOfDay(addDays(new Date(), 1)), lte: endOfDay(addDays(new Date(), 1)) };
+  } else if (selectedMonth !== "all") {
+    const [from, to] = monthBounds(selectedMonth);
+    where.date = { gte: from, lt: to };
   }
   if (sp.q) {
     where.OR = [
@@ -76,6 +105,7 @@ export default async function TripsPage({
     const p = new URLSearchParams();
     if (key) p.set("status", key);
     if (sp.q) p.set("q", sp.q);
+    if (selectedMonth !== "all") p.set("m", selectedMonth);
     return `/trips?${p.toString()}`;
   };
 
@@ -84,6 +114,8 @@ export default async function TripsPage({
       <AppHeader title="الطلبات" />
       <div className="space-y-4 py-3">
         <SearchBar placeholder="بحث: مقاول، سواق، مكان، رقم..." />
+
+        <MonthFilter months={months} selected={selectedMonth} />
 
         <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
           {STATUS_CHIPS.map((c) => {
