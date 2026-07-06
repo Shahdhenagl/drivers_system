@@ -12,8 +12,20 @@ import { PayDriverForm } from "../pay-driver-form";
 import { AdvancePanel } from "@/components/advance-panel";
 import { ExternalAdvancePanel } from "@/components/external-advance-panel";
 import { AccountTotalSummary } from "@/components/account-total-summary";
+import { DailyReviewToggle } from "@/components/daily-review-toggle";
+import { MonthFilter } from "@/components/month-filter";
+import { setDriverReviewed } from "../actions";
 import { formatMoney } from "@/lib/money";
-import { formatShortDate, startOfDay, endOfDay, addDays } from "@/lib/format";
+import {
+  formatShortDate,
+  startOfDay,
+  endOfDay,
+  addDays,
+  cairoMonthStr,
+  monthLabel,
+  monthBounds,
+  sameCairoDay,
+} from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
@@ -32,10 +44,13 @@ export const dynamic = "force-dynamic";
 
 export default async function DriverProfile({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ m?: string }>;
 }) {
   const { id } = await params;
+  const { m } = await searchParams;
   const d = await prisma.driver.findUnique({
     where: { id },
     include: {
@@ -46,10 +61,49 @@ export default async function DriverProfile({
           driverPayments: true,
         },
       },
-      payments: { orderBy: { date: "desc" } },
+      payments: {
+        orderBy: { date: "desc" },
+        include: {
+          trip: {
+            select: {
+              startPoint: true,
+              endPoint: true,
+              contractor: { select: { name: true } },
+            },
+          },
+        },
+      },
     },
   });
   if (!d) notFound();
+
+  // ===== فلتر الشهر — الافتراضي الشهر الحالي (يُخفي الأقدم تلقائيًا)، و"all" لكل الشهور =====
+  const now = new Date();
+  const currentMonth = cairoMonthStr(now);
+  const monthSet = new Set<string>([currentMonth]);
+  for (const t of d.trips) monthSet.add(cairoMonthStr(t.date));
+  for (const p of d.payments) monthSet.add(cairoMonthStr(p.date));
+  const months = [...monthSet]
+    .sort()
+    .reverse()
+    .map((v) => ({ value: v, label: monthLabel(v) }));
+  const selectedMonth =
+    m === "all"
+      ? "all"
+      : m && months.some((x) => x.value === m)
+        ? m
+        : currentMonth;
+  const bounds = selectedMonth === "all" ? null : monthBounds(selectedMonth);
+  const inMonth = (dt: Date) => !bounds || (dt >= bounds[0] && dt < bounds[1]);
+  const trips = bounds ? d.trips.filter((t) => inMonth(t.date)) : d.trips;
+  const monthPayments = bounds
+    ? d.payments.filter((p) => inMonth(p.date))
+    : d.payments;
+
+  // علامة المراجعة اليومية (تتصفّر تلقائيًا كل يوم)
+  const reviewedToday = d.lastReviewedAt
+    ? sameCairoDay(d.lastReviewedAt, now)
+    : false;
 
   // السلف/الأرصدة تُجلب منفصلة ومرنة (لو الجدول غير موجود بعد قبل الترحيل)
   const advances = await prisma.advance
@@ -105,10 +159,15 @@ export default async function DriverProfile({
     })),
   ];
 
-  // تشمل الرحلات النشطة ونصيب السواق من غرامات الإلغاء
+  // إجماليات كل الشهور — تقود المتبقي القائم والسداد والرصيد (مستقلة عن الفلتر)
   const totalDue = d.trips.reduce((a, t) => a + effectiveAmounts(t).driver, 0);
   const totalPaid = d.payments.reduce((a, p) => a + p.amount, 0);
   const remaining = Math.max(totalDue - totalPaid, 0);
+
+  // إجماليات الشهر المختار — لصناديق الملخص فقط
+  const dueMonth = trips.reduce((a, t) => a + effectiveAmounts(t).driver, 0);
+  const paidMonth = monthPayments.reduce((a, p) => a + p.amount, 0);
+  const remainingMonth = Math.max(dueMonth - paidMonth, 0);
 
   // رصيد السلف: OUT − IN (موجب = عليه لنا، سالب = لنا عليه)
   const advOut = advances
@@ -118,24 +177,25 @@ export default async function DriverProfile({
     .filter((a) => a.direction === "IN")
     .reduce((s, a) => s + a.amount, 0);
   const advanceBalance = advOut - advIn;
+  // المتبقي على كل ساق (يراعي التحصيل/السداد الجزئي عبر المكتب):
+  // له (مُقرِض) = amount − paidAmount، عليه (مستلِف) = amount − collectedAmount
   const externalFor = externalAdvances
     .filter(
-      (a) => a.status === "OPEN" && a.lenderType === "DRIVER" && a.lenderId === id
+      (a) => a.status !== "SETTLED" && a.lenderType === "DRIVER" && a.lenderId === id
     )
-    .reduce((s, a) => s + a.amount, 0);
+    .reduce((s, a) => s + Math.max(a.amount - (a.paidAmount ?? 0), 0), 0);
   const externalOn = externalAdvances
     .filter(
       (a) =>
-        a.status === "OPEN" && a.borrowerType === "DRIVER" && a.borrowerId === id
+        a.status !== "SETTLED" && a.borrowerType === "DRIVER" && a.borrowerId === id
     )
-    .reduce((s, a) => s + a.amount, 0);
+    .reduce((s, a) => s + Math.max(a.amount - (a.collectedAmount ?? 0), 0), 0);
   const officeFor = Math.max(-advanceBalance, 0);
   const officeOn = Math.max(advanceBalance, 0);
   const totalForDriver = remaining + officeFor + externalFor;
   const totalOnDriver = officeOn + externalOn;
 
   // تقارير واتساب دورية
-  const now = new Date();
   const reportPeriods = [
     { label: "أسبوعي", from: startOfDay(addDays(now, -6)), to: endOfDay(now) },
     { label: "شهري", from: startOfDay(addDays(now, -29)), to: endOfDay(now) },
@@ -242,10 +302,21 @@ export default async function DriverProfile({
           </div>
         </Card>
 
+        {/* علامة المراجعة اليومية */}
+        <div className="print:hidden">
+          <DailyReviewToggle
+            reviewedToday={reviewedToday}
+            action={setDriverReviewed.bind(null, d.id)}
+          />
+        </div>
+
+        {/* فلتر الشهر */}
+        <MonthFilter months={months} selected={selectedMonth} />
+
         <div className="grid grid-cols-3 gap-3">
-          <SummaryBox label="إجمالي المستحق" value={totalDue} />
-          <SummaryBox label="المدفوع" value={totalPaid} tone="success" />
-          <SummaryBox label="المتبقي" value={remaining} tone="warning" />
+          <SummaryBox label="إجمالي المستحق" value={dueMonth} />
+          <SummaryBox label="المدفوع" value={paidMonth} tone="success" />
+          <SummaryBox label="المتبقي" value={remainingMonth} tone="warning" />
         </div>
 
         <AccountTotalSummary
@@ -265,6 +336,7 @@ export default async function DriverProfile({
             driverId={d.id}
             remaining={remaining}
             advanceBalance={advanceBalance}
+            externalPayable={externalFor}
           />
         </div>
 
@@ -308,10 +380,10 @@ export default async function DriverProfile({
         {/* الرحلات */}
         <section>
           <h2 className="mb-2 text-sm font-bold text-muted-foreground">
-            الرحلات ({d.trips.length})
+            الرحلات ({trips.length})
           </h2>
           <div className="space-y-2">
-            {d.trips.map((t) => (
+            {trips.map((t) => (
               <Link key={t.id} href={`/trips/${t.id}`}>
                 <Card className="flex items-center justify-between p-3 active:scale-[0.99] transition-transform">
                   <div className="min-w-0">
@@ -336,9 +408,9 @@ export default async function DriverProfile({
                 </Card>
               </Link>
             ))}
-            {d.trips.length === 0 && (
+            {trips.length === 0 && (
               <p className="py-6 text-center text-sm text-muted-foreground">
-                لا توجد رحلات
+                لا توجد رحلات في هذا الشهر
               </p>
             )}
           </div>
@@ -347,15 +419,15 @@ export default async function DriverProfile({
         {/* سجل السداد */}
         <section>
           <h2 className="mb-2 text-sm font-bold text-muted-foreground">
-            سجل السداد ({d.payments.length})
+            سجل السداد ({monthPayments.length})
           </h2>
           <Card className="divide-y divide-border">
-            {d.payments.length === 0 ? (
+            {monthPayments.length === 0 ? (
               <p className="p-4 text-center text-sm text-muted-foreground">
-                لا توجد عمليات سداد
+                لا توجد عمليات سداد في هذا الشهر
               </p>
             ) : (
-              d.payments.map((p) => (
+              monthPayments.map((p) => (
                 <div
                   key={p.id}
                   className="flex items-center justify-between p-3 text-sm"
@@ -366,13 +438,18 @@ export default async function DriverProfile({
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {formatShortDate(p.date)} • {methodLabel(p.method)}
+                      {p.trip?.contractor?.name
+                        ? ` • المقاول: ${p.trip.contractor.name}`
+                        : ""}
                     </div>
                   </div>
-                  {p.note && (
-                    <div className="max-w-[45%] truncate text-xs text-muted-foreground">
-                      {p.note}
-                    </div>
-                  )}
+                  <div className="max-w-[45%] truncate text-xs text-muted-foreground">
+                    {p.note
+                      ? p.note
+                      : p.trip
+                        ? `${p.trip.startPoint} ← ${p.trip.endPoint}`
+                        : ""}
+                  </div>
                 </div>
               ))
             )}

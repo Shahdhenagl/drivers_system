@@ -47,6 +47,49 @@ export function addDays(d: Date, n: number): Date {
 
 const TIMEZONE = "Africa/Cairo";
 
+/** تاريخ اليوم بتوقيت القاهرة كنص "yyyy-MM-dd" (مستقل عن توقيت السيرفر) */
+export function cairoDayStr(d: Date | string = new Date()): string {
+  const date = typeof d === "string" ? new Date(d) : d;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TIMEZONE }).format(date);
+}
+
+/** شهر القاهرة كنص "yyyy-MM" */
+export function cairoMonthStr(d: Date | string = new Date()): string {
+  return cairoDayStr(d).slice(0, 7);
+}
+
+/** هل التاريخان في نفس اليوم بتوقيت القاهرة؟ */
+export function sameCairoDay(a: Date | string, b: Date | string): boolean {
+  return cairoDayStr(a) === cairoDayStr(b);
+}
+
+const AR_MONTHS = [
+  "يناير",
+  "فبراير",
+  "مارس",
+  "أبريل",
+  "مايو",
+  "يونيو",
+  "يوليو",
+  "أغسطس",
+  "سبتمبر",
+  "أكتوبر",
+  "نوفمبر",
+  "ديسمبر",
+];
+
+/** تسمية شهر عربية من نص "yyyy-MM" مثل "يوليو 2026" */
+export function monthLabel(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  return `${AR_MONTHS[(m || 1) - 1]} ${y}`;
+}
+
+/** حدود شهر "yyyy-MM" كـ [from, toExclusive] بتوقيت UTC (تواريخ الرحلات مخزَّنة منتصف ليل UTC) */
+export function monthBounds(ym: string): [Date, Date] {
+  const [y, m] = ym.split("-").map(Number);
+  return [new Date(Date.UTC(y, m - 1, 1)), new Date(Date.UTC(y, m, 1))];
+}
+
 /** فرق توقيت منطقة زمنية عن UTC (بالملّي ثانية) عند لحظة معيّنة — مستقل عن توقيت السيرفر */
 function tzOffsetMs(timeZone: string, instant: Date): number {
   const dtf = new Intl.DateTimeFormat("en-US", {

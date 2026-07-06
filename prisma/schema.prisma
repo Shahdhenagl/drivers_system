@@ -22,6 +22,8 @@ model Contractor {
   phone3    String? // رقم إضافي ثالث اختياري
   company   String?
   notes     String?
+  // آخر مراجعة يومية للحساب — يُعتبر "تمت مراجعته اليوم" لو التاريخ اليوم (يتصفّر تلقائيًا كل يوم)
+  lastReviewedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -40,6 +42,8 @@ model Driver {
   vehicleType   String
   vehicleNumber String?
   notes         String?
+  // آخر مراجعة يومية للحساب — يُعتبر "تمت مراجعته اليوم" لو التاريخ اليوم (يتصفّر تلقائيًا كل يوم)
+  lastReviewedAt DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -200,6 +204,11 @@ model ExternalAdvance {
   lenderId     String
   lenderName   String
   amount       Int // بالقروش
+  // السلفة الخارجية عبر المكتب لها ساقان مستقلتان (أمانة):
+  // collectedAmount = المحصَّل من المستلِف (borrower)، paidAmount = المسلَّم للمُقرِض (lender)
+  // SETTLED عندما تكتمل الساقان معًا. الأمانة المحتجزة = collectedAmount − paidAmount.
+  collectedAmount Int @default(0)
+  paidAmount      Int @default(0)
   date         DateTime  @default(now())
   note         String?
   status       String    @default("OPEN") // OPEN | SETTLED

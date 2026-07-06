@@ -11,9 +11,21 @@ import { DeleteContractorButton } from "../delete-contractor-button";
 import { AdvancePanel } from "@/components/advance-panel";
 import { ExternalAdvancePanel } from "@/components/external-advance-panel";
 import { AccountTotalSummary } from "@/components/account-total-summary";
+import { DailyReviewToggle } from "@/components/daily-review-toggle";
+import { MonthFilter } from "@/components/month-filter";
 import { CollectAllForm } from "./collect-all-form";
+import { setContractorReviewed } from "../actions";
 import { formatMoney } from "@/lib/money";
-import { formatShortDate, startOfDay, endOfDay, addDays } from "@/lib/format";
+import {
+  formatShortDate,
+  startOfDay,
+  endOfDay,
+  addDays,
+  cairoMonthStr,
+  monthLabel,
+  monthBounds,
+  sameCairoDay,
+} from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
@@ -31,10 +43,13 @@ export const dynamic = "force-dynamic";
 
 export default async function ContractorProfile({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ m?: string }>;
 }) {
   const { id } = await params;
+  const { m } = await searchParams;
   const c = await prisma.contractor.findUnique({
     where: { id },
     include: {
@@ -48,6 +63,34 @@ export default async function ContractorProfile({
     },
   });
   if (!c) notFound();
+
+  // ===== فلتر الشهر — الافتراضي الشهر الحالي (يُخفي الأقدم تلقائيًا)، و"all" لكل الشهور =====
+  const now = new Date();
+  const currentMonth = cairoMonthStr(now);
+  const monthSet = new Set<string>([currentMonth]);
+  for (const t of c.trips) {
+    monthSet.add(cairoMonthStr(t.date));
+    for (const col of t.collections) monthSet.add(cairoMonthStr(col.date));
+  }
+  const months = [...monthSet]
+    .sort()
+    .reverse()
+    .map((v) => ({ value: v, label: monthLabel(v) }));
+  const selectedMonth =
+    m === "all"
+      ? "all"
+      : m && months.some((x) => x.value === m)
+        ? m
+        : currentMonth;
+  const bounds = selectedMonth === "all" ? null : monthBounds(selectedMonth);
+  const trips = bounds
+    ? c.trips.filter((t) => t.date >= bounds[0] && t.date < bounds[1])
+    : c.trips;
+
+  // علامة المراجعة اليومية (تتصفّر تلقائيًا كل يوم)
+  const reviewedToday = c.lastReviewedAt
+    ? sameCairoDay(c.lastReviewedAt, now)
+    : false;
 
   // السلف/الأرصدة (مرنة لو الجدول غير موجود قبل الترحيل)
   const advances = await prisma.advance
@@ -109,53 +152,62 @@ export default async function ContractorProfile({
     .filter((a) => a.direction === "IN")
     .reduce((s, a) => s + a.amount, 0);
   const advanceBalance = advOut - advIn;
+  // المتبقي على كل ساق (يراعي التحصيل/السداد الجزئي عبر المكتب):
+  // له (مُقرِض) = amount − paidAmount، عليه (مستلِف) = amount − collectedAmount
   const externalFor = externalAdvances
     .filter(
       (a) =>
-        a.status === "OPEN" &&
+        a.status !== "SETTLED" &&
         a.lenderType === "CONTRACTOR" &&
         a.lenderId === id
     )
-    .reduce((s, a) => s + a.amount, 0);
+    .reduce((s, a) => s + Math.max(a.amount - (a.paidAmount ?? 0), 0), 0);
+  // عليه خارجيًا = يقبل التحصيل عبر المكتب (المقاول مستلِف)
   const externalOn = externalAdvances
     .filter(
       (a) =>
-        a.status === "OPEN" &&
+        a.status !== "SETTLED" &&
         a.borrowerType === "CONTRACTOR" &&
         a.borrowerId === id
     )
-    .reduce((s, a) => s + a.amount, 0);
+    .reduce((s, a) => s + Math.max(a.amount - (a.collectedAmount ?? 0), 0), 0);
   const officeFor = Math.max(-advanceBalance, 0);
   const officeOn = Math.max(advanceBalance, 0);
 
-  // تشمل الرحلات النشطة وغرامات الإلغاء (السماح = صفر)
-  const totalRequired = c.trips.reduce(
+  // تشمل الرحلات النشطة وغرامات الإلغاء (السماح = صفر) — مفلترة حسب الشهر المختار
+  const totalRequired = trips.reduce(
     (a, t) => a + effectiveAmounts(t).contractor,
     0
   );
-  const totalCollected = c.trips.reduce(
+  const totalCollected = trips.reduce(
     (a, t) => a + t.collections.reduce((s, x) => s + x.amount, 0),
     0
   );
   const totalDeferred = Math.max(totalRequired - totalCollected, 0);
-  const totalProfit = c.trips.reduce((a, t) => {
+  const totalProfit = trips.reduce((a, t) => {
     const e = effectiveAmounts(t);
     return a + (e.contractor - e.driver);
   }, 0);
+  // الآجل الفعلي على كل الرحلات (كل الشهور) — يقود التحصيل والرصيد القائم، مستقل عن الفلتر
+  const deferredAll = c.trips.reduce((a, t) => {
+    const eff = effectiveAmounts(t).contractor;
+    const collected = t.collections.reduce((s, x) => s + x.amount, 0);
+    return a + Math.max(eff - collected, 0);
+  }, 0);
   const totalForContractor = officeFor + externalFor;
-  const totalOnContractor = totalDeferred + officeOn + externalOn;
+  const totalOnContractor = deferredAll + officeOn + externalOn;
 
-  const payments = c.trips
+  const payments = trips
     .flatMap((t) =>
       t.collections.map((p) => ({
         ...p,
         route: `${t.startPoint} ← ${t.endPoint}`,
+        driverName: t.driver?.name ?? "—",
       }))
     )
     .sort((a, b) => +new Date(b.date) - +new Date(a.date));
 
   // تقارير واتساب دورية
-  const now = new Date();
   const reportPeriods = [
     { label: "أسبوعي", from: startOfDay(addDays(now, -6)), to: endOfDay(now) },
     { label: "شهري", from: startOfDay(addDays(now, -29)), to: endOfDay(now) },
@@ -175,7 +227,7 @@ export default async function ContractorProfile({
       tripsCount: inP.length,
       total,
       settled,
-      remainingTotal: totalDeferred,
+      remainingTotal: deferredAll,
       advanceBalance,
       externalFor,
       externalOn,
@@ -258,6 +310,17 @@ export default async function ContractorProfile({
           </div>
         </Card>
 
+        {/* علامة المراجعة اليومية */}
+        <div className="print:hidden">
+          <DailyReviewToggle
+            reviewedToday={reviewedToday}
+            action={setContractorReviewed.bind(null, c.id)}
+          />
+        </div>
+
+        {/* فلتر الشهر */}
+        <MonthFilter months={months} selected={selectedMonth} />
+
         {/* الملخص المالي */}
         <div className="grid grid-cols-2 gap-3">
           <SummaryBox label="إجمالي المطلوب" value={totalRequired} />
@@ -272,19 +335,20 @@ export default async function ContractorProfile({
           rows={[
             { label: "رصيد/سلف مكتب له", value: officeFor, side: "for" },
             { label: "سلف خارجية له", value: externalFor, side: "for" },
-            { label: "متبقي رحلات عليه", value: totalDeferred, side: "on" },
+            { label: "متبقي رحلات عليه", value: deferredAll, side: "on" },
             { label: "سلف مكتب عليه", value: officeOn, side: "on" },
             { label: "سلف خارجية عليه", value: externalOn, side: "on" },
           ]}
         />
 
         {/* تحصيل الكل */}
-        {totalDeferred > 0 && (
+        {(deferredAll > 0 || externalOn > 0) && (
           <div className="print:hidden">
             <CollectAllForm
               contractorId={c.id}
-              remaining={totalDeferred}
+              remaining={deferredAll}
               advanceBalance={advanceBalance}
+              externalCollectable={externalOn}
             />
           </div>
         )}
@@ -329,10 +393,10 @@ export default async function ContractorProfile({
         {/* الرحلات */}
         <section>
           <h2 className="mb-2 text-sm font-bold text-muted-foreground">
-            الرحلات ({c.trips.length})
+            الرحلات ({trips.length})
           </h2>
           <div className="space-y-2">
-            {c.trips.map((t) => {
+            {trips.map((t) => {
               const collected = t.collections.reduce((s, x) => s + x.amount, 0);
               return (
                 <Link key={t.id} href={`/trips/${t.id}`}>
@@ -361,9 +425,9 @@ export default async function ContractorProfile({
                 </Link>
               );
             })}
-            {c.trips.length === 0 && (
+            {trips.length === 0 && (
               <p className="py-6 text-center text-sm text-muted-foreground">
-                لا توجد رحلات
+                لا توجد رحلات في هذا الشهر
               </p>
             )}
           </div>
@@ -389,6 +453,7 @@ export default async function ContractorProfile({
                     <div className="font-medium">{formatMoney(p.amount)}</div>
                     <div className="text-xs text-muted-foreground">
                       {formatShortDate(p.date)} • {methodLabel(p.method)}
+                      {p.driverName ? ` • السواق: ${p.driverName}` : ""}
                     </div>
                   </div>
                   <div className="max-w-[45%] truncate text-xs text-muted-foreground">
