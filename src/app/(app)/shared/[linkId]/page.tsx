@@ -11,6 +11,7 @@ import { AccountTotalSummary } from "@/components/account-total-summary";
 import { DailyReviewToggle } from "@/components/daily-review-toggle";
 import { CollectAllForm } from "../../contractors/[id]/collect-all-form";
 import { PayDriverForm } from "../../drivers/pay-driver-form";
+import { MovementActions } from "../../trips/[id]/movement-actions";
 import { SharedForm } from "../shared-form";
 import { DeleteSharedButton } from "../delete-shared-button";
 import { setSharedReviewed } from "../actions";
@@ -130,6 +131,11 @@ export default async function SharedProfile({
   const cAdvBalance = advNet(contractorAdvances);
   const cExternalFor = extSum(contractorExternals, "lender", "CONTRACTOR", contractor.id, "paidAmount");
   const cExternalOn = extSum(contractorExternals, "borrower", "CONTRACTOR", contractor.id, "collectedAmount");
+  const contractorPayments = contractor.trips
+    .flatMap((t) =>
+      t.collections.map((p) => ({ ...p, route: `${t.startPoint} ← ${t.endPoint}` }))
+    )
+    .sort((a, b) => +new Date(b.date) - +new Date(a.date));
 
   // ===== جانب السواق =====
   const dDue = driver.trips.reduce((a, t) => a + effectiveAmounts(t).driver, 0);
@@ -313,6 +319,40 @@ export default async function SharedProfile({
           </div>
         </section>
 
+        <section>
+          <h2 className="mb-2 text-sm font-bold text-muted-foreground">
+            سجل التحصيل ({contractorPayments.length})
+          </h2>
+          <Card className="divide-y divide-border">
+            {contractorPayments.length === 0 ? (
+              <p className="p-4 text-center text-sm text-muted-foreground">لا توجد تحصيلات</p>
+            ) : (
+              contractorPayments.map((p) => (
+                <div key={p.id} className="flex items-center justify-between gap-2 p-3 text-sm">
+                  <div className="min-w-0">
+                    <div className="font-medium">{formatMoney(p.amount)}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatShortDate(p.date)} • {methodLabel(p.method)}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">{p.route}</div>
+                  </div>
+                  <MovementActions
+                    movement={{
+                      id: p.id,
+                      kind: "collection",
+                      label: `تحصيل — ${p.route}`,
+                      amount: p.amount,
+                      method: p.method,
+                      note: p.note,
+                      date: p.date,
+                    }}
+                  />
+                </div>
+              ))
+            )}
+          </Card>
+        </section>
+
         {/* ======================= جانب السواق ======================= */}
         <div className="flex items-center gap-2 pt-1 text-sm font-bold text-warning">
           <Truck className="h-4 w-4" /> كسواق
@@ -388,17 +428,28 @@ export default async function SharedProfile({
               <p className="p-4 text-center text-sm text-muted-foreground">لا توجد عمليات سداد</p>
             ) : (
               driver.payments.map((p) => (
-                <div key={p.id} className="flex items-center justify-between p-3 text-sm">
-                  <div>
+                <div key={p.id} className="flex items-center justify-between gap-2 p-3 text-sm">
+                  <div className="min-w-0">
                     <div className="font-medium text-success">{formatMoney(p.amount)}</div>
                     <div className="text-xs text-muted-foreground">
                       {formatShortDate(p.date)} • {methodLabel(p.method)}
                       {p.trip?.contractor?.name ? ` • المقاول: ${p.trip.contractor.name}` : ""}
                     </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {p.note ? p.note : p.trip ? `${p.trip.startPoint} ← ${p.trip.endPoint}` : ""}
+                    </div>
                   </div>
-                  <div className="max-w-[45%] truncate text-xs text-muted-foreground">
-                    {p.note ? p.note : p.trip ? `${p.trip.startPoint} ← ${p.trip.endPoint}` : ""}
-                  </div>
+                  <MovementActions
+                    movement={{
+                      id: p.id,
+                      kind: "driverPayment",
+                      label: p.trip ? `سداد — ${p.trip.startPoint} ← ${p.trip.endPoint}` : "سداد سواق",
+                      amount: p.amount,
+                      method: p.method,
+                      note: p.note,
+                      date: p.date,
+                    }}
+                  />
                 </div>
               ))
             )}

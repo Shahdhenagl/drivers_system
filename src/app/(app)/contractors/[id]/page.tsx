@@ -13,6 +13,7 @@ import { ExternalAdvancePanel } from "@/components/external-advance-panel";
 import { AccountTotalSummary } from "@/components/account-total-summary";
 import { DailyReviewToggle } from "@/components/daily-review-toggle";
 import { MonthFilter } from "@/components/month-filter";
+import { MovementActions } from "../../trips/[id]/movement-actions";
 import { CollectAllForm } from "./collect-all-form";
 import { setContractorReviewed } from "../actions";
 import { formatMoney } from "@/lib/money";
@@ -447,18 +448,29 @@ export default async function ContractorProfile({
               payments.map((p) => (
                 <div
                   key={p.id}
-                  className="flex items-center justify-between p-3 text-sm"
+                  className="flex items-center justify-between gap-2 p-3 text-sm"
                 >
-                  <div>
+                  <div className="min-w-0">
                     <div className="font-medium">{formatMoney(p.amount)}</div>
                     <div className="text-xs text-muted-foreground">
                       {formatShortDate(p.date)} • {methodLabel(p.method)}
                       {p.driverName ? ` • السواق: ${p.driverName}` : ""}
                     </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {p.route}
+                    </div>
                   </div>
-                  <div className="max-w-[45%] truncate text-xs text-muted-foreground">
-                    {p.route}
-                  </div>
+                  <MovementActions
+                    movement={{
+                      id: p.id,
+                      kind: "collection",
+                      label: `تحصيل — ${p.route}`,
+                      amount: p.amount,
+                      method: p.method,
+                      note: p.note,
+                      date: p.date,
+                    }}
+                  />
                 </div>
               ))
             )}

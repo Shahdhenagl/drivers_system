@@ -14,6 +14,7 @@ import { ExternalAdvancePanel } from "@/components/external-advance-panel";
 import { AccountTotalSummary } from "@/components/account-total-summary";
 import { DailyReviewToggle } from "@/components/daily-review-toggle";
 import { MonthFilter } from "@/components/month-filter";
+import { MovementActions } from "../../trips/[id]/movement-actions";
 import { setDriverReviewed } from "../actions";
 import { formatMoney } from "@/lib/money";
 import {
@@ -430,9 +431,9 @@ export default async function DriverProfile({
               monthPayments.map((p) => (
                 <div
                   key={p.id}
-                  className="flex items-center justify-between p-3 text-sm"
+                  className="flex items-center justify-between gap-2 p-3 text-sm"
                 >
-                  <div>
+                  <div className="min-w-0">
                     <div className="font-medium text-success">
                       {formatMoney(p.amount)}
                     </div>
@@ -442,14 +443,27 @@ export default async function DriverProfile({
                         ? ` • المقاول: ${p.trip.contractor.name}`
                         : ""}
                     </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {p.note
+                        ? p.note
+                        : p.trip
+                          ? `${p.trip.startPoint} ← ${p.trip.endPoint}`
+                          : ""}
+                    </div>
                   </div>
-                  <div className="max-w-[45%] truncate text-xs text-muted-foreground">
-                    {p.note
-                      ? p.note
-                      : p.trip
-                        ? `${p.trip.startPoint} ← ${p.trip.endPoint}`
-                        : ""}
-                  </div>
+                  <MovementActions
+                    movement={{
+                      id: p.id,
+                      kind: "driverPayment",
+                      label: p.trip
+                        ? `سداد — ${p.trip.startPoint} ← ${p.trip.endPoint}`
+                        : "سداد سواق",
+                      amount: p.amount,
+                      method: p.method,
+                      note: p.note,
+                      date: p.date,
+                    }}
+                  />
                 </div>
               ))
             )}
