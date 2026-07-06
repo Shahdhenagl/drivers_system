@@ -24,6 +24,8 @@ model Contractor {
   notes     String?
   // آخر مراجعة يومية للحساب — يُعتبر "تمت مراجعته اليوم" لو التاريخ اليوم (يتصفّر تلقائيًا كل يوم)
   lastReviewedAt DateTime?
+  // حساب مشترك: معرّف يربط سجل المقاول بسجل السواق لنفس الشخص (سواق ومقاول معًا)
+  linkId    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -31,6 +33,7 @@ model Contractor {
 
   @@index([name])
   @@index([phone])
+  @@index([linkId])
 }
 
 model Driver {
@@ -44,6 +47,8 @@ model Driver {
   notes         String?
   // آخر مراجعة يومية للحساب — يُعتبر "تمت مراجعته اليوم" لو التاريخ اليوم (يتصفّر تلقائيًا كل يوم)
   lastReviewedAt DateTime?
+  // حساب مشترك: معرّف يربط سجل السواق بسجل المقاول لنفس الشخص
+  linkId        String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -52,6 +57,7 @@ model Driver {
 
   @@index([name])
   @@index([phone])
+  @@index([linkId])
 }
 
 model Partner {

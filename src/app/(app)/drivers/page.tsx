@@ -21,17 +21,21 @@ export default async function DriversPage({
 
   const [drivers, allIds] = await Promise.all([
     prisma.driver.findMany({
-      where: q
-        ? {
-            OR: [
-              { name: { contains: q } },
-              { phone: { contains: q } },
-              { altPhone: { contains: q } },
-              { phone3: { contains: q } },
-              { vehicleType: { contains: q } },
-            ],
-          }
-        : undefined,
+      // المشتركون (linkId != null) لهم قسم مستقل «المشتركين»
+      where: {
+        linkId: null,
+        ...(q
+          ? {
+              OR: [
+                { name: { contains: q } },
+                { phone: { contains: q } },
+                { altPhone: { contains: q } },
+                { phone3: { contains: q } },
+                { vehicleType: { contains: q } },
+              ],
+            }
+          : {}),
+      },
       orderBy: { createdAt: "desc" },
       include: {
         trips: {
@@ -50,6 +54,7 @@ export default async function DriversPage({
     }),
     // رقم تسلسلي ثابت حسب ترتيب الإضافة (أول سواق = 1)
     prisma.driver.findMany({
+      where: { linkId: null },
       orderBy: { createdAt: "asc" },
       select: { id: true },
     }),

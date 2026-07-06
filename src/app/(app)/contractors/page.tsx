@@ -21,17 +21,21 @@ export default async function ContractorsPage({
 
   const [contractors, allIds] = await Promise.all([
     prisma.contractor.findMany({
-      where: q
-        ? {
-            OR: [
-              { name: { contains: q } },
-              { phone: { contains: q } },
-              { altPhone: { contains: q } },
-              { phone3: { contains: q } },
-              { company: { contains: q } },
-            ],
-          }
-        : undefined,
+      // المشتركون (linkId != null) لهم قسم مستقل «المشتركين»
+      where: {
+        linkId: null,
+        ...(q
+          ? {
+              OR: [
+                { name: { contains: q } },
+                { phone: { contains: q } },
+                { altPhone: { contains: q } },
+                { phone3: { contains: q } },
+                { company: { contains: q } },
+              ],
+            }
+          : {}),
+      },
       orderBy: { createdAt: "desc" },
       include: {
         trips: {
@@ -50,6 +54,7 @@ export default async function ContractorsPage({
     }),
     // رقم تسلسلي ثابت حسب ترتيب الإضافة (أول مقاول = 1)
     prisma.contractor.findMany({
+      where: { linkId: null },
       orderBy: { createdAt: "asc" },
       select: { id: true },
     }),

@@ -8,6 +8,7 @@ import { COMPANY_NAME } from "@/lib/constants";
 import {
   Users,
   Truck,
+  UsersRound,
   Handshake,
   FileBarChart,
   ScrollText,
@@ -18,6 +19,7 @@ import {
 const links = [
   { href: "/contractors", label: "المقاولين", icon: Users, color: "text-primary bg-primary/15" },
   { href: "/drivers", label: "السواقين", icon: Truck, color: "text-warning bg-warning/15" },
+  { href: "/shared", label: "المشتركين", icon: UsersRound, color: "text-blue-400 bg-blue-500/15" },
   { href: "/partners", label: "الشركاء", icon: Handshake, color: "text-blue-400 bg-blue-500/15" },
   { href: "/reports", label: "التقارير", icon: FileBarChart, color: "text-success bg-success/15" },
   { href: "/audit", label: "سجل العمليات", icon: ScrollText, color: "text-muted-foreground bg-muted" },

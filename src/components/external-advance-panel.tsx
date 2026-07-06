@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -28,11 +28,14 @@ import { playSound } from "@/lib/sounds";
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  Check,
   CheckCircle2,
+  ChevronDown,
   History,
   Pencil,
   Plus,
   RotateCcw,
+  Search,
   Trash2,
 } from "lucide-react";
 
@@ -93,23 +96,93 @@ function PartySelect({
   const [value, setValue] = useState(defaultValue);
   const parsed = parsePartyKey(value);
 
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      setQuery("");
+      const t = setTimeout(() => inputRef.current?.focus(), 0);
+      return () => clearTimeout(t);
+    }
+  }, [open]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? options.filter(
+        (o) => o.name.toLowerCase().includes(q) || o.label.toLowerCase().includes(q)
+      )
+    : options;
+  const selected = options.find((o) => partyKey(o.type, o.id) === value) ?? null;
+
   return (
     <div className="space-y-1.5">
       <Label htmlFor={`${name}-party`}>{label}</Label>
-      <select
-        id={`${name}-party`}
-        className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        required
-      >
-        <option value="">اختار طرف</option>
-        {options.map((o) => (
-          <option key={partyKey(o.type, o.id)} value={partyKey(o.type, o.id)}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      <div ref={rootRef} className="relative">
+        <button
+          type="button"
+          id={`${name}-party`}
+          onClick={() => setOpen((o) => !o)}
+          className={`flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${
+            selected ? "" : "text-muted-foreground"
+          }`}
+        >
+          <span className="line-clamp-1">{selected ? selected.label : "اختار طرف"}</span>
+          <ChevronDown className="h-4 w-4 opacity-50" />
+        </button>
+
+        {open && (
+          <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-md">
+            <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+              <Search className="h-4 w-4 shrink-0 opacity-50" />
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="ابحث بالاسم…"
+                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto p-1">
+              {filtered.map((o) => {
+                const key = partyKey(o.type, o.id);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setValue(key);
+                      setOpen(false);
+                    }}
+                    className="relative flex w-full cursor-pointer items-center rounded-lg py-2.5 pr-8 pl-2 text-sm outline-none hover:bg-accent"
+                  >
+                    <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
+                      {value === key && <Check className="h-4 w-4" />}
+                    </span>
+                    <span className="line-clamp-1 text-right">{o.label}</span>
+                  </button>
+                );
+              })}
+              {filtered.length === 0 && (
+                <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                  لا يوجد نتائج
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
       <input type="hidden" name={`${name}Type`} value={parsed.type ?? ""} />
       <input type="hidden" name={`${name}Id`} value={parsed.id ?? ""} />
     </div>
