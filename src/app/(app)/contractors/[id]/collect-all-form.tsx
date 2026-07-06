@@ -25,17 +25,21 @@ export function CollectAllForm({
   contractorId,
   remaining,
   advanceBalance = 0,
+  externalCollectable = 0,
 }: {
   contractorId: string;
   remaining: number;
   advanceBalance?: number;
+  externalCollectable?: number; // سلف خارجية عليه يجمّعها المكتب (أمانة)
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
   const advanceDebt = Math.max(advanceBalance, 0);
   const advanceCredit = Math.max(-advanceBalance, 0);
-  const totalOnContractor = remaining + advanceDebt;
+  // المبلغ القابل للتحصيل تلقائيًا = متبقي الرحلات + السلف الخارجية عليه
+  const collectable = remaining + externalCollectable;
+  const totalOnContractor = collectable + advanceDebt;
   const net = totalOnContractor - advanceCredit;
 
   async function action(formData: FormData) {
@@ -59,7 +63,7 @@ export function CollectAllForm({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="lg" className="w-full" disabled={remaining <= 0}>
+        <Button size="lg" className="w-full" disabled={collectable <= 0}>
           <Banknote className="h-5 w-5" />
           تحصيل الكل
         </Button>
@@ -75,6 +79,14 @@ export function CollectAllForm({
               {formatMoney(remaining)}
             </span>
           </div>
+          {externalCollectable > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span>سلف خارجية عليه (أمانة يجمّعها المكتب)</span>
+              <span className="font-bold text-destructive">
+                {formatMoney(externalCollectable)}
+              </span>
+            </div>
+          )}
           {advanceDebt > 0 && (
             <div className="flex items-center justify-between text-xs">
               <span>سلف/رصيد عليه</span>
@@ -103,8 +115,8 @@ export function CollectAllForm({
           </div>
         </div>
         <p className="mb-3 text-center text-xs text-muted-foreground">
-          المبلغ هنا يتحصل على الرحلات المستحقة فقط. السلف والأرصدة تظهر في
-          الإجمالي وتدار من لوحة السلف والأرصدة.
+          يتوزّع المبلغ بالأقدم أولًا على الرحلات والسلف الخارجية معًا. أي زيادة
+          عن المستحق تتسجّل رصيدًا للمقاول (له عندنا).
         </p>
         <form action={action} className="space-y-3">
           <div className="space-y-1.5">
@@ -115,8 +127,7 @@ export function CollectAllForm({
               type="number"
               step="0.01"
               min="0"
-              max={toEgp(remaining)}
-              defaultValue={toEgp(remaining)}
+              defaultValue={toEgp(collectable)}
               inputMode="decimal"
               required
               autoFocus

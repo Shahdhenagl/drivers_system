@@ -154,7 +154,12 @@ export async function settleExternalAdvance(id: string) {
 
   const row = await prisma.externalAdvance.update({
     where: { id },
-    data: { status: "SETTLED", settledAt: new Date() },
+    data: {
+      status: "SETTLED",
+      settledAt: new Date(),
+      collectedAmount: current.amount,
+      paidAmount: current.amount,
+    },
   });
 
   await audit("SETTLE", "ExternalAdvance", id);
@@ -171,7 +176,7 @@ export async function reopenExternalAdvance(id: string) {
 
   const row = await prisma.externalAdvance.update({
     where: { id },
-    data: { status: "OPEN", settledAt: null },
+    data: { status: "OPEN", settledAt: null, collectedAmount: 0, paidAmount: 0 },
   });
 
   await audit("REOPEN", "ExternalAdvance", id);

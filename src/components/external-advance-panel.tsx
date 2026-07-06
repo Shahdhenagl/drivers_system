@@ -54,6 +54,8 @@ type ExternalAdvanceRow = {
   lenderId: string;
   lenderName: string;
   amount: number;
+  collectedAmount?: number; // المحصَّل من المستلِف (borrower)
+  paidAmount?: number; // المسلَّم للمُقرِض (lender)
   date: Date;
   note: string | null;
   status: string;
@@ -304,20 +306,20 @@ export function ExternalAdvancePanel({
 }) {
   const totals = useMemo(() => {
     return advances
-      .filter((a) => a.status === "OPEN")
+      .filter((a) => a.status !== "SETTLED")
       .reduce(
         (acc, a) => {
           if (
             a.borrowerType === currentParty.type &&
             a.borrowerId === currentParty.id
           ) {
-            acc.onHim += a.amount;
+            acc.onHim += Math.max(a.amount - (a.collectedAmount ?? 0), 0);
           }
           if (
             a.lenderType === currentParty.type &&
             a.lenderId === currentParty.id
           ) {
-            acc.forHim += a.amount;
+            acc.forHim += Math.max(a.amount - (a.paidAmount ?? 0), 0);
           }
           return acc;
         },
@@ -325,8 +327,8 @@ export function ExternalAdvancePanel({
       );
   }, [advances, currentParty.id, currentParty.type]);
 
-  const openRows = advances.filter((a) => a.status === "OPEN");
-  const settledRows = advances.filter((a) => a.status !== "OPEN");
+  const openRows = advances.filter((a) => a.status !== "SETTLED");
+  const settledRows = advances.filter((a) => a.status === "SETTLED");
 
   return (
     <Card className="space-y-3 p-4">
@@ -358,7 +360,9 @@ export function ExternalAdvancePanel({
       </div>
 
       <div className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">
-        هذه السلف بين السواقين والمقاولين فقط ولا تدخل في خزنة المكتب.
+        سلف بين السواقين والمقاولين. عند تحصيلها/سدادها عبر «تحصيل الكل» أو «سداد
+        الكل» تدخل/تخرج من خزنة المكتب كأمانة (تؤثر على الكاش لا الربح) وتُعلَّم
+        مسددة كليًا أو جزئيًا.
       </div>
 
       <ExternalRows
@@ -401,6 +405,11 @@ function ExternalRows({
           row.borrowerId === currentParty.id;
         const otherName = isBorrower ? row.lenderName : row.borrowerName;
         const otherType = isBorrower ? row.lenderType : row.borrowerType;
+        // الساق الخاصة بالطرف الحالي: المستلِف يُتابَع بالمحصَّل، المُقرِض بالمسلَّم
+        const legDone = isBorrower ? row.collectedAmount ?? 0 : row.paidAmount ?? 0;
+        const isSettled = row.status === "SETTLED";
+        const remaining = Math.max(row.amount - legDone, 0);
+        const isPartial = !isSettled && legDone > 0;
         return (
           <div key={row.id} className="flex items-center justify-between p-2.5 text-sm">
             <div className="min-w-0">
@@ -414,12 +423,14 @@ function ExternalRows({
                 ) : (
                   <ArrowDownLeft className="h-4 w-4" />
                 )}
-                {isBorrower ? "عليه" : "له"} {formatMoney(row.amount)}
+                {isBorrower ? "عليه" : "له"}{" "}
+                {formatMoney(isSettled ? row.amount : remaining)}
               </div>
               <div className="text-xs text-muted-foreground">
                 {isBorrower ? "استلف من" : "أعطى سلفة لـ"} {otherName} (
                 {partyTypeLabel(otherType)}) • {formatShortDate(row.date)}
-                {row.status !== "OPEN" && row.settledAt
+                {isPartial ? ` • مسدَّد جزئيًا من ${formatMoney(row.amount)}` : ""}
+                {isSettled && row.settledAt
                   ? ` • اتسدد ${formatShortDate(row.settledAt)}`
                   : ""}
               </div>
