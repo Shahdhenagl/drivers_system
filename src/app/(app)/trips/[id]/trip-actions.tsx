@@ -242,6 +242,7 @@ function DriverPayDialog({
           err={err}
           submit="تأكيد السداد"
           hint="أي زيادة عن المتبقي تُسجَّل تلقائيًا كسلفة على السواق."
+          withCollectors
         />
       </DialogContent>
     </Dialog>

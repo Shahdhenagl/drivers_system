@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { recordLedger, planSpend, effectiveAmounts } from "@/lib/finance";
 import { advanceBalance } from "@/lib/advance-actions";
+import { resolveCollector } from "@/lib/collectors";
 import { toPiastres } from "@/lib/money";
 import { OFFSET } from "@/lib/constants";
 
@@ -107,10 +108,18 @@ export async function payDriverDues(driverId: string, formData: FormData) {
     if (rem > 0) items.push({ trip: t, remaining: rem });
   }
 
-  // منع النزول تحت الصفر (كامل المبلغ يخرج كاش)
-  const plan = await planSpend(method, amount, false);
-  if (!plan.ok) {
-    return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
+  // لو السداد "عن طريق محصّل": الفلوس تُدفع من اللي معاه — يقلّ رصيده، ولا تمسّ الخزنة
+  const collector = await resolveCollector(method);
+  if (collector && "notFound" in collector) {
+    return { error: `المحصّل «${collector.notFound}» غير موجود في السواقين` };
+  }
+
+  // منع النزول تحت الصفر (كامل المبلغ يخرج كاش) — لا يلزم لو عن طريق محصّل
+  if (!collector) {
+    const plan = await planSpend(method, amount, false);
+    if (!plan.ok) {
+      return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
+    }
   }
 
   await prisma.$transaction(async (tx) => {
@@ -122,16 +131,18 @@ export async function payDriverDues(driverId: string, formData: FormData) {
       const dp = await tx.driverPayment.create({
         data: { tripId: it.trip.id, driverId, amount: pay, method, date, note },
       });
-      await recordLedger(tx, {
-        type: "DRIVER_PAYMENT",
-        direction: "OUT",
-        amount: pay,
-        method,
-        description: `سداد سواق — رحلة ${it.trip.startPoint} ← ${it.trip.endPoint}`,
-        refType: "DriverPayment",
-        refId: dp.id,
-        date,
-      });
+      if (!collector) {
+        await recordLedger(tx, {
+          type: "DRIVER_PAYMENT",
+          direction: "OUT",
+          amount: pay,
+          method,
+          description: `سداد سواق — رحلة ${it.trip.startPoint} ← ${it.trip.endPoint}`,
+          refType: "DriverPayment",
+          refId: dp.id,
+          date,
+        });
+      }
     }
     // الزيادة عن المستحق → سلفة على السواق
     if (left > 0) {
@@ -146,15 +157,32 @@ export async function payDriverDues(driverId: string, formData: FormData) {
           date,
         },
       });
-      await recordLedger(tx, {
-        type: "ADVANCE_OUT",
-        direction: "OUT",
-        amount: left,
-        method,
-        description: "سلفة سواق (زيادة عن المستحق)",
-        refType: "Advance",
-        refId: adv.id,
-        date,
+      if (!collector) {
+        await recordLedger(tx, {
+          type: "ADVANCE_OUT",
+          direction: "OUT",
+          amount: left,
+          method,
+          description: "سلفة سواق (زيادة عن المستحق)",
+          refType: "Advance",
+          refId: adv.id,
+          date,
+        });
+      }
+    }
+
+    // المحصّل دفع كل المبلغ من الأمانة اللي معاه — يقلّ ما يمسكه للمكتب
+    if (collector) {
+      await tx.advance.create({
+        data: {
+          partyType: "DRIVER",
+          partyId: collector.id,
+          amount,
+          direction: "IN",
+          method,
+          note: `سداد سواق عن طريق ${collector.name}`,
+          date,
+        },
       });
     }
   });

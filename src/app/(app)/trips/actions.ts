@@ -617,10 +617,18 @@ export async function addDriverPayment(tripId: string, formData: FormData) {
   const payToTrip = Math.min(amount, rem);
   const advancePortion = amount - payToTrip;
 
-  // منع النزول تحت الصفر وحفظ رأس المال في الكاش (كامل المبلغ يخرج كاش)
-  const plan = await planSpend(method, amount, false);
-  if (!plan.ok) {
-    return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
+  // لو السداد "عن طريق محصّل": يُدفع من فلوس المحصّل — يقلّ رصيده، ولا يمسّ الخزنة
+  const collector = await resolveCollector(method);
+  if (collector && "notFound" in collector) {
+    return { error: `المحصّل «${collector.notFound}» غير موجود في السواقين` };
+  }
+
+  // منع النزول تحت الصفر وحفظ رأس المال في الكاش — لا يلزم لو عن طريق محصّل
+  if (!collector) {
+    const plan = await planSpend(method, amount, false);
+    if (!plan.ok) {
+      return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
+    }
   }
 
   await prisma.$transaction(async (tx) => {
@@ -628,16 +636,18 @@ export async function addDriverPayment(tripId: string, formData: FormData) {
       const dp = await tx.driverPayment.create({
         data: { tripId, driverId: trip.driverId!, amount: payToTrip, method, date, note },
       });
-      await recordLedger(tx, {
-        type: "DRIVER_PAYMENT",
-        direction: "OUT",
-        amount: payToTrip,
-        method,
-        description: `سداد سواق — رحلة ${trip.startPoint} ← ${trip.endPoint}`,
-        refType: "DriverPayment",
-        refId: dp.id,
-        date,
-      });
+      if (!collector) {
+        await recordLedger(tx, {
+          type: "DRIVER_PAYMENT",
+          direction: "OUT",
+          amount: payToTrip,
+          method,
+          description: `سداد سواق — رحلة ${trip.startPoint} ← ${trip.endPoint}`,
+          refType: "DriverPayment",
+          refId: dp.id,
+          date,
+        });
+      }
     }
     // الزيادة عن مستحق الرحلة → سلفة على السواق
     if (advancePortion > 0) {
@@ -652,15 +662,31 @@ export async function addDriverPayment(tripId: string, formData: FormData) {
           date,
         },
       });
-      await recordLedger(tx, {
-        type: "ADVANCE_OUT",
-        direction: "OUT",
-        amount: advancePortion,
-        method,
-        description: "سلفة سواق (زيادة عن مستحق الرحلة)",
-        refType: "Advance",
-        refId: adv.id,
-        date,
+      if (!collector) {
+        await recordLedger(tx, {
+          type: "ADVANCE_OUT",
+          direction: "OUT",
+          amount: advancePortion,
+          method,
+          description: "سلفة سواق (زيادة عن مستحق الرحلة)",
+          refType: "Advance",
+          refId: adv.id,
+          date,
+        });
+      }
+    }
+    // المحصّل دفع المبلغ من الأمانة اللي معاه — يقلّ ما يمسكه للمكتب
+    if (collector) {
+      await tx.advance.create({
+        data: {
+          partyType: "DRIVER",
+          partyId: collector.id,
+          amount,
+          direction: "IN",
+          method,
+          note: `سداد سواق عن طريق ${collector.name}`,
+          date,
+        },
       });
     }
   });
