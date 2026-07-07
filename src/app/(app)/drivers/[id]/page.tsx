@@ -191,6 +191,29 @@ export default async function DriverProfile({
   const totalForDriver = remaining + officeFor + externalFor;
   const totalOnDriver = officeOn + externalOn;
 
+  // الحساب الشامل يحترم فلتر الشهر: عند اختيار شهر يعرض صافي حركة الشهر فقط
+  const inBounds = (dt: Date) => !bounds || (dt >= bounds[0] && dt < bounds[1]);
+  const mAdvBal =
+    advances
+      .filter((a) => a.direction === "OUT" && inBounds(a.date))
+      .reduce((s, a) => s + a.amount, 0) -
+    advances
+      .filter((a) => a.direction === "IN" && inBounds(a.date))
+      .reduce((s, a) => s + a.amount, 0);
+  const mExternalFor = externalAdvances
+    .filter((a) => a.lenderType === "DRIVER" && a.lenderId === id && inBounds(a.date))
+    .reduce((s, a) => s + a.amount, 0);
+  const mExternalOn = externalAdvances
+    .filter((a) => a.borrowerType === "DRIVER" && a.borrowerId === id && inBounds(a.date))
+    .reduce((s, a) => s + a.amount, 0);
+  const sOfficeFor = bounds ? Math.max(-mAdvBal, 0) : officeFor;
+  const sOfficeOn = bounds ? Math.max(mAdvBal, 0) : officeOn;
+  const sExternalFor = bounds ? mExternalFor : externalFor;
+  const sExternalOn = bounds ? mExternalOn : externalOn;
+  const sRemaining = bounds ? remainingMonth : remaining;
+  const summaryFor = sRemaining + sOfficeFor + sExternalFor;
+  const summaryOn = sOfficeOn + sExternalOn;
+
   // تقارير واتساب دورية
   const reportPeriods = [
     { label: "أسبوعي", from: startOfDay(addDays(now, -6)), to: endOfDay(now) },
@@ -323,14 +346,17 @@ export default async function DriverProfile({
         </div>
 
         <AccountTotalSummary
-          forParty={totalForDriver}
-          onParty={totalOnDriver}
+          title={
+            bounds ? `الحساب الشامل — ${monthLabel(selectedMonth)}` : "الحساب الشامل"
+          }
+          forParty={summaryFor}
+          onParty={summaryOn}
           rows={[
-            { label: "متبقي رحلات له", value: remaining, side: "for" },
-            { label: "رصيد/سلف مكتب له", value: officeFor, side: "for" },
-            { label: "سلف خارجية له", value: externalFor, side: "for" },
-            { label: "سلف مكتب عليه", value: officeOn, side: "on" },
-            { label: "سلف خارجية عليه", value: externalOn, side: "on" },
+            { label: "متبقي رحلات له", value: sRemaining, side: "for" },
+            { label: "رصيد/سلف مكتب له", value: sOfficeFor, side: "for" },
+            { label: "سلف خارجية له", value: sExternalFor, side: "for" },
+            { label: "سلف مكتب عليه", value: sOfficeOn, side: "on" },
+            { label: "سلف خارجية عليه", value: sExternalOn, side: "on" },
           ]}
         />
 

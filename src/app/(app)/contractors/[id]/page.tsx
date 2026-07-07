@@ -187,6 +187,29 @@ export default async function ContractorProfile({
   const totalForContractor = officeFor + externalFor;
   const totalOnContractor = deferredAll + officeOn + externalOn;
 
+  // الحساب الشامل يحترم فلتر الشهر: عند اختيار شهر يعرض صافي حركة الشهر فقط
+  const inBounds = (d: Date) => !bounds || (d >= bounds[0] && d < bounds[1]);
+  const mAdvBal =
+    advances
+      .filter((a) => a.direction === "OUT" && inBounds(a.date))
+      .reduce((s, a) => s + a.amount, 0) -
+    advances
+      .filter((a) => a.direction === "IN" && inBounds(a.date))
+      .reduce((s, a) => s + a.amount, 0);
+  const mExternalFor = externalAdvances
+    .filter((a) => a.lenderType === "CONTRACTOR" && a.lenderId === id && inBounds(a.date))
+    .reduce((s, a) => s + a.amount, 0);
+  const mExternalOn = externalAdvances
+    .filter((a) => a.borrowerType === "CONTRACTOR" && a.borrowerId === id && inBounds(a.date))
+    .reduce((s, a) => s + a.amount, 0);
+  const sOfficeFor = bounds ? Math.max(-mAdvBal, 0) : officeFor;
+  const sOfficeOn = bounds ? Math.max(mAdvBal, 0) : officeOn;
+  const sExternalFor = bounds ? mExternalFor : externalFor;
+  const sExternalOn = bounds ? mExternalOn : externalOn;
+  const sDeferred = bounds ? totalDeferred : deferredAll;
+  const summaryFor = sOfficeFor + sExternalFor;
+  const summaryOn = sDeferred + sOfficeOn + sExternalOn;
+
   const payments = trips
     .flatMap((t) =>
       t.collections.map((p) => ({
@@ -327,14 +350,17 @@ export default async function ContractorProfile({
         </div>
 
         <AccountTotalSummary
-          forParty={totalForContractor}
-          onParty={totalOnContractor}
+          title={
+            bounds ? `الحساب الشامل — ${monthLabel(selectedMonth)}` : "الحساب الشامل"
+          }
+          forParty={summaryFor}
+          onParty={summaryOn}
           rows={[
-            { label: "رصيد/سلف مكتب له", value: officeFor, side: "for" },
-            { label: "سلف خارجية له", value: externalFor, side: "for" },
-            { label: "متبقي رحلات عليه", value: deferredAll, side: "on" },
-            { label: "سلف مكتب عليه", value: officeOn, side: "on" },
-            { label: "سلف خارجية عليه", value: externalOn, side: "on" },
+            { label: "رصيد/سلف مكتب له", value: sOfficeFor, side: "for" },
+            { label: "سلف خارجية له", value: sExternalFor, side: "for" },
+            { label: "متبقي رحلات عليه", value: sDeferred, side: "on" },
+            { label: "سلف مكتب عليه", value: sOfficeOn, side: "on" },
+            { label: "سلف خارجية عليه", value: sExternalOn, side: "on" },
           ]}
         />
 

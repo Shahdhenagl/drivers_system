@@ -55,6 +55,11 @@ export function TripForm({
   const [driverDue, setDriverDue] = useState("");
   const [contractorPriceTouched, setContractorPriceTouched] = useState(false);
   const [driverDueTouched, setDriverDueTouched] = useState(false);
+  const [invalid, setInvalid] = useState<{
+    contractor?: boolean;
+    vehicle?: boolean;
+    driver?: boolean;
+  }>({});
   const [error, setError] = useState("");
 
   const selectedContractor = contractors.find((c) => c.id === contractorId);
@@ -72,6 +77,29 @@ export function TripForm({
 
   async function action(formData: FormData) {
     setError("");
+    // تحقق الحقول الإجبارية غير النصّية (المقاول/نوع العربية/السواق)
+    const inv: { contractor?: boolean; vehicle?: boolean; driver?: boolean } = {};
+    let first: string | null = null;
+    if (!contractorId) {
+      inv.contractor = true;
+      first = first ?? "field-contractor";
+    }
+    if (!vehicleType) {
+      inv.vehicle = true;
+      first = first ?? "field-vehicle";
+    }
+    if (!driverId) {
+      inv.driver = true;
+      first = first ?? "field-driver";
+    }
+    setInvalid(inv);
+    if (first) {
+      playSound("error");
+      document
+        .getElementById(first)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     formData.set("contractorId", contractorId);
     formData.set("driverId", driverId);
     try {
@@ -95,14 +123,18 @@ export function TripForm({
   return (
     <form action={action} className="space-y-4">
       {/* المقاول */}
-      <Card className="space-y-3 p-4">
+      <Card id="field-contractor" className="space-y-3 p-4">
         <Label>المقاول *</Label>
         <SearchSelect
           value={contractorId}
-          onChange={setContractorId}
+          onChange={(v) => {
+            setContractorId(v);
+            setInvalid((p) => ({ ...p, contractor: false }));
+          }}
           options={contractors}
           placeholder="اختر المقاول"
           newLabel="مقاول جديد"
+          invalid={invalid.contractor}
         />
 
         {selectedContractor && (
@@ -156,10 +188,22 @@ export function TripForm({
           vehicleType={vehicleType}
           onPickRoute={applyRoutePrice}
         />
-        <div className="space-y-1.5">
+        <div id="field-vehicle" className="space-y-1.5">
           <Label htmlFor="vehicleType">نوع العربية *</Label>
-          <Select name="vehicleType" value={vehicleType} onValueChange={setVehicleType} required>
-            <SelectTrigger id="vehicleType">
+          <Select
+            name="vehicleType"
+            value={vehicleType}
+            onValueChange={(v) => {
+              setVehicleType(v);
+              setInvalid((p) => ({ ...p, vehicle: false }));
+            }}
+          >
+            <SelectTrigger
+              id="vehicleType"
+              className={
+                invalid.vehicle ? "border-destructive ring-1 ring-destructive" : ""
+              }
+            >
               <SelectValue placeholder="اختار نوع العربية" />
             </SelectTrigger>
             <SelectContent>
@@ -264,14 +308,18 @@ export function TripForm({
       </Card>
 
       {/* السواق */}
-      <Card className="space-y-3 p-4">
+      <Card id="field-driver" className="space-y-3 p-4">
         <Label>السواق *</Label>
         <SearchSelect
           value={driverId}
-          onChange={setDriverId}
+          onChange={(v) => {
+            setDriverId(v);
+            setInvalid((p) => ({ ...p, driver: false }));
+          }}
           options={drivers}
           placeholder="اختر السواق"
           newLabel="سواق جديد"
+          invalid={invalid.driver}
         />
 
         {newDriver && (
@@ -294,7 +342,7 @@ export function TripForm({
         </p>
       )}
 
-      <SubmitButton size="lg" className="w-full" disabled={!contractorId || !driverId}>
+      <SubmitButton size="lg" className="w-full">
         حفظ الطلب
       </SubmitButton>
     </form>

@@ -19,6 +19,7 @@ export function SearchSelect({
   newLabel,
   searchPlaceholder = "ابحث بالاسم أو الرقم…",
   emptyText = "لا يوجد نتائج",
+  invalid = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -27,6 +28,7 @@ export function SearchSelect({
   newLabel?: string;
   searchPlaceholder?: string;
   emptyText?: string;
+  invalid?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -89,7 +91,8 @@ export function SearchSelect({
         onClick={() => setOpen((o) => !o)}
         className={cn(
           "flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-base ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring [&>span]:line-clamp-1",
-          !selected && value !== "__new__" && "text-muted-foreground"
+          !selected && value !== "__new__" && "text-muted-foreground",
+          invalid && "border-destructive ring-1 ring-destructive"
         )}
       >
         <span>{triggerLabel}</span>
