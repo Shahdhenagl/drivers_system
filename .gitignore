@@ -14,3 +14,6 @@ next-env.d.ts
 
 # TypeScript incremental build cache
 tsconfig.tsbuildinfo
+
+# Claude Code local settings
+.claude/
