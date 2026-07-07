@@ -21,20 +21,16 @@ import {
   addExternalAdvance,
   deleteExternalAdvance,
   editExternalAdvance,
-  reopenExternalAdvance,
-  settleExternalAdvance,
 } from "@/lib/external-advance-actions";
 import { playSound } from "@/lib/sounds";
 import {
   ArrowDownLeft,
   ArrowUpRight,
   Check,
-  CheckCircle2,
   ChevronDown,
   History,
   Pencil,
   Plus,
-  RotateCcw,
   Search,
   Trash2,
 } from "lucide-react";
@@ -299,27 +295,17 @@ function RowActions({ row }: { row: ExternalAdvanceRow }) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  async function run(kind: "settle" | "reopen" | "delete") {
-    if (
-      kind === "delete" &&
-      !confirm("حذف السلفة الخارجية؟ لن يؤثر هذا على خزنة المكتب.")
-    ) {
-      return;
-    }
+  async function onDelete() {
+    if (!confirm("حذف السلفة الخارجية؟ لن يؤثر هذا على خزنة المكتب.")) return;
     setLoading(true);
     try {
-      const res =
-        kind === "settle"
-          ? await settleExternalAdvance(row.id)
-          : kind === "reopen"
-            ? await reopenExternalAdvance(row.id)
-            : await deleteExternalAdvance(row.id);
+      const res = await deleteExternalAdvance(row.id);
       if (res?.error) {
         playSound("error");
         alert(res.error);
         return;
       }
-      playSound(kind === "delete" ? "success" : "money");
+      playSound("success");
       router.refresh();
     } catch {
       playSound("error");
@@ -330,41 +316,16 @@ function RowActions({ row }: { row: ExternalAdvanceRow }) {
   }
 
   return (
-    <>
-      {row.status === "OPEN" ? (
-        <button
-          type="button"
-          disabled={loading}
-          className="rounded-lg p-1.5 text-success hover:bg-success/10 disabled:opacity-50"
-          onClick={() => run("settle")}
-          aria-label="سداد"
-          title="سداد"
-        >
-          <CheckCircle2 className="h-4 w-4" />
-        </button>
-      ) : (
-        <button
-          type="button"
-          disabled={loading}
-          className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50"
-          onClick={() => run("reopen")}
-          aria-label="إعادة فتح"
-          title="إعادة فتح"
-        >
-          <RotateCcw className="h-4 w-4" />
-        </button>
-      )}
-      <button
-        type="button"
-        disabled={loading}
-        className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-        onClick={() => run("delete")}
-        aria-label="حذف"
-        title="حذف"
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
-    </>
+    <button
+      type="button"
+      disabled={loading}
+      className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+      onClick={onDelete}
+      aria-label="حذف"
+      title="حذف"
+    >
+      <Trash2 className="h-4 w-4" />
+    </button>
   );
 }
 
