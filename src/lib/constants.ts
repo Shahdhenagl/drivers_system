@@ -48,10 +48,29 @@ export const VIA_DRIVER = "via_driver";
 // طريقة خاصة: مقاصّة مستحقات السواق مع سلفته (لا تدخل الخزنة)
 export const OFFSET = "offset";
 
-/** اسم طريقة الدفع للعرض (يشمل الطرق الخاصة) */
+// المحصّلون: سواقون يجمّعون فلوس المكتب. التحصيل/المصروف "عن طريقهم" يُقيَّد
+// على حسابهم (سلفة) ولا يدخل خزنة المكتب حتى يُحصَّل منهم لاحقًا. ثابتون بالاسم.
+export const COLLECTORS = ["عبد العزيز نوح", "عوض البطل"] as const;
+export const COLLECTOR_METHOD_PREFIX = "عن طريق ";
+
+/** قيمة طريقة الدفع لمحصّل معيّن، مثل: "عن طريق عبد العزيز نوح" */
+export function collectorMethodValue(name: string): string {
+  return `${COLLECTOR_METHOD_PREFIX}${name}`;
+}
+
+/** لو الطريقة تخص محصّلًا معروفًا يرجّع اسمه، وإلا null */
+export function collectorNameFromMethod(m: string): string | null {
+  if (!m.startsWith(COLLECTOR_METHOD_PREFIX)) return null;
+  const name = m.slice(COLLECTOR_METHOD_PREFIX.length);
+  return (COLLECTORS as readonly string[]).includes(name) ? name : null;
+}
+
+/** اسم طريقة الدفع للعرض (يشمل الطرق الخاصة والمحصّلين) */
 export function methodLabel(m: string): string {
   if (m === VIA_DRIVER) return "عن طريق السواق";
   if (m === OFFSET) return "خصم من السلفة";
+  // طرق المحصّلين مخزَّنة بنصها الظاهر ("عن طريق <اسم>") فتُعرض كما هي
+  if (collectorNameFromMethod(m)) return m;
   return PAYMENT_METHODS[m as PaymentMethod] ?? m;
 }
 

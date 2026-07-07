@@ -115,7 +115,7 @@ export function ExpenseForm() {
           </div>
           <div className="space-y-1.5">
             <Label>طريقة الدفع</Label>
-            <MethodSelect />
+            <MethodSelect withCollectors />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="date">التاريخ</Label>

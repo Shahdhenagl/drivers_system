@@ -8,14 +8,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PAYMENT_METHODS, PAYMENT_METHOD_KEYS } from "@/lib/constants";
+import {
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_KEYS,
+  COLLECTORS,
+  collectorMethodValue,
+} from "@/lib/constants";
 
 export function MethodSelect({
   name = "method",
   defaultValue = "cash",
+  withCollectors = false,
 }: {
   name?: string;
   defaultValue?: string;
+  withCollectors?: boolean; // يضيف "عن طريق <محصّل>" (للتحصيلات والمصروفات)
 }) {
   // مضبوط + hidden input لضمان إرسال القيمة الافتراضية مع الفورم بدون اختيار يدوي
   // (Radix Select لا يُرسل defaultValue بثبات في نماذج Server Actions).
@@ -33,6 +40,12 @@ export function MethodSelect({
               {PAYMENT_METHODS[m]}
             </SelectItem>
           ))}
+          {withCollectors &&
+            COLLECTORS.map((c) => (
+              <SelectItem key={c} value={collectorMethodValue(c)}>
+                عن طريق {c}
+              </SelectItem>
+            ))}
         </SelectContent>
       </Select>
     </>

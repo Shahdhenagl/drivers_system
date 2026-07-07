@@ -12,6 +12,7 @@ import {
   effectiveAmounts,
 } from "@/lib/finance";
 import { VIA_DRIVER, methodLabel } from "@/lib/constants";
+import { resolveCollector } from "@/lib/collectors";
 import { sendTelegram } from "@/lib/telegram";
 import {
   adminDriverPaymentDeleteMessage,
@@ -408,20 +409,42 @@ export async function addCollection(tripId: string, formData: FormData) {
     return { error: "المبلغ يتجاوز قيمة الرحلة المتبقية" };
   }
 
+  // لو التحصيل "عن طريق محصّل": الفلوس تبقى معاه (سلفة عليه) ولا تدخل الخزنة
+  const collector = await resolveCollector(method);
+  if (collector && "notFound" in collector) {
+    return { error: `المحصّل «${collector.notFound}» غير موجود في السواقين` };
+  }
+
   await prisma.$transaction(async (tx) => {
     const col = await tx.collection.create({
       data: { tripId, amount, method, date, note },
     });
-    await recordLedger(tx, {
-      type: "COLLECTION",
-      direction: "IN",
-      amount,
-      method,
-      description: `تحصيل — رحلة ${trip.startPoint} ← ${trip.endPoint}`,
-      refType: "Collection",
-      refId: col.id,
-      date,
-    });
+    if (collector) {
+      // المال مع المحصّل — يُقيَّد سلفة عليه (بدون قيد خزنة)
+      await tx.advance.create({
+        data: {
+          partyType: "DRIVER",
+          partyId: collector.id,
+          amount,
+          direction: "OUT",
+          method,
+          note: note ?? `تحصيل عن طريق ${collector.name}`,
+          tripId,
+          date,
+        },
+      });
+    } else {
+      await recordLedger(tx, {
+        type: "COLLECTION",
+        direction: "IN",
+        amount,
+        method,
+        description: `تحصيل — رحلة ${trip.startPoint} ← ${trip.endPoint}`,
+        refType: "Collection",
+        refId: col.id,
+        date,
+      });
+    }
     const newStatus = deriveCollectionStatus(eff.contractor, collected + amount);
     await tx.trip.update({
       where: { id: tripId },

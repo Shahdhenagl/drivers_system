@@ -186,7 +186,7 @@ function CollectDialog({
         <p className="mb-3 rounded-lg bg-muted p-2 text-center text-sm">
           المتبقي: <span className="font-bold text-destructive">{formatMoney(remaining)}</span>
         </p>
-        <PaymentFields action={action} max={toEgp(remaining)} err={err} submit="تأكيد التحصيل" />
+        <PaymentFields action={action} max={toEgp(remaining)} err={err} submit="تأكيد التحصيل" withCollectors />
       </DialogContent>
     </Dialog>
   );
@@ -678,12 +678,14 @@ function PaymentFields({
   err,
   submit,
   hint,
+  withCollectors = false,
 }: {
   action: (fd: FormData) => Promise<void>;
   max?: number;
   err: string;
   submit: string;
   hint?: string;
+  withCollectors?: boolean;
 }) {
   return (
     <form action={action} className="space-y-3">
@@ -704,7 +706,7 @@ function PaymentFields({
       </div>
       <div className="space-y-1.5">
         <Label>طريقة الدفع</Label>
-        <MethodSelect />
+        <MethodSelect withCollectors={withCollectors} />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="date">التاريخ</Label>

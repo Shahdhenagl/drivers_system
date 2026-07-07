@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { recordLedger, planSpend, treasuryByMethod } from "@/lib/finance";
+import { resolveCollector } from "@/lib/collectors";
 import { getFinanceOverview } from "@/lib/finance-overview";
 import { toPiastres, formatMoney } from "@/lib/money";
 import { methodLabel, PAYMENT_METHOD_KEYS } from "@/lib/constants";
@@ -22,6 +23,47 @@ export async function addExpense(formData: FormData) {
   const name = get("name");
   if (!name || amount <= 0) return { error: "اكتب اسم المصروف وقيمة صحيحة" };
 
+  const dateStr = get("date");
+  const date = dateStr ? new Date(dateStr) : new Date();
+
+  // مصروف "عن طريق محصّل": يتدفع من فلوس المحصّل — يقلّل رصيده (بدون خزنة/قيد ربح)
+  const collector = await resolveCollector(method);
+  if (collector && "notFound" in collector) {
+    return { error: `المحصّل «${collector.notFound}» غير موجود في السواقين` };
+  }
+  if (collector) {
+    await prisma.$transaction(async (tx) => {
+      await tx.expense.create({
+        data: {
+          name,
+          category: get("category") || null,
+          amount,
+          method,
+          date,
+          notes: get("notes") || null,
+        },
+      });
+      // المحصّل صرف من الأمانة اللي معاه — يقلّل ما يمسكه للمكتب
+      await tx.advance.create({
+        data: {
+          partyType: "DRIVER",
+          partyId: collector.id,
+          amount,
+          direction: "IN",
+          method,
+          note: `مصروف عن طريق ${collector.name}: ${name}`,
+          date,
+        },
+      });
+    });
+    await audit("CREATE", "Expense", undefined, { name, amount, method });
+    revalidatePath("/finance");
+    revalidatePath(`/drivers/${collector.id}`);
+    revalidatePath("/drivers");
+    revalidatePath("/");
+    return;
+  }
+
   // المصروفات تُخصم من الربح فقط — لا تمسّ رأس المال
   const ov = await getFinanceOverview();
   const available = Math.max(ov.distributableProfit, 0);
@@ -36,9 +78,6 @@ export async function addExpense(formData: FormData) {
   if (!plan.ok) {
     return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
   }
-
-  const dateStr = get("date");
-  const date = dateStr ? new Date(dateStr) : new Date();
 
   await prisma.$transaction(async (tx) => {
     const exp = await tx.expense.create({

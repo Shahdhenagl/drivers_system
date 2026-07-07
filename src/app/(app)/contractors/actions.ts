@@ -9,6 +9,7 @@ import {
   effectiveAmounts,
   deriveCollectionStatus,
 } from "@/lib/finance";
+import { resolveCollector } from "@/lib/collectors";
 import { toPiastres } from "@/lib/money";
 
 export async function createContractor(formData: FormData) {
@@ -100,6 +101,12 @@ export async function collectAllFromContractor(
   }
   items.sort((a, b) => +new Date(a.date) - +new Date(b.date));
 
+  // لو التحصيل "عن طريق محصّل": كل المبلغ يبقى معاه (سلفة عليه) ولا يدخل الخزنة
+  const collector = await resolveCollector(method);
+  if (collector && "notFound" in collector) {
+    return { error: `المحصّل «${collector.notFound}» غير موجود في السواقين` };
+  }
+
   let custodyCollected = 0;
   await prisma.$transaction(async (tx) => {
     let left = amount;
@@ -111,16 +118,18 @@ export async function collectAllFromContractor(
         const col = await tx.collection.create({
           data: { tripId: it.trip.id, amount: pay, method, date, note },
         });
-        await recordLedger(tx, {
-          type: "COLLECTION",
-          direction: "IN",
-          amount: pay,
-          method,
-          description: `تحصيل — رحلة ${it.trip.startPoint} ← ${it.trip.endPoint}`,
-          refType: "Collection",
-          refId: col.id,
-          date,
-        });
+        if (!collector) {
+          await recordLedger(tx, {
+            type: "COLLECTION",
+            direction: "IN",
+            amount: pay,
+            method,
+            description: `تحصيل — رحلة ${it.trip.startPoint} ← ${it.trip.endPoint}`,
+            refType: "Collection",
+            refId: col.id,
+            date,
+          });
+        }
         await tx.trip.update({
           where: { id: it.trip.id },
           data: {
@@ -139,17 +148,19 @@ export async function collectAllFromContractor(
             settledAt: done ? date : null,
           },
         });
-        // أمانة: تدخل خزنة المكتب (كاش) لكن لا تُحتسب ربحًا — هتتدفع لصاحب السلفة
-        await recordLedger(tx, {
-          type: "CUSTODY_IN",
-          direction: "IN",
-          amount: pay,
-          method,
-          description: `أمانة سلفة خارجية — ${it.ext.lenderName} من ${it.ext.borrowerName}`,
-          refType: "ExternalAdvance",
-          refId: it.ext.id,
-          date,
-        });
+        if (!collector) {
+          // أمانة: تدخل خزنة المكتب (كاش) لكن لا تُحتسب ربحًا — هتتدفع لصاحب السلفة
+          await recordLedger(tx, {
+            type: "CUSTODY_IN",
+            direction: "IN",
+            amount: pay,
+            method,
+            description: `أمانة سلفة خارجية — ${it.ext.lenderName} من ${it.ext.borrowerName}`,
+            refType: "ExternalAdvance",
+            refId: it.ext.id,
+            date,
+          });
+        }
         custodyCollected += pay;
       }
     }
@@ -167,15 +178,32 @@ export async function collectAllFromContractor(
           date,
         },
       });
-      await recordLedger(tx, {
-        type: "ADVANCE_IN",
-        direction: "IN",
-        amount: left,
-        method,
-        description: "رصيد مقاول (زيادة عن المستحق)",
-        refType: "Advance",
-        refId: adv.id,
-        date,
+      if (!collector) {
+        await recordLedger(tx, {
+          type: "ADVANCE_IN",
+          direction: "IN",
+          amount: left,
+          method,
+          description: "رصيد مقاول (زيادة عن المستحق)",
+          refType: "Advance",
+          refId: adv.id,
+          date,
+        });
+      }
+    }
+
+    // المحصّل يمسك كل المبلغ نيابةً عن المكتب — سلفة عليه (بدون قيد خزنة)
+    if (collector) {
+      await tx.advance.create({
+        data: {
+          partyType: "DRIVER",
+          partyId: collector.id,
+          amount,
+          direction: "OUT",
+          method,
+          note: `تحصيل مجمّع عن طريق ${collector.name}`,
+          date,
+        },
       });
     }
   });
