@@ -1,17 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { SearchSelect } from "@/components/ui/search-select";
 import { RouteFields, type RouteMemory } from "@/components/route-fields";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SubmitButton } from "@/components/submit-button";
 import { createTrip } from "../actions";
 import { playSound } from "@/lib/sounds";
 import { toDateInput } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
+import { TRIP_VEHICLE_TYPES } from "@/lib/vehicle-types";
 import { History } from "lucide-react";
 import Link from "next/link";
 
@@ -28,22 +36,39 @@ export function TripForm({
   contractors,
   drivers,
   routes,
+  initialContractorId,
+  initialDriverId,
 }: {
   contractors: Option[];
   drivers: Option[];
   routes: RouteMemory[];
+  initialContractorId?: string;
+  initialDriverId?: string;
 }) {
-  const [contractorId, setContractorId] = useState<string>("");
-  const [driverId, setDriverId] = useState<string>("");
+  const [contractorId, setContractorId] = useState<string>(
+    initialContractorId ?? ""
+  );
+  const [driverId, setDriverId] = useState<string>(initialDriverId ?? "");
   const [tripDate, setTripDate] = useState(() => toDateInput(new Date()));
+  const [vehicleType, setVehicleType] = useState("");
   const [contractorPrice, setContractorPrice] = useState("");
   const [driverDue, setDriverDue] = useState("");
+  const [contractorPriceTouched, setContractorPriceTouched] = useState(false);
+  const [driverDueTouched, setDriverDueTouched] = useState(false);
   const [error, setError] = useState("");
 
   const selectedContractor = contractors.find((c) => c.id === contractorId);
   const newContractor = contractorId === "__new__";
   const newDriver = driverId === "__new__";
   const tripDay = weekdayFromDateInput(tripDate);
+
+  const applyRoutePrice = useCallback(
+    (contractor: string, driver: string) => {
+      if (!contractorPriceTouched) setContractorPrice(contractor);
+      if (!driverDueTouched) setDriverDue(driver);
+    },
+    [contractorPriceTouched, driverDueTouched]
+  );
 
   async function action(formData: FormData) {
     setError("");
@@ -128,11 +153,24 @@ export function TripForm({
         </div>
         <RouteFields
           routes={routes}
-          onPickRoute={(c, d) => {
-            setContractorPrice(c);
-            setDriverDue(d);
-          }}
+          vehicleType={vehicleType}
+          onPickRoute={applyRoutePrice}
         />
+        <div className="space-y-1.5">
+          <Label htmlFor="vehicleType">نوع العربية *</Label>
+          <Select name="vehicleType" value={vehicleType} onValueChange={setVehicleType} required>
+            <SelectTrigger id="vehicleType">
+              <SelectValue placeholder="اختار نوع العربية" />
+            </SelectTrigger>
+            <SelectContent>
+              {TRIP_VEHICLE_TYPES.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {type}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="space-y-1.5">
           <Label htmlFor="description">وصف الرحلة</Label>
           <Textarea id="description" name="description" />
@@ -158,7 +196,10 @@ export function TripForm({
             step="0.01"
             inputMode="decimal"
             value={contractorPrice}
-            onChange={(e) => setContractorPrice(e.target.value)}
+            onChange={(e) => {
+              setContractorPriceTouched(true);
+              setContractorPrice(e.target.value);
+            }}
             required
           />
         </div>
@@ -171,7 +212,10 @@ export function TripForm({
             step="0.01"
             inputMode="decimal"
             value={driverDue}
-            onChange={(e) => setDriverDue(e.target.value)}
+            onChange={(e) => {
+              setDriverDueTouched(true);
+              setDriverDue(e.target.value);
+            }}
             required
           />
         </div>

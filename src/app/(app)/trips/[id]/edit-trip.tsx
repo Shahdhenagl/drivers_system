@@ -13,10 +13,18 @@ import { SearchSelect } from "@/components/ui/search-select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SubmitButton } from "@/components/submit-button";
 import { updateTrip } from "../actions";
 import { toEgp } from "@/lib/money";
 import { toDateInput } from "@/lib/format";
+import { TRIP_VEHICLE_TYPES } from "@/lib/vehicle-types";
 
 type Trip = {
   id: string;
@@ -24,6 +32,7 @@ type Trip = {
   time: string | null;
   startPoint: string;
   endPoint: string;
+  vehicleType: string | null;
   description: string | null;
   distance: number | null;
   contractorPrice: number;
@@ -53,6 +62,7 @@ export function EditTripForm({
   const [open, setOpen] = useState(false);
   const [driverId, setDriverId] = useState(trip.driverId ?? "");
   const [tripDate, setTripDate] = useState(() => toDateInput(trip.date));
+  const [vehicleType, setVehicleType] = useState(trip.vehicleType ?? "");
   const router = useRouter();
   const tripDay = weekdayFromDateInput(tripDate);
 
@@ -95,6 +105,21 @@ export function EditTripForm({
           <div className="space-y-1.5">
             <Label htmlFor="endPoint">النهاية</Label>
             <Input id="endPoint" name="endPoint" defaultValue={trip.endPoint} required />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="vehicleType">نوع العربية</Label>
+            <Select name="vehicleType" value={vehicleType} onValueChange={setVehicleType}>
+              <SelectTrigger id="vehicleType">
+                <SelectValue placeholder="اختار نوع العربية" />
+              </SelectTrigger>
+              <SelectContent>
+                {TRIP_VEHICLE_TYPES.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="description">الوصف</Label>

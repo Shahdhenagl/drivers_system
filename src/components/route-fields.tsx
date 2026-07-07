@@ -9,6 +9,7 @@ import { MapPin, Search } from "lucide-react";
 export type RouteMemory = {
   startPoint: string;
   endPoint: string;
+  vehicleType: string | null;
   contractorPrice: number; // قروش
   driverDue: number; // قروش
 };
@@ -19,11 +20,13 @@ export type RouteMemory = {
  */
 export function RouteFields({
   routes,
+  vehicleType,
   onPickRoute,
   defaultStart = "",
   defaultEnd = "",
 }: {
   routes: RouteMemory[];
+  vehicleType?: string;
   onPickRoute?: (contractorPriceEgp: string, driverDueEgp: string) => void;
   defaultStart?: string;
   defaultEnd?: string;
@@ -43,6 +46,18 @@ export function RouteFields({
     return () => document.removeEventListener("mousedown", onDown);
   }, []);
 
+  useEffect(() => {
+    const exact = routes.find(
+      (r) =>
+        normalize(r.startPoint) === normalize(start) &&
+        normalize(r.endPoint) === normalize(end) &&
+        (!vehicleType || r.vehicleType === vehicleType)
+    );
+    if (exact) {
+      onPickRoute?.(String(toEgp(exact.contractorPrice)), String(toEgp(exact.driverDue)));
+    }
+  }, [end, onPickRoute, routes, start, vehicleType]);
+
   function suggestions(field: "start" | "end") {
     const q = (field === "start" ? start : end).trim().toLowerCase();
     const list = q
@@ -51,8 +66,10 @@ export function RouteFields({
             r.startPoint.toLowerCase().includes(q) ||
             r.endPoint.toLowerCase().includes(q)
         )
-      : routes;
-    return list.slice(0, 8);
+      : [...routes];
+    return list
+      .sort((a, b) => Number(b.vehicleType === vehicleType) - Number(a.vehicleType === vehicleType))
+      .slice(0, 8);
   }
 
   function pick(r: RouteMemory) {
@@ -134,12 +151,23 @@ function RouteDropdown({
                 {r.startPoint} ← {r.endPoint}
               </span>
             </span>
-            <span className="shrink-0 font-bold tabular-nums text-primary">
-              {formatMoney(r.contractorPrice, false)}
+            <span className="shrink-0 text-left">
+              {r.vehicleType && (
+                <span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">
+                  {r.vehicleType}
+                </span>
+              )}
+              <span className="block font-bold tabular-nums text-primary">
+                {formatMoney(r.contractorPrice, false)}
+              </span>
             </span>
           </button>
         ))}
       </div>
     </div>
   );
+}
+
+function normalize(value: string) {
+  return value.trim().toLowerCase();
 }

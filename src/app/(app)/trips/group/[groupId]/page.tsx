@@ -79,6 +79,11 @@ export default async function TripGroupPage({
             <div className="flex items-center gap-2">
               <Flag className="h-4 w-4 text-destructive" /> {route.endPoint}
             </div>
+            {route.vehicleType && (
+              <div className="flex items-center gap-2">
+                <Truck className="h-4 w-4 text-muted-foreground" /> {route.vehicleType}
+              </div>
+            )}
             <Link
               href={`/contractors/${route.contractor.id}`}
               className="flex items-center gap-2 text-primary"

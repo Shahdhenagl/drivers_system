@@ -10,6 +10,7 @@ export type GroupTrip = {
   date: Date;
   startPoint: string;
   endPoint: string;
+  vehicleType?: string | null;
   contractorPrice: number;
   driverDue: number;
   driverTip?: number | null;
@@ -77,6 +78,11 @@ export function TripGroupCard({
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <User className="h-3 w-3" />
           {route.contractor.name}
+          {route.vehicleType && (
+            <span className="mr-auto rounded-md bg-muted px-1.5 py-0.5">
+              {route.vehicleType}
+            </span>
+          )}
         </div>
 
         <div className="grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">

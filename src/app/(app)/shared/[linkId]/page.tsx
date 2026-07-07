@@ -30,6 +30,7 @@ import {
   UsersRound,
   Users,
   Truck,
+  Plus,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -229,6 +230,20 @@ export default async function SharedProfile({
             </Button>
           </div>
         </Card>
+
+        {/* إضافة رحلة — اختَر الدور أولًا */}
+        <div className="grid grid-cols-2 gap-2 print:hidden">
+          <Button asChild size="lg">
+            <Link href={`/trips/new?contractor=${contractor.id}`}>
+              <Plus className="h-5 w-5" /> رحلة كمقاول
+            </Link>
+          </Button>
+          <Button asChild size="lg" variant="secondary">
+            <Link href={`/trips/new?driver=${driver.id}`}>
+              <Plus className="h-5 w-5" /> رحلة كسواق
+            </Link>
+          </Button>
+        </div>
 
         {/* علامة المراجعة اليومية */}
         <div className="print:hidden">

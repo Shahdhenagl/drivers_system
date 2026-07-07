@@ -6,7 +6,13 @@ import { ArrowRight } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-export default async function NewTripPage() {
+export default async function NewTripPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ contractor?: string; driver?: string }>;
+}) {
+  const { contractor: initialContractorId, driver: initialDriverId } =
+    await searchParams;
   const [contractors, drivers, recentTrips] = await Promise.all([
     prisma.contractor.findMany({
       orderBy: { name: "asc" },
@@ -23,6 +29,7 @@ export default async function NewTripPage() {
       select: {
         startPoint: true,
         endPoint: true,
+        vehicleType: true,
         contractorPrice: true,
         driverDue: true,
       },
@@ -34,16 +41,18 @@ export default async function NewTripPage() {
   const routes: {
     startPoint: string;
     endPoint: string;
+    vehicleType: string | null;
     contractorPrice: number;
     driverDue: number;
   }[] = [];
   for (const t of recentTrips) {
-    const key = `${t.startPoint.trim().toLowerCase()}|${t.endPoint.trim().toLowerCase()}`;
+    const key = `${t.startPoint.trim().toLowerCase()}|${t.endPoint.trim().toLowerCase()}|${(t.vehicleType ?? "").trim().toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
     routes.push({
       startPoint: t.startPoint,
       endPoint: t.endPoint,
+      vehicleType: t.vehicleType,
       contractorPrice: t.contractorPrice,
       driverDue: t.driverDue,
     });
@@ -61,7 +70,13 @@ export default async function NewTripPage() {
           <ArrowRight className="h-4 w-4" />
           رجوع
         </Link>
-        <NewTripTabs contractors={contractors} drivers={drivers} routes={routes} />
+        <NewTripTabs
+          contractors={contractors}
+          drivers={drivers}
+          routes={routes}
+          initialContractorId={initialContractorId}
+          initialDriverId={initialDriverId}
+        />
       </div>
     </>
   );

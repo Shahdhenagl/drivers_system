@@ -51,6 +51,7 @@ CREATE TABLE "Trip" (
     "time" TEXT,
     "startPoint" TEXT NOT NULL,
     "endPoint" TEXT NOT NULL,
+    "vehicleType" TEXT,
     "description" TEXT,
     "distance" DOUBLE PRECISION,
     "contractorPrice" INTEGER NOT NULL,
@@ -201,6 +202,9 @@ CREATE INDEX "Trip_status_idx" ON "Trip"("status");
 
 -- CreateIndex
 CREATE INDEX "Trip_collectionStatus_idx" ON "Trip"("collectionStatus");
+
+-- CreateIndex
+CREATE INDEX IF NOT EXISTS "Trip_route_vehicle_idx" ON "Trip"("startPoint", "endPoint", "vehicleType");
 
 -- CreateIndex
 CREATE INDEX "Collection_tripId_idx" ON "Collection"("tripId");

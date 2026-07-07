@@ -71,6 +71,7 @@ export default async function TripDetail({
     time: trip.time,
     startPoint: trip.startPoint,
     endPoint: trip.endPoint,
+    description: trip.description,
     notes: trip.notes,
     contractor: { name: trip.contractor.name, phone: trip.contractor.phone },
     driver: trip.driver
@@ -178,6 +179,7 @@ export default async function TripDetail({
               time: trip.time,
               startPoint: trip.startPoint,
               endPoint: trip.endPoint,
+              vehicleType: trip.vehicleType,
               description: trip.description,
               distance: trip.distance,
               contractorPrice: trip.contractorPrice,
@@ -220,6 +222,12 @@ export default async function TripDetail({
               <Flag className="h-4 w-4 text-destructive" />
               {trip.endPoint}
             </div>
+            {trip.vehicleType && (
+              <div className="flex items-center gap-2">
+                <Truck className="h-4 w-4 text-muted-foreground" />
+                {trip.vehicleType}
+              </div>
+            )}
             {trip.distance && (
               <div className="text-xs text-muted-foreground">
                 المسافة: {trip.distance} كم

@@ -64,6 +64,7 @@ export async function createTrip(formData: FormData) {
       time: formatWeekday(tripDate),
       startPoint: get("startPoint"),
       endPoint: get("endPoint"),
+      vehicleType: get("vehicleType") || null,
       description: get("description") || null,
       distance: get("distance") ? Number(get("distance")) : null,
       contractorPrice: toPiastres(get("contractorPrice") || "0"),
@@ -116,6 +117,7 @@ export async function createMultiDayTrip(formData: FormData) {
 
   const startPoint = get("startPoint");
   const endPoint = get("endPoint");
+  const vehicleType = get("vehicleType") || null;
   const description = get("description") || null;
   const notes = get("notes") || null;
   if (!startPoint || !endPoint)
@@ -152,6 +154,7 @@ export async function createMultiDayTrip(formData: FormData) {
           time: formatWeekday(dt),
           startPoint,
           endPoint,
+          vehicleType,
           description,
           notes,
           contractorPrice: toPiastres(d.contractorPrice || "0"),
@@ -209,6 +212,7 @@ export async function updateTrip(id: string, formData: FormData) {
       time: tripDate ? formatWeekday(tripDate) : get("time") || null,
       startPoint: get("startPoint"),
       endPoint: get("endPoint"),
+      vehicleType: get("vehicleType") || null,
       description: get("description") || null,
       distance: get("distance") ? Number(get("distance")) : null,
       contractorPrice: toPiastres(get("contractorPrice") || "0"),

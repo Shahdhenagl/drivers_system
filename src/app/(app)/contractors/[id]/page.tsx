@@ -38,6 +38,7 @@ import {
   Pencil,
   ChevronLeft,
   ArrowRight,
+  Plus,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -298,6 +299,13 @@ export default async function ContractorProfile({
             <PrintButton />
           </div>
         </Card>
+
+        {/* إضافة رحلة لهذا المقاول */}
+        <Button asChild size="lg" className="w-full print:hidden">
+          <Link href={`/trips/new?contractor=${c.id}`}>
+            <Plus className="h-5 w-5" /> إضافة رحلة لهذا المقاول
+          </Link>
+        </Button>
 
         {/* علامة المراجعة اليومية */}
         <div className="print:hidden">

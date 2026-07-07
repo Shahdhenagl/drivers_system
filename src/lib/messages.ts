@@ -136,10 +136,19 @@ type TripForMsg = {
   time?: string | null;
   startPoint: string;
   endPoint: string;
+  description?: string | null;
   notes?: string | null;
   contractor: { name: string; phone: string };
   driver?: { name: string; phone: string } | null;
 };
+
+/** أسطر الوصف والملاحظات — تظهر للطرفين (المقاول والسواق) */
+function tripDetailLines(t: TripForMsg): string[] {
+  return [
+    t.description ? `📋 الوصف: ${t.description}` : "",
+    t.notes ? `📝 ملاحظات: ${t.notes}` : "",
+  ];
+}
 
 /** رسالة للمقاول — بدون أي معلومات مالية */
 export function contractorMessage(t: TripForMsg): string {
@@ -154,6 +163,7 @@ export function contractorMessage(t: TripForMsg): string {
     lines.push(`👤 السائق: ${t.driver.name}`);
     lines.push(`📞 رقم السائق: ${displayPhone(t.driver.phone)}`);
   }
+  lines.push(...tripDetailLines(t));
   return lines.filter(Boolean).join("\n") + SIGNATURE;
 }
 
@@ -167,7 +177,7 @@ export function driverMessage(t: TripForMsg): string {
     `🏁 إلى: ${t.endPoint}`,
     `👤 العميل: ${t.contractor.name}`,
     `📞 رقم العميل: ${displayPhone(t.contractor.phone)}`,
-    t.notes ? `📝 ملاحظات: ${t.notes}` : "",
+    ...tripDetailLines(t),
   ];
   return lines.filter(Boolean).join("\n") + SIGNATURE;
 }
@@ -182,7 +192,7 @@ export function driverReminder(t: TripForMsg): string {
       `🏁 إلى: ${t.endPoint}`,
       `👤 العميل: ${t.contractor.name}`,
       `📞 رقم العميل: ${displayPhone(t.contractor.phone)}`,
-      t.notes ? `📝 ملاحظات: ${t.notes}` : "",
+      ...tripDetailLines(t),
     ]
       .filter(Boolean)
       .join("\n") + SIGNATURE

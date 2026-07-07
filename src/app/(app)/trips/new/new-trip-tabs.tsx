@@ -12,10 +12,14 @@ export function NewTripTabs({
   contractors,
   drivers,
   routes,
+  initialContractorId,
+  initialDriverId,
 }: {
   contractors: Option[];
   drivers: Option[];
   routes: RouteMemory[];
+  initialContractorId?: string;
+  initialDriverId?: string;
 }) {
   const [mode, setMode] = useState<"single" | "multi">("single");
 
@@ -47,9 +51,20 @@ export function NewTripTabs({
       </div>
 
       {mode === "single" ? (
-        <TripForm contractors={contractors} drivers={drivers} routes={routes} />
+        <TripForm
+          contractors={contractors}
+          drivers={drivers}
+          routes={routes}
+          initialContractorId={initialContractorId}
+          initialDriverId={initialDriverId}
+        />
       ) : (
-        <MultiDayTripForm contractors={contractors} drivers={drivers} routes={routes} />
+        <MultiDayTripForm
+          contractors={contractors}
+          drivers={drivers}
+          routes={routes}
+          initialContractorId={initialContractorId}
+        />
       )}
     </div>
   );

@@ -39,6 +39,7 @@ import {
   ChevronLeft,
   ArrowRight,
   Truck,
+  Plus,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -296,6 +297,13 @@ export default async function DriverProfile({
             <PrintButton />
           </div>
         </Card>
+
+        {/* إضافة رحلة لهذا السواق */}
+        <Button asChild size="lg" className="w-full print:hidden">
+          <Link href={`/trips/new?driver=${d.id}`}>
+            <Plus className="h-5 w-5" /> إضافة رحلة لهذا السواق
+          </Link>
+        </Button>
 
         {/* علامة المراجعة اليومية */}
         <div className="print:hidden">

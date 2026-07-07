@@ -20,6 +20,7 @@ export type TripCardData = {
   time: string | null;
   startPoint: string;
   endPoint: string;
+  vehicleType?: string | null;
   contractorPrice: number;
   driverDue: number;
   driverTip?: number | null;
@@ -75,6 +76,11 @@ export function TripCard({ trip }: { trip: TripCardData }) {
             <Truck className="h-3 w-3" />
             {trip.driver?.name ?? "بدون سواق"}
           </span>
+          {trip.vehicleType && (
+            <span className="mr-auto rounded-md bg-muted px-1.5 py-0.5">
+              {trip.vehicleType}
+            </span>
+          )}
         </div>
 
         <div className="grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">

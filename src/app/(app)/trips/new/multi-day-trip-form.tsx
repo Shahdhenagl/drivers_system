@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { SearchSelect } from "@/components/ui/search-select";
 import { RouteFields, type RouteMemory } from "@/components/route-fields";
 import { Input } from "@/components/ui/input";
@@ -8,11 +8,19 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SubmitButton } from "@/components/submit-button";
 import { createMultiDayTrip } from "../actions";
 import { playSound } from "@/lib/sounds";
 import { toDateInput } from "@/lib/format";
 import { formatMoney, toPiastres } from "@/lib/money";
+import { TRIP_VEHICLE_TYPES } from "@/lib/vehicle-types";
 import { Plus, Trash2, CalendarDays } from "lucide-react";
 
 type Option = { id: string; name: string; phone: string };
@@ -34,12 +42,15 @@ export function MultiDayTripForm({
   contractors,
   drivers,
   routes,
+  initialContractorId,
 }: {
   contractors: Option[];
   drivers: Option[];
   routes: RouteMemory[];
+  initialContractorId?: string;
 }) {
-  const [contractorId, setContractorId] = useState("");
+  const [contractorId, setContractorId] = useState(initialContractorId ?? "");
+  const [vehicleType, setVehicleType] = useState("");
   const [days, setDays] = useState<Day[]>([newDay(0), newDay(1)]);
   const [error, setError] = useState("");
 
@@ -61,6 +72,16 @@ export function MultiDayTripForm({
   function removeDay(i: number) {
     setDays((prev) => prev.filter((_, idx) => idx !== i));
   }
+
+  const applyRoutePrice = useCallback((contractor: string, driver: string) => {
+    setDays((prev) =>
+      prev.map((day) => ({
+        ...day,
+        contractorPrice: day.contractorPrice || contractor,
+        driverDue: day.driverDue || driver,
+      }))
+    );
+  }, []);
 
   async function action(formData: FormData) {
     setError("");
@@ -117,16 +138,24 @@ export function MultiDayTripForm({
       <Card className="space-y-3 p-4">
         <RouteFields
           routes={routes}
-          onPickRoute={(c, d) =>
-            setDays((prev) =>
-              prev.map((day) => ({
-                ...day,
-                contractorPrice: day.contractorPrice || c,
-                driverDue: day.driverDue || d,
-              }))
-            )
-          }
+          vehicleType={vehicleType}
+          onPickRoute={applyRoutePrice}
         />
+        <div className="space-y-1.5">
+          <Label htmlFor="vehicleType">نوع العربية *</Label>
+          <Select name="vehicleType" value={vehicleType} onValueChange={setVehicleType} required>
+            <SelectTrigger id="vehicleType">
+              <SelectValue placeholder="اختار نوع العربية" />
+            </SelectTrigger>
+            <SelectContent>
+              {TRIP_VEHICLE_TYPES.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {type}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="space-y-1.5">
           <Label htmlFor="description">وصف الرحلة</Label>
           <Textarea id="description" name="description" />
