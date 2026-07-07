@@ -1,0 +1,26 @@
+name: Weekly Deploy
+
+# نشر التطبيق تلقائيًا كل جمعة عبر Vercel Deploy Hook.
+# يتطلب secret باسم VERCEL_DEPLOY_HOOK (رابط الـ Deploy Hook من إعدادات Vercel).
+
+on:
+  schedule:
+    # كل جمعة 06:00 UTC (≈ 8:00 صباحًا بتوقيت القاهرة). عدّل الوقت لو حبيت.
+    - cron: "0 6 * * 5"
+  workflow_dispatch: {} # يسمح بتشغيله يدويًا من تبويب Actions
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel deploy hook
+        env:
+          HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "❌ الـ secret 'VERCEL_DEPLOY_HOOK' غير موجود."
+            echo "أضِفه في: GitHub repo → Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          curl -fsS -X POST "$HOOK"
+          echo "✅ تم تشغيل نشر Vercel لهذا الأسبوع."
