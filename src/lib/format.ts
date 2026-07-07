@@ -90,6 +90,22 @@ export function monthBounds(ym: string): [Date, Date] {
   return [new Date(Date.UTC(y, m - 1, 1)), new Date(Date.UTC(y, m, 1))];
 }
 
+/**
+ * حدود أسبوع يبدأ السبت وينتهي الجمعة (الأسبوع المصري) كـ [from, toExclusive] بـ UTC.
+ * offsetWeeks=0 الأسبوع الحالي، -1 الأسبوع السابق، وهكذا.
+ */
+export function weekBoundsUTC(offsetWeeks = 0): [Date, Date] {
+  const [y, m, d] = cairoDayStr().split("-").map(Number);
+  const base = new Date(Date.UTC(y, m - 1, d));
+  const dow = base.getUTCDay(); // 0=الأحد .. 6=السبت
+  const daysSinceSat = (dow + 1) % 7; // السبت=0، الأحد=1 ... الجمعة=6
+  const start = new Date(base);
+  start.setUTCDate(base.getUTCDate() - daysSinceSat + offsetWeeks * 7);
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + 7);
+  return [start, end];
+}
+
 /** فرق توقيت منطقة زمنية عن UTC (بالملّي ثانية) عند لحظة معيّنة — مستقل عن توقيت السيرفر */
 function tzOffsetMs(timeZone: string, instant: Date): number {
   const dtf = new Intl.DateTimeFormat("en-US", {
