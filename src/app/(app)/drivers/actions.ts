@@ -81,10 +81,8 @@ export async function deleteDriver(id: string) {
 }
 
 /**
- * سداد مستحقات السواق — يوزَّع بالأقدم أولًا على الرحلات المستحقة **والسلف الخارجية**
- * التي السواق فيها هو المُقرِض (له، لأن المكتب هو اللي بيدفعها له). الرحلات والسلف تُرتَّب
- * بتاريخها سويًا. السلفة الخارجية تخرج من الخزنة كـ"أمانة" (تُنقص الكاش لا الربح) وتُعلَّم
- * مسدَّدة (كليًا أو جزئيًا). أي زيادة عن المستحق تُسجَّل سلفة على السواق (يدين بها لنا).
+ * سداد مستحقات السواق — يوزَّع بالأقدم أولًا على الرحلات المستحقة.
+ * أي زيادة عن المستحق تُسجَّل سلفة على السواق (يدين بها لنا).
  */
 export async function payDriverDues(driverId: string, formData: FormData) {
   const amount = toPiastres(String(formData.get("amount") ?? "0"));
@@ -95,36 +93,19 @@ export async function payDriverDues(driverId: string, formData: FormData) {
 
   if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
 
-  const [trips, externals] = await Promise.all([
-    prisma.trip.findMany({
-      where: { driverId, status: { not: "CANCELLED" } },
-      orderBy: { date: "asc" },
-      include: { driverPayments: true },
-    }),
-    // السلف الخارجية التي السواق فيها هو المُقرِض (له) وغير مكتملة السداد
-    prisma.externalAdvance
-      .findMany({
-        where: { lenderType: "DRIVER", lenderId: driverId },
-        orderBy: { date: "asc" },
-      })
-      .then((rows) => rows.filter((r) => r.amount - r.paidAmount > 0))
-      .catch(() => []),
-  ]);
+  const trips = await prisma.trip.findMany({
+    where: { driverId, status: { not: "CANCELLED" } },
+    orderBy: { date: "asc" },
+    include: { driverPayments: true },
+  });
 
-  // بنود مستحقة موحّدة (رحلات + سلف خارجية) مرتّبة بالتاريخ الأقدم أولًا
-  type Item =
-    | { kind: "trip"; date: Date; trip: (typeof trips)[number]; remaining: number }
-    | { kind: "ext"; date: Date; ext: (typeof externals)[number]; remaining: number };
-  const items: Item[] = [];
+  // الرحلات المستحقة مرتّبة بالأقدم
+  const items: { trip: (typeof trips)[number]; remaining: number }[] = [];
   for (const t of trips) {
     const paid = t.driverPayments.reduce((s, p) => s + p.amount, 0);
     const rem = Math.max(effectiveAmounts(t).driver - paid, 0);
-    if (rem > 0) items.push({ kind: "trip", date: t.date, trip: t, remaining: rem });
+    if (rem > 0) items.push({ trip: t, remaining: rem });
   }
-  for (const e of externals) {
-    items.push({ kind: "ext", date: e.date, ext: e, remaining: e.amount - e.paidAmount });
-  }
-  items.sort((a, b) => +new Date(a.date) - +new Date(b.date));
 
   // منع النزول تحت الصفر (كامل المبلغ يخرج كاش)
   const plan = await planSpend(method, amount, false);
@@ -138,44 +119,19 @@ export async function payDriverDues(driverId: string, formData: FormData) {
       if (left <= 0) break;
       const pay = Math.min(it.remaining, left);
       left -= pay;
-      if (it.kind === "trip") {
-        const dp = await tx.driverPayment.create({
-          data: { tripId: it.trip.id, driverId, amount: pay, method, date, note },
-        });
-        await recordLedger(tx, {
-          type: "DRIVER_PAYMENT",
-          direction: "OUT",
-          amount: pay,
-          method,
-          description: `سداد سواق — رحلة ${it.trip.startPoint} ← ${it.trip.endPoint}`,
-          refType: "DriverPayment",
-          refId: dp.id,
-          date,
-        });
-      } else {
-        // ساق المُقرِض: تسليم المكتب للسواق (lender)
-        const paid = it.ext.paidAmount + pay;
-        const done = paid >= it.ext.amount && it.ext.collectedAmount >= it.ext.amount;
-        await tx.externalAdvance.update({
-          where: { id: it.ext.id },
-          data: {
-            paidAmount: paid,
-            status: done ? "SETTLED" : "OPEN",
-            settledAt: done ? date : null,
-          },
-        });
-        // أمانة: تخرج من خزنة المكتب (كاش) لكن لا تُحتسب مصروفًا/ربحًا — المكتب سلّمها لصاحبها
-        await recordLedger(tx, {
-          type: "CUSTODY_OUT",
-          direction: "OUT",
-          amount: pay,
-          method,
-          description: `أمانة سلفة خارجية — تسليم ${it.ext.lenderName}`,
-          refType: "ExternalAdvance",
-          refId: it.ext.id,
-          date,
-        });
-      }
+      const dp = await tx.driverPayment.create({
+        data: { tripId: it.trip.id, driverId, amount: pay, method, date, note },
+      });
+      await recordLedger(tx, {
+        type: "DRIVER_PAYMENT",
+        direction: "OUT",
+        amount: pay,
+        method,
+        description: `سداد سواق — رحلة ${it.trip.startPoint} ← ${it.trip.endPoint}`,
+        refType: "DriverPayment",
+        refId: dp.id,
+        date,
+      });
     }
     // الزيادة عن المستحق → سلفة على السواق
     if (left > 0) {

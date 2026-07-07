@@ -25,12 +25,10 @@ export function PayDriverForm({
   driverId,
   remaining,
   advanceBalance = 0,
-  externalPayable = 0,
 }: {
   driverId: string;
   remaining: number;
   advanceBalance?: number; // + = عليه سلفة لنا، − = له علينا
-  externalPayable?: number; // سلف خارجية له يسلّمها المكتب (أمانة)
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
@@ -38,8 +36,7 @@ export function PayDriverForm({
   const router = useRouter();
 
   const amountP = toPiastres(amountEgp || "0");
-  // المبلغ المستحق له = متبقي الرحلات + السلف الخارجية له
-  const payable = remaining + externalPayable;
+  const payable = remaining;
   const duePortion = Math.min(amountP, payable);
   const advancePortion = Math.max(amountP - payable, 0);
   const advanceDebt = Math.max(advanceBalance, 0);
@@ -102,14 +99,6 @@ export function PayDriverForm({
             <span>متبقي رحلات له</span>
             <span className="font-bold text-warning">{formatMoney(remaining)}</span>
           </div>
-          {externalPayable > 0 && (
-            <div className="flex items-center justify-between text-xs">
-              <span>سلف خارجية له (أمانة يسلّمها المكتب)</span>
-              <span className="font-bold text-warning">
-                {formatMoney(externalPayable)}
-              </span>
-            </div>
-          )}
           {advanceDebt > 0 && (
             <div className="flex items-center justify-between text-xs">
               <span>سلف عليه</span>
@@ -169,7 +158,7 @@ export function PayDriverForm({
             {amountP > 0 && (
               <div className="rounded-lg bg-muted/70 p-2 text-xs">
                 <div className="flex items-center justify-between">
-                  <span>منه سداد مستحقات (رحلات + سلف خارجية)</span>
+                  <span>منه سداد رحلات</span>
                   <span className="font-semibold">
                     {formatMoney(duePortion, false)}
                   </span>

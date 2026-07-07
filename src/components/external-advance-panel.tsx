@@ -339,30 +339,25 @@ export function ExternalAdvancePanel({
   advances: ExternalAdvanceRow[];
 }) {
   const totals = useMemo(() => {
-    return advances
-      .filter((a) => a.status !== "SETTLED")
-      .reduce(
-        (acc, a) => {
-          if (
-            a.borrowerType === currentParty.type &&
-            a.borrowerId === currentParty.id
-          ) {
-            acc.onHim += Math.max(a.amount - (a.collectedAmount ?? 0), 0);
-          }
-          if (
-            a.lenderType === currentParty.type &&
-            a.lenderId === currentParty.id
-          ) {
-            acc.forHim += Math.max(a.amount - (a.paidAmount ?? 0), 0);
-          }
-          return acc;
-        },
-        { forHim: 0, onHim: 0 }
-      );
+    return advances.reduce(
+      (acc, a) => {
+        if (
+          a.borrowerType === currentParty.type &&
+          a.borrowerId === currentParty.id
+        ) {
+          acc.onHim += a.amount;
+        }
+        if (
+          a.lenderType === currentParty.type &&
+          a.lenderId === currentParty.id
+        ) {
+          acc.forHim += a.amount;
+        }
+        return acc;
+      },
+      { forHim: 0, onHim: 0 }
+    );
   }, [advances, currentParty.id, currentParty.type]);
-
-  const openRows = advances.filter((a) => a.status !== "SETTLED");
-  const settledRows = advances.filter((a) => a.status === "SETTLED");
 
   return (
     <Card className="space-y-3 p-4">
@@ -394,34 +389,20 @@ export function ExternalAdvancePanel({
       </div>
 
       <div className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">
-        سلف بين السواقين والمقاولين. عند تحصيلها/سدادها عبر «تحصيل الكل» أو «سداد
-        الكل» تدخل/تخرج من خزنة المكتب كأمانة (تؤثر على الكاش لا الربح) وتُعلَّم
-        مسددة كليًا أو جزئيًا.
+        سلف بين السواقين والمقاولين تُحسب في حساب كل طرف فور تسجيلها. للإلغاء
+        احذف السلفة.
       </div>
 
-      <ExternalRows
-        title="مفتوحة"
-        rows={openRows}
-        currentParty={currentParty}
-        parties={parties}
-      />
-      <ExternalRows
-        title="مسددة"
-        rows={settledRows}
-        currentParty={currentParty}
-        parties={parties}
-      />
+      <ExternalRows rows={advances} currentParty={currentParty} parties={parties} />
     </Card>
   );
 }
 
 function ExternalRows({
-  title,
   rows,
   currentParty,
   parties,
 }: {
-  title: string;
   rows: ExternalAdvanceRow[];
   currentParty: { type: PartyType; id: string; name: string };
   parties: PartyOption[];
@@ -430,20 +411,12 @@ function ExternalRows({
 
   return (
     <div className="divide-y divide-border rounded-lg border border-border">
-      <div className="bg-muted/60 px-2.5 py-1.5 text-xs font-bold text-muted-foreground">
-        {title}
-      </div>
       {rows.map((row) => {
         const isBorrower =
           row.borrowerType === currentParty.type &&
           row.borrowerId === currentParty.id;
         const otherName = isBorrower ? row.lenderName : row.borrowerName;
         const otherType = isBorrower ? row.lenderType : row.borrowerType;
-        // الساق الخاصة بالطرف الحالي: المستلِف يُتابَع بالمحصَّل، المُقرِض بالمسلَّم
-        const legDone = isBorrower ? row.collectedAmount ?? 0 : row.paidAmount ?? 0;
-        const isSettled = row.status === "SETTLED";
-        const remaining = Math.max(row.amount - legDone, 0);
-        const isPartial = !isSettled && legDone > 0;
         return (
           <div key={row.id} className="flex items-center justify-between p-2.5 text-sm">
             <div className="min-w-0">
@@ -457,16 +430,11 @@ function ExternalRows({
                 ) : (
                   <ArrowDownLeft className="h-4 w-4" />
                 )}
-                {isBorrower ? "عليه" : "له"}{" "}
-                {formatMoney(isSettled ? row.amount : remaining)}
+                {isBorrower ? "عليه" : "له"} {formatMoney(row.amount)}
               </div>
               <div className="text-xs text-muted-foreground">
                 {isBorrower ? "استلف من" : "أعطى سلفة لـ"} {otherName} (
                 {partyTypeLabel(otherType)}) • {formatShortDate(row.date)}
-                {isPartial ? ` • مسدَّد جزئيًا من ${formatMoney(row.amount)}` : ""}
-                {isSettled && row.settledAt
-                  ? ` • اتسدد ${formatShortDate(row.settledAt)}`
-                  : ""}
               </div>
               {row.note && (
                 <div className="max-w-[220px] truncate text-xs text-muted-foreground">

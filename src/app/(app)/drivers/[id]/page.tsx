@@ -178,19 +178,13 @@ export default async function DriverProfile({
     .filter((a) => a.direction === "IN")
     .reduce((s, a) => s + a.amount, 0);
   const advanceBalance = advOut - advIn;
-  // المتبقي على كل ساق (يراعي التحصيل/السداد الجزئي عبر المكتب):
-  // له (مُقرِض) = amount − paidAmount، عليه (مستلِف) = amount − collectedAmount
+  // السلف الخارجية تُحسب بقيمتها الكاملة فور تسجيلها (تُزال بالحذف فقط)
   const externalFor = externalAdvances
-    .filter(
-      (a) => a.status !== "SETTLED" && a.lenderType === "DRIVER" && a.lenderId === id
-    )
-    .reduce((s, a) => s + Math.max(a.amount - (a.paidAmount ?? 0), 0), 0);
+    .filter((a) => a.lenderType === "DRIVER" && a.lenderId === id)
+    .reduce((s, a) => s + a.amount, 0);
   const externalOn = externalAdvances
-    .filter(
-      (a) =>
-        a.status !== "SETTLED" && a.borrowerType === "DRIVER" && a.borrowerId === id
-    )
-    .reduce((s, a) => s + Math.max(a.amount - (a.collectedAmount ?? 0), 0), 0);
+    .filter((a) => a.borrowerType === "DRIVER" && a.borrowerId === id)
+    .reduce((s, a) => s + a.amount, 0);
   const officeFor = Math.max(-advanceBalance, 0);
   const officeOn = Math.max(advanceBalance, 0);
   const totalForDriver = remaining + officeFor + externalFor;
@@ -337,7 +331,6 @@ export default async function DriverProfile({
             driverId={d.id}
             remaining={remaining}
             advanceBalance={advanceBalance}
-            externalPayable={externalFor}
           />
         </div>
 

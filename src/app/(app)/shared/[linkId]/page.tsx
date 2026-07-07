@@ -129,8 +129,8 @@ export default async function SharedProfile({
     return a + Math.max(effectiveAmounts(t).contractor - collected, 0);
   }, 0);
   const cAdvBalance = advNet(contractorAdvances);
-  const cExternalFor = extSum(contractorExternals, "lender", "CONTRACTOR", contractor.id, "paidAmount");
-  const cExternalOn = extSum(contractorExternals, "borrower", "CONTRACTOR", contractor.id, "collectedAmount");
+  const cExternalFor = extSum(contractorExternals, "lender", "CONTRACTOR", contractor.id);
+  const cExternalOn = extSum(contractorExternals, "borrower", "CONTRACTOR", contractor.id);
   const contractorPayments = contractor.trips
     .flatMap((t) =>
       t.collections.map((p) => ({ ...p, route: `${t.startPoint} ← ${t.endPoint}` }))
@@ -142,8 +142,8 @@ export default async function SharedProfile({
   const dPaid = driver.payments.reduce((a, p) => a + p.amount, 0);
   const dRemaining = Math.max(dDue - dPaid, 0);
   const dAdvBalance = advNet(driverAdvances);
-  const dExternalFor = extSum(driverExternals, "lender", "DRIVER", driver.id, "paidAmount");
-  const dExternalOn = extSum(driverExternals, "borrower", "DRIVER", driver.id, "collectedAmount");
+  const dExternalFor = extSum(driverExternals, "lender", "DRIVER", driver.id);
+  const dExternalOn = extSum(driverExternals, "borrower", "DRIVER", driver.id);
 
   // ===== الحساب الموحّد =====
   const officeFor = Math.max(-cAdvBalance, 0) + Math.max(-dAdvBalance, 0);
@@ -260,13 +260,12 @@ export default async function SharedProfile({
           <SummaryBox label="الآجل" value={cDeferred} tone="destructive" />
         </div>
 
-        {(cDeferred > 0 || cExternalOn > 0) && (
+        {cDeferred > 0 && (
           <div className="print:hidden">
             <CollectAllForm
               contractorId={contractor.id}
               remaining={cDeferred}
               advanceBalance={cAdvBalance}
-              externalCollectable={cExternalOn}
             />
           </div>
         )}
@@ -369,7 +368,6 @@ export default async function SharedProfile({
             driverId={driver.id}
             remaining={dRemaining}
             advanceBalance={dAdvBalance}
-            externalPayable={dExternalFor}
           />
         </div>
 
@@ -467,22 +465,20 @@ function advNet(rows: { direction: string; amount: number }[]) {
   return out - inn;
 }
 
-/** مجموع المتبقي على السلف الخارجية لطرف بدور معيّن (lender→paidAmount، borrower→collectedAmount) */
+/** مجموع السلف الخارجية لطرف بدور معيّن — بقيمتها الكاملة (تُحسب فور تسجيلها) */
 function extSum(
   rows: ExtRow[],
   role: "lender" | "borrower",
   type: string,
-  id: string,
-  legField: "paidAmount" | "collectedAmount"
+  id: string
 ) {
   return rows
-    .filter((a) => {
-      if (a.status === "SETTLED") return false;
-      return role === "lender"
+    .filter((a) =>
+      role === "lender"
         ? a.lenderType === type && a.lenderId === id
-        : a.borrowerType === type && a.borrowerId === id;
-    })
-    .reduce((s, a) => s + Math.max(a.amount - (a[legField] ?? 0), 0), 0);
+        : a.borrowerType === type && a.borrowerId === id
+    )
+    .reduce((s, a) => s + a.amount, 0);
 }
 
 function SummaryBox({

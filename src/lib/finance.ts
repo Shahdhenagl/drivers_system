@@ -142,26 +142,21 @@ export async function advanceBalancesByParty(
 }
 
 /**
- * المتبقي على السلف الخارجية (غير المسدَّدة) لكل طرف من نوع معيّن:
- * forMap = له (مُقرِض، amount−paidAmount)، onMap = عليه (مستلِف، amount−collectedAmount).
+ * إجمالي السلف الخارجية لكل طرف بقيمتها الكاملة (تُحسب فور تسجيلها ولا مفهوم للتسديد):
+ * forMap = له (مُقرِض)، onMap = عليه (مستلِف). تُزال بالحذف فقط.
  */
 export async function externalRemainingByParty(
   partyType: "CONTRACTOR" | "DRIVER"
 ): Promise<{ forMap: Map<string, number>; onMap: Map<string, number> }> {
   const rows = await prisma.externalAdvance
     .findMany({
-      where: {
-        status: { not: "SETTLED" },
-        OR: [{ borrowerType: partyType }, { lenderType: partyType }],
-      },
+      where: { OR: [{ borrowerType: partyType }, { lenderType: partyType }] },
       select: {
         borrowerType: true,
         borrowerId: true,
         lenderType: true,
         lenderId: true,
         amount: true,
-        collectedAmount: true,
-        paidAmount: true,
       },
     })
     .catch(() => [] as never[]);
@@ -169,12 +164,10 @@ export async function externalRemainingByParty(
   const onMap = new Map<string, number>();
   for (const e of rows) {
     if (e.lenderType === partyType) {
-      const rem = Math.max(e.amount - (e.paidAmount ?? 0), 0);
-      forMap.set(e.lenderId, (forMap.get(e.lenderId) ?? 0) + rem);
+      forMap.set(e.lenderId, (forMap.get(e.lenderId) ?? 0) + e.amount);
     }
     if (e.borrowerType === partyType) {
-      const rem = Math.max(e.amount - (e.collectedAmount ?? 0), 0);
-      onMap.set(e.borrowerId, (onMap.get(e.borrowerId) ?? 0) + rem);
+      onMap.set(e.borrowerId, (onMap.get(e.borrowerId) ?? 0) + e.amount);
     }
   }
   return { forMap, onMap };

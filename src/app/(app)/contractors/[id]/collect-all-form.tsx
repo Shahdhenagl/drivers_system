@@ -25,20 +25,17 @@ export function CollectAllForm({
   contractorId,
   remaining,
   advanceBalance = 0,
-  externalCollectable = 0,
 }: {
   contractorId: string;
   remaining: number;
   advanceBalance?: number;
-  externalCollectable?: number; // سلف خارجية عليه يجمّعها المكتب (أمانة)
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
   const advanceDebt = Math.max(advanceBalance, 0);
   const advanceCredit = Math.max(-advanceBalance, 0);
-  // المبلغ القابل للتحصيل تلقائيًا = متبقي الرحلات + السلف الخارجية عليه
-  const collectable = remaining + externalCollectable;
+  const collectable = remaining;
   const totalOnContractor = collectable + advanceDebt;
   const net = totalOnContractor - advanceCredit;
 
@@ -79,14 +76,6 @@ export function CollectAllForm({
               {formatMoney(remaining)}
             </span>
           </div>
-          {externalCollectable > 0 && (
-            <div className="flex items-center justify-between text-xs">
-              <span>سلف خارجية عليه (أمانة يجمّعها المكتب)</span>
-              <span className="font-bold text-destructive">
-                {formatMoney(externalCollectable)}
-              </span>
-            </div>
-          )}
           {advanceDebt > 0 && (
             <div className="flex items-center justify-between text-xs">
               <span>سلف/رصيد عليه</span>
@@ -115,8 +104,8 @@ export function CollectAllForm({
           </div>
         </div>
         <p className="mb-3 text-center text-xs text-muted-foreground">
-          يتوزّع المبلغ بالأقدم أولًا على الرحلات والسلف الخارجية معًا. أي زيادة
-          عن المستحق تتسجّل رصيدًا للمقاول (له عندنا).
+          يتوزّع المبلغ بالأقدم أولًا على الرحلات المستحقة. أي زيادة عن المستحق
+          تتسجّل رصيدًا للمقاول (له عندنا).
         </p>
         <form action={action} className="space-y-3">
           <div className="space-y-1.5">

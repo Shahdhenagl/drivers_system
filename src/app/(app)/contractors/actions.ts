@@ -53,10 +53,8 @@ export async function updateContractor(id: string, formData: FormData) {
 }
 
 /**
- * تحصيل مجمّع من المقاول — يوزَّع بالأقدم أولًا على الرحلات المستحقة **والسلف الخارجية**
- * التي المقاول فيها هو المستلِف (لأن المكتب هو اللي بيجمّعها). الرحلات والسلف تُرتَّب
- * بتاريخها سويًا. السلفة الخارجية تدخل الخزنة كـ"أمانة" (تزوّد الكاش لا الربح) وتُعلَّم
- * مسدَّدة (كليًا أو جزئيًا). أي زيادة عن المستحق تُسجَّل رصيدًا للمقاول (له عندنا).
+ * تحصيل مجمّع من المقاول — يوزَّع بالأقدم أولًا على الرحلات المستحقة.
+ * أي زيادة عن المستحق تُسجَّل رصيدًا للمقاول (له عندنا).
  */
 export async function collectAllFromContractor(
   contractorId: string,
@@ -69,37 +67,26 @@ export async function collectAllFromContractor(
   const note = String(formData.get("note") ?? "").trim() || "تحصيل مجمّع";
   if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
 
-  const [trips, externals] = await Promise.all([
-    prisma.trip.findMany({
-      where: { contractorId },
-      orderBy: { date: "asc" },
-      include: { collections: true },
-    }),
-    // السلف الخارجية التي المقاول فيها هو المستلِف (عليه) وغير مكتملة السداد
-    prisma.externalAdvance
-      .findMany({
-        where: { borrowerType: "CONTRACTOR", borrowerId: contractorId },
-        orderBy: { date: "asc" },
-      })
-      .then((rows) => rows.filter((r) => r.amount - r.collectedAmount > 0))
-      .catch(() => []),
-  ]);
+  const trips = await prisma.trip.findMany({
+    where: { contractorId },
+    orderBy: { date: "asc" },
+    include: { collections: true },
+  });
 
-  // بنود مستحقة موحّدة (رحلات + سلف خارجية) مرتّبة بالتاريخ الأقدم أولًا
-  type Item =
-    | { kind: "trip"; date: Date; trip: (typeof trips)[number]; eff: number; collected: number; remaining: number }
-    | { kind: "ext"; date: Date; ext: (typeof externals)[number]; remaining: number };
+  // الرحلات المستحقة مرتّبة بالأقدم
+  type Item = {
+    trip: (typeof trips)[number];
+    eff: number;
+    collected: number;
+    remaining: number;
+  };
   const items: Item[] = [];
   for (const t of trips) {
     const eff = effectiveAmounts(t).contractor;
     const collected = t.collections.reduce((s, x) => s + x.amount, 0);
     const remaining = Math.max(eff - collected, 0);
-    if (remaining > 0) items.push({ kind: "trip", date: t.date, trip: t, eff, collected, remaining });
+    if (remaining > 0) items.push({ trip: t, eff, collected, remaining });
   }
-  for (const e of externals) {
-    items.push({ kind: "ext", date: e.date, ext: e, remaining: e.amount - e.collectedAmount });
-  }
-  items.sort((a, b) => +new Date(a.date) - +new Date(b.date));
 
   // لو التحصيل "عن طريق محصّل": كل المبلغ يبقى معاه (سلفة عليه) ولا يدخل الخزنة
   const collector = await resolveCollector(method);
@@ -107,62 +94,33 @@ export async function collectAllFromContractor(
     return { error: `المحصّل «${collector.notFound}» غير موجود في السواقين` };
   }
 
-  let custodyCollected = 0;
   await prisma.$transaction(async (tx) => {
     let left = amount;
     for (const it of items) {
       if (left <= 0) break;
       const pay = Math.min(it.remaining, left);
       left -= pay;
-      if (it.kind === "trip") {
-        const col = await tx.collection.create({
-          data: { tripId: it.trip.id, amount: pay, method, date, note },
+      const col = await tx.collection.create({
+        data: { tripId: it.trip.id, amount: pay, method, date, note },
+      });
+      if (!collector) {
+        await recordLedger(tx, {
+          type: "COLLECTION",
+          direction: "IN",
+          amount: pay,
+          method,
+          description: `تحصيل — رحلة ${it.trip.startPoint} ← ${it.trip.endPoint}`,
+          refType: "Collection",
+          refId: col.id,
+          date,
         });
-        if (!collector) {
-          await recordLedger(tx, {
-            type: "COLLECTION",
-            direction: "IN",
-            amount: pay,
-            method,
-            description: `تحصيل — رحلة ${it.trip.startPoint} ← ${it.trip.endPoint}`,
-            refType: "Collection",
-            refId: col.id,
-            date,
-          });
-        }
-        await tx.trip.update({
-          where: { id: it.trip.id },
-          data: {
-            collectionStatus: deriveCollectionStatus(it.eff, it.collected + pay),
-          },
-        });
-      } else {
-        // ساق المستلِف: تحصيل المكتب من المقاول (borrower)
-        const collected = it.ext.collectedAmount + pay;
-        const done = collected >= it.ext.amount && it.ext.paidAmount >= it.ext.amount;
-        await tx.externalAdvance.update({
-          where: { id: it.ext.id },
-          data: {
-            collectedAmount: collected,
-            status: done ? "SETTLED" : "OPEN",
-            settledAt: done ? date : null,
-          },
-        });
-        if (!collector) {
-          // أمانة: تدخل خزنة المكتب (كاش) لكن لا تُحتسب ربحًا — هتتدفع لصاحب السلفة
-          await recordLedger(tx, {
-            type: "CUSTODY_IN",
-            direction: "IN",
-            amount: pay,
-            method,
-            description: `أمانة سلفة خارجية — ${it.ext.lenderName} من ${it.ext.borrowerName}`,
-            refType: "ExternalAdvance",
-            refId: it.ext.id,
-            date,
-          });
-        }
-        custodyCollected += pay;
       }
+      await tx.trip.update({
+        where: { id: it.trip.id },
+        data: {
+          collectionStatus: deriveCollectionStatus(it.eff, it.collected + pay),
+        },
+      });
     }
 
     // الزيادة عن المستحق → رصيد للمقاول (له عندنا)
@@ -208,11 +166,7 @@ export async function collectAllFromContractor(
     }
   });
 
-  await audit("COLLECT_ALL", "Contractor", contractorId, {
-    amount,
-    method,
-    custody: custodyCollected,
-  });
+  await audit("COLLECT_ALL", "Contractor", contractorId, { amount, method });
   revalidatePath(`/contractors/${contractorId}`);
   revalidatePath("/contractors");
   revalidatePath("/finance");

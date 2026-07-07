@@ -153,25 +153,13 @@ export default async function ContractorProfile({
     .filter((a) => a.direction === "IN")
     .reduce((s, a) => s + a.amount, 0);
   const advanceBalance = advOut - advIn;
-  // المتبقي على كل ساق (يراعي التحصيل/السداد الجزئي عبر المكتب):
-  // له (مُقرِض) = amount − paidAmount، عليه (مستلِف) = amount − collectedAmount
+  // السلف الخارجية تُحسب بقيمتها الكاملة فور تسجيلها (تُزال بالحذف فقط)
   const externalFor = externalAdvances
-    .filter(
-      (a) =>
-        a.status !== "SETTLED" &&
-        a.lenderType === "CONTRACTOR" &&
-        a.lenderId === id
-    )
-    .reduce((s, a) => s + Math.max(a.amount - (a.paidAmount ?? 0), 0), 0);
-  // عليه خارجيًا = يقبل التحصيل عبر المكتب (المقاول مستلِف)
+    .filter((a) => a.lenderType === "CONTRACTOR" && a.lenderId === id)
+    .reduce((s, a) => s + a.amount, 0);
   const externalOn = externalAdvances
-    .filter(
-      (a) =>
-        a.status !== "SETTLED" &&
-        a.borrowerType === "CONTRACTOR" &&
-        a.borrowerId === id
-    )
-    .reduce((s, a) => s + Math.max(a.amount - (a.collectedAmount ?? 0), 0), 0);
+    .filter((a) => a.borrowerType === "CONTRACTOR" && a.borrowerId === id)
+    .reduce((s, a) => s + a.amount, 0);
   const officeFor = Math.max(-advanceBalance, 0);
   const officeOn = Math.max(advanceBalance, 0);
 
@@ -343,13 +331,12 @@ export default async function ContractorProfile({
         />
 
         {/* تحصيل الكل */}
-        {(deferredAll > 0 || externalOn > 0) && (
+        {deferredAll > 0 && (
           <div className="print:hidden">
             <CollectAllForm
               contractorId={c.id}
               remaining={deferredAll}
               advanceBalance={advanceBalance}
-              externalCollectable={externalOn}
             />
           </div>
         )}
