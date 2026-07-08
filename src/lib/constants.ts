@@ -94,6 +94,7 @@ export const LEDGER_TYPE = {
   ADVANCE_IN: "سلفة/رصيد (استلام)",
   CUSTODY_IN: "أمانة سلفة خارجية (استلام)",
   CUSTODY_OUT: "أمانة سلفة خارجية (تسليم)",
+  EXTRA_PROFIT: "ربح إضافي",
   EXPENSE: "مصروف",
   PARTNER_WITHDRAWAL: "سحب شريك",
   TRANSFER: "تحويل بين الوسائل",

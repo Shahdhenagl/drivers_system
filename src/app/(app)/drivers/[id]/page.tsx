@@ -15,6 +15,8 @@ import { AccountTotalSummary } from "@/components/account-total-summary";
 import { DailyReviewToggle } from "@/components/daily-review-toggle";
 import { MonthFilter } from "@/components/month-filter";
 import { MovementActions } from "../../trips/[id]/movement-actions";
+import { ExtraProfitForm } from "@/components/extra-profit-form";
+import { OffsetAccountButton } from "@/components/offset-account-button";
 import { setDriverReviewed } from "../actions";
 import { formatMoney } from "@/lib/money";
 import {
@@ -125,6 +127,12 @@ export default async function DriverProfile({
           date: Date;
         }[]
     );
+  const extraProfits = await prisma.ledgerEntry
+    .findMany({
+      where: { type: "EXTRA_PROFIT", refType: "Driver", refId: id },
+      orderBy: { date: "desc" },
+    })
+    .catch(() => [] as { id: string; amount: number; method: string; description: string; date: Date }[]);
   const [allContractors, allDrivers, externalAdvances] = await Promise.all([
     prisma.contractor.findMany({
       orderBy: { name: "asc" },
@@ -367,6 +375,35 @@ export default async function DriverProfile({
             advanceBalance={advanceBalance}
           />
         </div>
+
+        {/* مقاصّة / تصفية الحساب */}
+        {remaining > 0 && (externalOn > 0 || advanceBalance > 0) && (
+          <div className="print:hidden">
+            <OffsetAccountButton partyType="DRIVER" partyId={d.id} />
+          </div>
+        )}
+
+        {/* ربح إضافي */}
+        <div className="print:hidden">
+          <ExtraProfitForm partyType="DRIVER" partyId={d.id} />
+        </div>
+        {extraProfits.length > 0 && (
+          <Card className="divide-y divide-border">
+            <div className="px-3 py-2 text-xs font-bold text-muted-foreground">
+              أرباح إضافية ({extraProfits.length})
+            </div>
+            {extraProfits.map((e) => (
+              <div key={e.id} className="flex items-center justify-between p-3 text-sm">
+                <div className="min-w-0">
+                  <div className="font-medium text-primary">{formatMoney(e.amount)}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {formatShortDate(e.date)} • {methodLabel(e.method)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </Card>
+        )}
 
         {/* السلف والأرصدة */}
         <AdvancePanel

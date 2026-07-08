@@ -10,6 +10,7 @@ export async function getFinanceOverview() {
     advanceAgg,
     partnerWithdrawalAgg,
     capitalSetting,
+    extraProfitAgg,
   ] = await Promise.all([
       prisma.trip.findMany({
         select: {
@@ -44,6 +45,10 @@ export async function getFinanceOverview() {
         ),
       prisma.partnerWithdrawal.aggregate({ _sum: { amount: true } }),
       prisma.setting.findUnique({ where: { key: "initial_capital" } }),
+      // أرباح إضافية مُحصَّلة (ليست من الرحلات) — تُضاف للربح
+      prisma.ledgerEntry
+        .aggregate({ where: { type: "EXTRA_PROFIT" }, _sum: { amount: true } })
+        .catch(() => ({ _sum: { amount: 0 } })),
     ]);
 
   // المبالغ الفعلية: عادية للرحلات النشطة، والغرامة للملغية (صفر عند السماح)
@@ -62,7 +67,9 @@ export async function getFinanceOverview() {
   const totalPaidDrivers = driverPayAgg._sum.amount ?? 0;
   const totalRemainingDrivers = Math.max(totalDriverDue - totalPaidDrivers, 0);
   const totalExpenses = expenseAgg._sum.amount ?? 0;
-  const grossProfit = totalRevenue - totalDriverDue;
+  // أرباح إضافية محصّلة (خارج الرحلات) تُضاف للربح
+  const totalExtraProfit = extraProfitAgg._sum.amount ?? 0;
+  const grossProfit = totalRevenue - totalDriverDue + totalExtraProfit;
   const netProfit = grossProfit - totalExpenses;
   const capital = Number(capitalSetting?.value ?? "0");
 
@@ -103,7 +110,11 @@ export async function getFinanceOverview() {
   // (السواقون تُحجَز مستحقاتهم كاملةً، فلا يُوزَّع ربح قبل تغطية ما عليهم.)
   const realizedProfit = Math.max(
     0,
-    totalCollected - totalDriverDue - totalExpenses - totalPartnerWithdrawals
+    totalCollected +
+      totalExtraProfit -
+      totalDriverDue -
+      totalExpenses -
+      totalPartnerWithdrawals
   );
 
   return {
@@ -114,6 +125,7 @@ export async function getFinanceOverview() {
     totalPaidDrivers,
     totalRemainingDrivers,
     totalExpenses,
+    totalExtraProfit,
     grossProfit,
     netProfit,
     totalPartnerWithdrawals,
