@@ -105,11 +105,11 @@ export async function distributeProfits(formData: FormData) {
   const totalShare = partners.reduce((a, p) => a + p.sharePercent, 0);
   if (totalShare <= 0) return { error: "نسب الشركاء غير صحيحة" };
 
-  // الربح المتاح للتوزيع = الربح المحصّل نقدًا فقط (مش الدفتري)
+  // الربح المتاح للتوزيع = صافي الربح بعد المصروفات وسحوبات الشركاء السابقة
   const ov = await getFinanceOverview();
-  const pool = Math.max(ov.realizedProfit, 0);
+  const pool = Math.max(ov.distributableProfit, 0);
   if (pool <= 0)
-    return { error: "لا يوجد ربح محصّل متاح للتوزيع — حصّل من الطلبات الأول" };
+    return { error: "لا يوجد ربح متاح للتوزيع — راجع صافي الربح أو المصروفات أولًا" };
 
   // لو تُرك المبلغ فارغًا نوزّع كامل الربح المتاح
   const raw = toPiastres(String(formData.get("amount") ?? "0"));
