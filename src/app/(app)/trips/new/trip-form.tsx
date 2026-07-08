@@ -163,6 +163,35 @@ export function TripForm({
         )}
       </Card>
 
+      {/* السواق */}
+      <Card id="field-driver" className="space-y-3 p-4">
+        <Label>السواق *</Label>
+        <SearchSelect
+          value={driverId}
+          onChange={(v) => {
+            setDriverId(v);
+            setInvalid((p) => ({ ...p, driver: false }));
+          }}
+          options={drivers}
+          placeholder="اختر السواق"
+          newLabel="سواق جديد"
+          invalid={invalid.driver}
+        />
+
+        {newDriver && (
+          <div className="space-y-2 rounded-lg border border-dashed border-primary/40 p-3">
+            <Input name="newDriverName" placeholder="اسم السواق *" required />
+            <Input
+              name="newDriverPhone"
+              placeholder="رقم الموبايل *"
+              inputMode="tel"
+              required
+            />
+            <Input name="newDriverVehicleType" placeholder="نوع السيارة" />
+          </div>
+        )}
+      </Card>
+
       {/* تفاصيل الرحلة */}
       <Card className="space-y-3 p-4">
         <div className="grid grid-cols-2 gap-3">
@@ -305,35 +334,6 @@ export function TripForm({
             تزيد سعر المقاول وتزيد ربحك
           </p>
         </div>
-      </Card>
-
-      {/* السواق */}
-      <Card id="field-driver" className="space-y-3 p-4">
-        <Label>السواق *</Label>
-        <SearchSelect
-          value={driverId}
-          onChange={(v) => {
-            setDriverId(v);
-            setInvalid((p) => ({ ...p, driver: false }));
-          }}
-          options={drivers}
-          placeholder="اختر السواق"
-          newLabel="سواق جديد"
-          invalid={invalid.driver}
-        />
-
-        {newDriver && (
-          <div className="space-y-2 rounded-lg border border-dashed border-primary/40 p-3">
-            <Input name="newDriverName" placeholder="اسم السواق *" required />
-            <Input
-              name="newDriverPhone"
-              placeholder="رقم الموبايل *"
-              inputMode="tel"
-              required
-            />
-            <Input name="newDriverVehicleType" placeholder="نوع السيارة" />
-          </div>
-        )}
       </Card>
 
       {error && (
