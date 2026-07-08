@@ -16,7 +16,8 @@ import { DailyReviewToggle } from "@/components/daily-review-toggle";
 import { MonthFilter } from "@/components/month-filter";
 import { MovementActions } from "../../trips/[id]/movement-actions";
 import { ExtraProfitForm } from "@/components/extra-profit-form";
-import { DriverTipForm } from "@/components/driver-tip-form";
+import { TipForm } from "@/components/driver-tip-form";
+import { PartyAdjustments } from "@/components/party-adjustments";
 import { OffsetAccountButton } from "@/components/offset-account-button";
 import { setDriverReviewed } from "../actions";
 import { formatMoney } from "@/lib/money";
@@ -34,7 +35,7 @@ import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
 import { driverReport } from "@/lib/messages";
-import { methodLabel, TRIP_STATUS } from "@/lib/constants";
+import { methodLabel, TRIP_STATUS, EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
 import {
   Phone,
   MessageCircle,
@@ -128,12 +129,13 @@ export default async function DriverProfile({
           date: Date;
         }[]
     );
-  const extraProfits = await prisma.ledgerEntry
-    .findMany({
-      where: { type: "EXTRA_PROFIT", refType: "Driver", refId: id },
-      orderBy: { date: "desc" },
-    })
-    .catch(() => [] as { id: string; amount: number; method: string; description: string; date: Date }[]);
+  // فصل الأرباح الإضافية/الإكراميات عن سلف المكتب العادية
+  const adjustments = advances.filter(
+    (a) => a.method === EXTRA_PROFIT_METHOD || a.method === TIP_METHOD
+  );
+  const officeAdvances = advances.filter(
+    (a) => a.method !== EXTRA_PROFIT_METHOD && a.method !== TIP_METHOD
+  );
   const [allContractors, allDrivers, externalAdvances] = await Promise.all([
     prisma.contractor.findMany({
       orderBy: { name: "asc" },
@@ -387,25 +389,9 @@ export default async function DriverProfile({
         {/* ربح إضافي + إكرامية */}
         <div className="grid grid-cols-2 gap-2 print:hidden">
           <ExtraProfitForm partyType="DRIVER" partyId={d.id} />
-          <DriverTipForm driverId={d.id} />
+          <TipForm partyType="DRIVER" partyId={d.id} />
         </div>
-        {extraProfits.length > 0 && (
-          <Card className="divide-y divide-border">
-            <div className="px-3 py-2 text-xs font-bold text-muted-foreground">
-              أرباح إضافية ({extraProfits.length})
-            </div>
-            {extraProfits.map((e) => (
-              <div key={e.id} className="flex items-center justify-between p-3 text-sm">
-                <div className="min-w-0">
-                  <div className="font-medium text-primary">{formatMoney(e.amount)}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {formatShortDate(e.date)} • {methodLabel(e.method)}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </Card>
-        )}
+        <PartyAdjustments items={adjustments} />
 
         {/* السلف والأرصدة */}
         <AdvancePanel
@@ -415,7 +401,7 @@ export default async function DriverProfile({
           phone={d.phone}
           phones={[d.phone, d.altPhone, d.phone3]}
           balance={advanceBalance}
-          advances={advances}
+          advances={officeAdvances}
         />
 
         <ExternalAdvancePanel

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { effectiveAmounts } from "@/lib/finance";
+import { EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
 
 export async function getFinanceOverview() {
   const [
@@ -46,13 +47,13 @@ export async function getFinanceOverview() {
         ),
       prisma.partnerWithdrawal.aggregate({ _sum: { amount: true } }),
       prisma.setting.findUnique({ where: { key: "initial_capital" } }),
-      // أرباح إضافية مُحصَّلة (ليست من الرحلات) — تُضاف للربح
-      prisma.ledgerEntry
-        .aggregate({ where: { type: "EXTRA_PROFIT" }, _sum: { amount: true } })
+      // أرباح إضافية (حركات على الحساب) — تُضاف للربح
+      prisma.advance
+        .aggregate({ where: { method: EXTRA_PROFIT_METHOD }, _sum: { amount: true } })
         .catch(() => ({ _sum: { amount: 0 } })),
-      // إكراميات السواقين — تُخصم من الربح
-      prisma.ledgerEntry
-        .aggregate({ where: { type: "DRIVER_TIP" }, _sum: { amount: true } })
+      // إكراميات — تُخصم من الربح
+      prisma.advance
+        .aggregate({ where: { method: TIP_METHOD }, _sum: { amount: true } })
         .catch(() => ({ _sum: { amount: 0 } })),
     ]);
 

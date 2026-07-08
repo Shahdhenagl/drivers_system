@@ -20,7 +20,11 @@ import { formatShortDate, sameCairoDay } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
-import { methodLabel, TRIP_STATUS } from "@/lib/constants";
+import { methodLabel, TRIP_STATUS, EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
+import { ExtraProfitForm } from "@/components/extra-profit-form";
+import { TipForm } from "@/components/driver-tip-form";
+import { PartyAdjustments } from "@/components/party-adjustments";
+import { OffsetAccountButton } from "@/components/offset-account-button";
 import {
   Phone,
   MessageCircle,
@@ -130,6 +134,11 @@ export default async function SharedProfile({
     return a + Math.max(effectiveAmounts(t).contractor - collected, 0);
   }, 0);
   const cAdvBalance = advNet(contractorAdvances);
+  const isAdjustment = (m: string) => m === EXTRA_PROFIT_METHOD || m === TIP_METHOD;
+  const cAdjustments = contractorAdvances.filter((a) => isAdjustment(a.method));
+  const cOfficeAdvances = contractorAdvances.filter((a) => !isAdjustment(a.method));
+  const dAdjustments = driverAdvances.filter((a) => isAdjustment(a.method));
+  const dOfficeAdvances = driverAdvances.filter((a) => !isAdjustment(a.method));
   const cExternalFor = extSum(contractorExternals, "lender", "CONTRACTOR", contractor.id);
   const cExternalOn = extSum(contractorExternals, "borrower", "CONTRACTOR", contractor.id);
   const contractorPayments = contractor.trips
@@ -286,6 +295,18 @@ export default async function SharedProfile({
           </div>
         )}
 
+        {cDeferred > 0 && (cExternalFor > 0 || cAdvBalance < 0) && (
+          <div className="print:hidden">
+            <OffsetAccountButton partyType="CONTRACTOR" partyId={contractor.id} />
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2 print:hidden">
+          <ExtraProfitForm partyType="CONTRACTOR" partyId={contractor.id} />
+          <TipForm partyType="CONTRACTOR" partyId={contractor.id} />
+        </div>
+        <PartyAdjustments items={cAdjustments} />
+
         <AdvancePanel
           partyType="CONTRACTOR"
           partyId={contractor.id}
@@ -293,7 +314,7 @@ export default async function SharedProfile({
           phone={contractor.phone}
           phones={phones}
           balance={cAdvBalance}
-          advances={contractorAdvances}
+          advances={cOfficeAdvances}
         />
 
         <ExternalAdvancePanel
@@ -387,6 +408,18 @@ export default async function SharedProfile({
           />
         </div>
 
+        {dRemaining > 0 && (dExternalOn > 0 || dAdvBalance > 0) && (
+          <div className="print:hidden">
+            <OffsetAccountButton partyType="DRIVER" partyId={driver.id} />
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2 print:hidden">
+          <ExtraProfitForm partyType="DRIVER" partyId={driver.id} />
+          <TipForm partyType="DRIVER" partyId={driver.id} />
+        </div>
+        <PartyAdjustments items={dAdjustments} />
+
         <AdvancePanel
           partyType="DRIVER"
           partyId={driver.id}
@@ -394,7 +427,7 @@ export default async function SharedProfile({
           phone={driver.phone}
           phones={phones}
           balance={dAdvBalance}
-          advances={driverAdvances}
+          advances={dOfficeAdvances}
         />
 
         <ExternalAdvancePanel

@@ -14,7 +14,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/submit-button";
-import { MethodSelect } from "@/components/method-select";
 import { recordExtraProfit } from "@/lib/extra-profit-actions";
 import { playSound } from "@/lib/sounds";
 import { toDateInput } from "@/lib/format";
@@ -61,8 +60,8 @@ export function ExtraProfitForm({
           <DialogTitle>تحصيل ربح إضافي</DialogTitle>
         </DialogHeader>
         <p className="mb-3 rounded-lg bg-muted p-2 text-center text-xs text-muted-foreground">
-          مبلغ يُحصَّل من الطرف كربح إضافي للمكتب (يزيد الربح ويدخل الخزنة أو
-          حساب المحصّل). لا يغيّر رصيده.
+          ربح إضافي يُقيَّد على حساب الطرف (يزيد «عليه») ويُضاف لربح المكتب.
+          يُحصَّل لاحقًا ضمن حسابه.
         </p>
         <form action={action} className="space-y-3">
           <div className="space-y-1.5">
@@ -77,10 +76,6 @@ export function ExtraProfitForm({
               required
               autoFocus
             />
-          </div>
-          <div className="space-y-1.5">
-            <Label>طريقة التحصيل</Label>
-            <MethodSelect withCollectors />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="date">التاريخ</Label>

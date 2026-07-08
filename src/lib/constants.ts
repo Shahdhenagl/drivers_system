@@ -48,6 +48,11 @@ export const VIA_DRIVER = "via_driver";
 // طريقة خاصة: مقاصّة مستحقات السواق مع سلفته (لا تدخل الخزنة)
 export const OFFSET = "offset";
 
+// طرق خاصة لحركات على الحساب لا تدخل الخزنة:
+// ربح إضافي (الطرف يدين لنا، يزيد الربح) وإكرامية (نحن ندين له، تُخصم من الربح)
+export const EXTRA_PROFIT_METHOD = "extra_profit";
+export const TIP_METHOD = "party_tip";
+
 // المحصّلون: سواقون يجمّعون فلوس المكتب. التحصيل/المصروف "عن طريقهم" يُقيَّد
 // على حسابهم (سلفة) ولا يدخل خزنة المكتب حتى يُحصَّل منهم لاحقًا. ثابتون بالاسم.
 export const COLLECTORS = ["عبد العزيز نوح", "عوض البطل"] as const;
@@ -69,6 +74,8 @@ export function collectorNameFromMethod(m: string): string | null {
 export function methodLabel(m: string): string {
   if (m === VIA_DRIVER) return "عن طريق السواق";
   if (m === OFFSET) return "خصم من السلفة";
+  if (m === EXTRA_PROFIT_METHOD) return "ربح إضافي";
+  if (m === TIP_METHOD) return "إكرامية";
   // طرق المحصّلين مخزَّنة بنصها الظاهر ("عن طريق <اسم>") فتُعرض كما هي
   if (collectorNameFromMethod(m)) return m;
   return PAYMENT_METHODS[m as PaymentMethod] ?? m;

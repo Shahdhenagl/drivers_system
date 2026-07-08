@@ -3,14 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { recordLedger, planSpend } from "@/lib/finance";
-import { resolveCollector } from "@/lib/collectors";
 import { toPiastres } from "@/lib/money";
+import { EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
+
+function pathFor(partyType: "DRIVER" | "CONTRACTOR", partyId: string) {
+  const base = partyType === "DRIVER" ? "/drivers" : "/contractors";
+  return { base, profile: `${base}/${partyId}` };
+}
 
 /**
- * تحصيل ربح إضافي من طرف (مقاول/سواق) — دخل للمكتب خارج الرحلات.
- * يُحصَّل فورًا بطريقة دفع (كاش يدخل الخزنة، أو عن طريق محصّل يمسكه) ويُضاف للربح.
- * لا يغيّر رصيد الطرف (دفعه وخلص).
+ * ربح إضافي من طرف: يُقيَّد على حسابه (يزيد "عليه") ويُضاف لربح المكتب.
+ * حركة على الحساب (لا كاش) — تُحصَّل لاحقًا ضمن حسابه. تظهر كرصيد ويمكن تعديلها/حذفها.
  */
 export async function recordExtraProfit(
   partyType: "DRIVER" | "CONTRACTOR",
@@ -18,134 +21,87 @@ export async function recordExtraProfit(
   formData: FormData
 ) {
   const amount = toPiastres(String(formData.get("amount") ?? "0"));
-  const method = String(formData.get("method") ?? "cash");
   const note = String(formData.get("note") ?? "").trim() || null;
   const dateStr = String(formData.get("date") ?? "");
   const date = dateStr ? new Date(dateStr) : new Date();
   if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
 
-  const name =
-    partyType === "DRIVER"
-      ? (await prisma.driver.findUnique({ where: { id: partyId }, select: { name: true } }))?.name
-      : (await prisma.contractor.findUnique({ where: { id: partyId }, select: { name: true } }))?.name;
-  if (!name) return { error: "الطرف غير موجود" };
-
-  const collector = await resolveCollector(method);
-  if (collector && "notFound" in collector) {
-    return { error: `المحصّل «${collector.notFound}» غير موجود في السواقين` };
-  }
-
-  await prisma.$transaction(async (tx) => {
-    // قيد دخل: يُضاف للربح؛ يدخل الخزنة فقط لو الطريقة عادية (طرق المحصّلين مستثناة)
-    await recordLedger(tx, {
-      type: "EXTRA_PROFIT",
-      direction: "IN",
+  await prisma.advance.create({
+    data: {
+      partyType,
+      partyId,
       amount,
-      method,
-      description: `ربح إضافي — ${name}${note ? " — " + note : ""}`,
-      refType: partyType === "DRIVER" ? "Driver" : "Contractor",
-      refId: partyId,
+      direction: "OUT", // عليه (يدين لنا)
+      method: EXTRA_PROFIT_METHOD,
+      note: note ?? "ربح إضافي",
       date,
-    });
-    if (collector) {
-      // المحصّل يمسك الفلوس نيابةً عن المكتب — سلفة عليه
-      await tx.advance.create({
-        data: {
-          partyType: "DRIVER",
-          partyId: collector.id,
-          amount,
-          direction: "OUT",
-          method,
-          note: `ربح إضافي عن طريق ${collector.name}`,
-          date,
-        },
-      });
-    }
+    },
   });
-
-  await audit(
-    "EXTRA_PROFIT",
-    partyType === "DRIVER" ? "Driver" : "Contractor",
-    partyId,
-    { amount, method }
-  );
-  const base = partyType === "DRIVER" ? "/drivers" : "/contractors";
-  revalidatePath(`${base}/${partyId}`);
-  revalidatePath(base);
+  await audit("EXTRA_PROFIT", partyType === "DRIVER" ? "Driver" : "Contractor", partyId, { amount });
+  const p = pathFor(partyType, partyId);
+  revalidatePath(p.profile);
+  revalidatePath(p.base);
   revalidatePath("/finance");
   revalidatePath("/");
 }
 
 /**
- * إكرامية/مكافأة للسواق — تُدفع له وتُخصم من ربح المكتب.
- * الطريقة عادية = كاش يخرج من الخزنة، أو عن طريق محصّل = يدفعها من الأمانة اللي معاه.
+ * إكرامية للطرف: تُقيَّد على حسابه (تزيد "له") وتُخصم من ربح المكتب.
+ * حركة على الحساب (لا كاش) — تُدفع لاحقًا ضمن حسابه.
  */
-export async function recordDriverTip(driverId: string, formData: FormData) {
+export async function recordTip(
+  partyType: "DRIVER" | "CONTRACTOR",
+  partyId: string,
+  formData: FormData
+) {
   const amount = toPiastres(String(formData.get("amount") ?? "0"));
-  const method = String(formData.get("method") ?? "cash");
   const note = String(formData.get("note") ?? "").trim() || null;
   const dateStr = String(formData.get("date") ?? "");
   const date = dateStr ? new Date(dateStr) : new Date();
   if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
 
-  const driver = await prisma.driver.findUnique({
-    where: { id: driverId },
-    select: { name: true },
-  });
-  if (!driver) return { error: "السواق غير موجود" };
-
-  const collector = await resolveCollector(method);
-  if (collector && "notFound" in collector) {
-    return { error: `المحصّل «${collector.notFound}» غير موجود في السواقين` };
-  }
-
-  // طريقة عادية → الكاش يخرج من الخزنة (منع النزول تحت الصفر)
-  if (!collector) {
-    const plan = await planSpend(method, amount, false);
-    if (!plan.ok) {
-      return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
-    }
-  }
-
-  await prisma.$transaction(async (tx) => {
-    // قيد يُخصم من الربح؛ يخرج من الخزنة فقط لو الطريقة عادية (طرق المحصّلين مستثناة)
-    await recordLedger(tx, {
-      type: "DRIVER_TIP",
-      direction: "OUT",
+  await prisma.advance.create({
+    data: {
+      partyType,
+      partyId,
       amount,
-      method,
-      description: `إكرامية — ${driver.name}${note ? " — " + note : ""}`,
-      refType: "Driver",
-      refId: driverId,
+      direction: "IN", // له (ندين له)
+      method: TIP_METHOD,
+      note: note ?? "إكرامية",
       date,
-    });
-    if (collector) {
-      // المحصّل دفع الإكرامية من الأمانة اللي معاه — يقلّ ما يمسكه
-      await tx.advance.create({
-        data: {
-          partyType: "DRIVER",
-          partyId: collector.id,
-          amount,
-          direction: "IN",
-          method,
-          note: `إكرامية عن طريق ${collector.name}`,
-          date,
-        },
-      });
-    }
+    },
   });
-
-  await audit("DRIVER_TIP", "Driver", driverId, { amount, method });
-  revalidatePath(`/drivers/${driverId}`);
-  revalidatePath("/drivers");
+  await audit("TIP", partyType === "DRIVER" ? "Driver" : "Contractor", partyId, { amount });
+  const p = pathFor(partyType, partyId);
+  revalidatePath(p.profile);
+  revalidatePath(p.base);
   revalidatePath("/finance");
   revalidatePath("/");
 }
 
-/** حذف قيد ربح إضافي (وأي سلفة محصّل مرتبطة بنفس اللحظة يدويًا) */
-export async function deleteExtraProfit(id: string) {
-  await prisma.ledgerEntry.delete({ where: { id } }).catch(() => {});
+/** تعديل قيمة/ملاحظة ربح إضافي أو إكرامية */
+export async function editPartyAdjustment(id: string, formData: FormData) {
+  const amount = toPiastres(String(formData.get("amount") ?? "0"));
+  const note = String(formData.get("note") ?? "").trim() || null;
+  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
+  const adv = await prisma.advance.findUnique({ where: { id } });
+  if (!adv) return { error: "الحركة غير موجودة" };
+  await prisma.advance.update({ where: { id }, data: { amount, note: note ?? adv.note } });
+  const base = adv.partyType === "DRIVER" ? "/drivers" : "/contractors";
+  revalidatePath(`${base}/${adv.partyId}`);
+  revalidatePath(base);
   revalidatePath("/finance");
   revalidatePath("/");
-  return { ok: true };
+}
+
+/** حذف ربح إضافي أو إكرامية */
+export async function deletePartyAdjustment(id: string) {
+  const adv = await prisma.advance.findUnique({ where: { id } });
+  if (!adv) return { error: "الحركة غير موجودة" };
+  await prisma.advance.delete({ where: { id } });
+  const base = adv.partyType === "DRIVER" ? "/drivers" : "/contractors";
+  revalidatePath(`${base}/${adv.partyId}`);
+  revalidatePath(base);
+  revalidatePath("/finance");
+  revalidatePath("/");
 }

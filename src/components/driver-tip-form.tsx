@@ -14,13 +14,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/submit-button";
-import { MethodSelect } from "@/components/method-select";
-import { recordDriverTip } from "@/lib/extra-profit-actions";
+import { recordTip } from "@/lib/extra-profit-actions";
 import { playSound } from "@/lib/sounds";
 import { toDateInput } from "@/lib/format";
 import { Gift } from "lucide-react";
 
-export function DriverTipForm({ driverId }: { driverId: string }) {
+export function TipForm({
+  partyType,
+  partyId,
+}: {
+  partyType: "DRIVER" | "CONTRACTOR";
+  partyId: string;
+}) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -28,7 +33,7 @@ export function DriverTipForm({ driverId }: { driverId: string }) {
   async function action(formData: FormData) {
     setError("");
     try {
-      const res = await recordDriverTip(driverId, formData);
+      const res = await recordTip(partyType, partyId, formData);
       if (res?.error) {
         playSound("error");
         setError(res.error);
@@ -47,16 +52,16 @@ export function DriverTipForm({ driverId }: { driverId: string }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="lg" className="w-full">
-          <Gift className="h-5 w-5" /> إكرامية للسواق
+          <Gift className="h-5 w-5" /> إكرامية
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>إكرامية للسواق</DialogTitle>
+          <DialogTitle>إكرامية للطرف</DialogTitle>
         </DialogHeader>
         <p className="mb-3 rounded-lg bg-muted p-2 text-center text-xs text-muted-foreground">
-          مبلغ إضافي يُعطى للسواق ويُخصم من ربح المكتب. يخرج من الخزنة (أو من أمانة
-          المحصّل لو اخترت محصّل).
+          إكرامية تُقيَّد على حسابه (تزيد «له») وتُخصم من ربح المكتب. تُدفع لاحقًا
+          ضمن حسابه.
         </p>
         <form action={action} className="space-y-3">
           <div className="space-y-1.5">
@@ -71,10 +76,6 @@ export function DriverTipForm({ driverId }: { driverId: string }) {
               required
               autoFocus
             />
-          </div>
-          <div className="space-y-1.5">
-            <Label>طريقة الصرف</Label>
-            <MethodSelect withCollectors />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="date">التاريخ</Label>
