@@ -88,6 +88,7 @@
 /* الطباعة / تصدير PDF */
 @media print {
   nav,
+  body > header,
   .print\:hidden {
     display: none !important;
   }
@@ -109,5 +110,119 @@
   body {
     background: #fff !important;
     color: #000 !important;
+  }
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  .print-statement {
+    direction: rtl;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .print-statement__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    border-bottom: 2px solid #111827;
+    padding-bottom: 10px;
+  }
+  .print-statement__brand {
+    font-size: 22px;
+    font-weight: 900;
+  }
+  .print-statement__subtitle {
+    margin-top: 2px;
+    color: #4b5563;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .print-statement__meta {
+    min-width: 150px;
+    border: 1px solid #d1d5db;
+    padding: 8px;
+    text-align: right;
+  }
+  .print-statement__party {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1.4fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .print-statement__party > div,
+  .print-statement__summary-cell {
+    border: 1px solid #d1d5db;
+    padding: 8px;
+  }
+  .print-statement__party span,
+  .print-statement__summary-cell span {
+    display: block;
+    margin-bottom: 3px;
+    color: #6b7280;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .print-statement__party strong,
+  .print-statement__summary-cell strong {
+    color: #111827;
+    font-size: 12px;
+  }
+  .print-statement__summary {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .print-statement__summary-cell.is-strong {
+    background: #f3f4f6;
+    border-color: #111827;
+  }
+  .print-statement__table {
+    width: 100%;
+    margin-top: 12px;
+    border-collapse: collapse;
+  }
+  .print-statement__table th,
+  .print-statement__table td {
+    border: 1px solid #d1d5db;
+    padding: 6px;
+    vertical-align: top;
+  }
+  .print-statement__table th {
+    background: #111827;
+    color: #fff;
+    font-size: 10px;
+    text-align: right;
+  }
+  .print-statement__table tr {
+    break-inside: avoid;
+  }
+  .print-statement__money {
+    direction: ltr;
+    min-width: 62px;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .print-statement__desc {
+    font-weight: 800;
+  }
+  .print-statement__details {
+    margin-top: 2px;
+    color: #4b5563;
+    font-size: 10px;
+  }
+  .print-statement__empty {
+    padding: 18px !important;
+    text-align: center;
+    color: #6b7280;
+  }
+  .print-statement__footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 24px;
+    padding-top: 18px;
+    color: #374151;
+    font-weight: 800;
   }
 }

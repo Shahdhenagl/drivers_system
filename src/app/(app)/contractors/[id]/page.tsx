@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PrintButton } from "@/components/print-button";
+import { PartyPrintStatement, type StatementRow } from "@/components/party-print-statement";
 import { ContractorForm } from "../contractor-form";
 import { DeleteContractorButton } from "../delete-contractor-button";
 import { AdvancePanel } from "@/components/advance-panel";
@@ -35,7 +36,7 @@ import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
 import { contractorReport } from "@/lib/messages";
-import { methodLabel, TRIP_STATUS, EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
+import { COMPANY_NAME, methodLabel, TRIP_STATUS, EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
 import {
   Phone,
   MessageCircle,
@@ -231,6 +232,65 @@ export default async function ContractorProfile({
     )
     .sort((a, b) => +new Date(b.date) - +new Date(a.date));
 
+  const periodLabel = bounds ? monthLabel(selectedMonth) : "كل الفترات";
+  const statementRows: StatementRow[] = [
+    ...trips.map((t) => ({
+      id: `trip-${t.id}`,
+      date: t.date,
+      description: `رحلة ${t.startPoint} ← ${t.endPoint}`,
+      details: `${t.driver ? `السواق: ${t.driver.name} • ` : ""}${TRIP_STATUS[t.status as keyof typeof TRIP_STATUS]}`,
+      onParty: effectiveAmounts(t).contractor,
+    })),
+    ...payments.map((p) => ({
+      id: `collection-${p.id}`,
+      date: p.date,
+      description: `تحصيل من المقاول - ${methodLabel(p.method)}`,
+      details: `${p.route}${p.note ? ` • ${p.note}` : ""}`,
+      paid: p.amount,
+    })),
+    ...advances
+      .filter((a) => inBounds(a.date))
+      .map((a) => ({
+        id: `advance-${a.id}`,
+        date: a.date,
+        description:
+          a.direction === "OUT"
+            ? `استلم من المكتب - ${methodLabel(a.method)}`
+            : `دفع للمكتب - ${methodLabel(a.method)}`,
+        details: a.note,
+        onParty: a.direction === "OUT" ? a.amount : undefined,
+        paid: a.direction === "IN" ? a.amount : undefined,
+        received: a.direction === "OUT" ? a.amount : undefined,
+      })),
+    ...externalAdvances
+      .filter((a) => inBounds(a.date))
+      .map((a) => {
+        const isBorrower = a.borrowerType === "CONTRACTOR" && a.borrowerId === id;
+        return {
+          id: `external-${a.id}`,
+          date: a.date,
+          description: isBorrower
+            ? `استلم سلفة خارجية من ${a.lenderName}`
+            : `دفع سلفة خارجية إلى ${a.borrowerName}`,
+          details: `${a.status === "SETTLED" ? "مسددة" : "مفتوحة"}${a.note ? ` • ${a.note}` : ""}`,
+          forParty: isBorrower ? undefined : a.amount,
+          onParty: isBorrower ? a.amount : undefined,
+          paid: isBorrower ? undefined : a.amount,
+          received: isBorrower ? a.amount : undefined,
+        };
+      }),
+  ];
+  const statementTotals = statementRows.reduce(
+    (acc, row) => ({
+      forParty: acc.forParty + (row.forParty ?? 0),
+      onParty: acc.onParty + (row.onParty ?? 0),
+      paid: acc.paid + (row.paid ?? 0),
+      received: acc.received + (row.received ?? 0),
+    }),
+    { forParty: 0, onParty: 0, paid: 0, received: 0 }
+  );
+  const netContractor = summaryOn - summaryFor;
+
   // تقارير واتساب دورية
   const reportPeriods = [
     { label: "أسبوعي", from: startOfDay(addDays(now, -6)), to: endOfDay(now) },
@@ -262,7 +322,29 @@ export default async function ContractorProfile({
   return (
     <>
       <AppHeader title="ملف المقاول" />
-      <div className="space-y-4 py-3 print:py-0">
+      <PartyPrintStatement
+        companyName={COMPANY_NAME}
+        partyType="مقاول"
+        partyName={c.name}
+        phone={displayPhone(c.phone)}
+        periodLabel={periodLabel}
+        generatedAt={now}
+        summary={{
+          totalForParty: summaryFor,
+          totalOnParty: summaryOn,
+          totalPaid: statementTotals.paid,
+          totalReceived: statementTotals.received,
+          netLabel:
+            netContractor > 0
+              ? "صافي عليه"
+              : netContractor < 0
+                ? "صافي ليه"
+                : "الحساب متعادل",
+          netAmount: Math.abs(netContractor),
+        }}
+        rows={statementRows}
+      />
+      <div className="space-y-4 py-3 print:hidden">
         <Link
           href="/contractors"
           className="inline-flex items-center gap-1 text-sm text-muted-foreground print:hidden"

@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PrintButton } from "@/components/print-button";
+import { PartyPrintStatement, type StatementRow } from "@/components/party-print-statement";
 import { DriverForm } from "../driver-form";
 import { DeleteDriverButton } from "../delete-driver-button";
 import { PayDriverForm } from "../pay-driver-form";
@@ -35,7 +36,7 @@ import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
 import { driverReport } from "@/lib/messages";
-import { methodLabel, TRIP_STATUS, EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
+import { COMPANY_NAME, methodLabel, TRIP_STATUS, EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
 import {
   Phone,
   MessageCircle,
@@ -225,6 +226,69 @@ export default async function DriverProfile({
   const summaryFor = sRemaining + sOfficeFor + sExternalFor;
   const summaryOn = sOfficeOn + sExternalOn;
 
+  const periodLabel = bounds ? monthLabel(selectedMonth) : "كل الفترات";
+  const statementRows: StatementRow[] = [
+    ...trips.map((t) => ({
+      id: `trip-${t.id}`,
+      date: t.date,
+      description: `رحلة ${t.startPoint} ← ${t.endPoint}`,
+      details: `المقاول: ${t.contractor.name} • ${TRIP_STATUS[t.status as keyof typeof TRIP_STATUS]}`,
+      forParty: effectiveAmounts(t).driver,
+    })),
+    ...monthPayments.map((p) => ({
+      id: `payment-${p.id}`,
+      date: p.date,
+      description: `سداد للسواق - ${methodLabel(p.method)}`,
+      details: p.note
+        ? p.note
+        : p.trip
+          ? `${p.trip.startPoint} ← ${p.trip.endPoint}`
+          : null,
+      received: p.amount,
+    })),
+    ...advances
+      .filter((a) => inBounds(a.date))
+      .map((a) => ({
+        id: `advance-${a.id}`,
+        date: a.date,
+        description:
+          a.direction === "OUT"
+            ? `استلم من المكتب - ${methodLabel(a.method)}`
+            : `دفع للمكتب - ${methodLabel(a.method)}`,
+        details: a.note,
+        onParty: a.direction === "OUT" ? a.amount : undefined,
+        paid: a.direction === "IN" ? a.amount : undefined,
+        received: a.direction === "OUT" ? a.amount : undefined,
+      })),
+    ...externalAdvances
+      .filter((a) => inBounds(a.date))
+      .map((a) => {
+        const isBorrower = a.borrowerType === "DRIVER" && a.borrowerId === id;
+        return {
+          id: `external-${a.id}`,
+          date: a.date,
+          description: isBorrower
+            ? `استلم سلفة خارجية من ${a.lenderName}`
+            : `دفع سلفة خارجية إلى ${a.borrowerName}`,
+          details: `${a.status === "SETTLED" ? "مسددة" : "مفتوحة"}${a.note ? ` • ${a.note}` : ""}`,
+          forParty: isBorrower ? undefined : a.amount,
+          onParty: isBorrower ? a.amount : undefined,
+          paid: isBorrower ? undefined : a.amount,
+          received: isBorrower ? a.amount : undefined,
+        };
+      }),
+  ];
+  const statementTotals = statementRows.reduce(
+    (acc, row) => ({
+      forParty: acc.forParty + (row.forParty ?? 0),
+      onParty: acc.onParty + (row.onParty ?? 0),
+      paid: acc.paid + (row.paid ?? 0),
+      received: acc.received + (row.received ?? 0),
+    }),
+    { forParty: 0, onParty: 0, paid: 0, received: 0 }
+  );
+  const netDriver = summaryFor - summaryOn;
+
   // تقارير واتساب دورية
   const reportPeriods = [
     { label: "أسبوعي", from: startOfDay(addDays(now, -6)), to: endOfDay(now) },
@@ -262,7 +326,29 @@ export default async function DriverProfile({
   return (
     <>
       <AppHeader title="ملف السواق" />
-      <div className="space-y-4 py-3">
+      <PartyPrintStatement
+        companyName={COMPANY_NAME}
+        partyType="سواق"
+        partyName={d.name}
+        phone={displayPhone(d.phone)}
+        periodLabel={periodLabel}
+        generatedAt={now}
+        summary={{
+          totalForParty: summaryFor,
+          totalOnParty: summaryOn,
+          totalPaid: statementTotals.paid,
+          totalReceived: statementTotals.received,
+          netLabel:
+            netDriver > 0
+              ? "صافي ليه"
+              : netDriver < 0
+                ? "صافي عليه"
+                : "الحساب متعادل",
+          netAmount: Math.abs(netDriver),
+        }}
+        rows={statementRows}
+      />
+      <div className="space-y-4 py-3 print:hidden">
         <Link
           href="/drivers"
           className="inline-flex items-center gap-1 text-sm text-muted-foreground print:hidden"
