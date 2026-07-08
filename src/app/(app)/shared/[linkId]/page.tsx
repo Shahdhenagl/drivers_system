@@ -4,23 +4,22 @@ import { prisma } from "@/lib/prisma";
 import { AppHeader } from "@/components/layout/app-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { AdvancePanel } from "@/components/advance-panel";
 import { ExternalAdvancePanel } from "@/components/external-advance-panel";
 import { AccountTotalSummary } from "@/components/account-total-summary";
 import { DailyReviewToggle } from "@/components/daily-review-toggle";
 import { CollectAllForm } from "../../contractors/[id]/collect-all-form";
 import { PayDriverForm } from "../../drivers/pay-driver-form";
-import { MovementActions } from "../../trips/[id]/movement-actions";
+import { ConsolidatedLog } from "@/components/consolidated-log";
 import { SharedForm } from "../shared-form";
 import { DeleteSharedButton } from "../delete-shared-button";
 import { setSharedReviewed } from "../actions";
 import { formatMoney } from "@/lib/money";
-import { formatShortDate, sameCairoDay } from "@/lib/format";
+import { sameCairoDay } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
-import { methodLabel, TRIP_STATUS, EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
+import { EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
 import { ExtraProfitForm } from "@/components/extra-profit-form";
 import { TipForm } from "@/components/driver-tip-form";
 import { PartyAdjustments } from "@/components/party-adjustments";
@@ -30,7 +29,6 @@ import {
   MessageCircle,
   Pencil,
   ArrowRight,
-  ChevronLeft,
   UsersRound,
   Users,
   Truck,
@@ -323,71 +321,7 @@ export default async function SharedProfile({
           advances={contractorExternals}
         />
 
-        <section>
-          <h2 className="mb-2 text-sm font-bold text-muted-foreground">
-            رحلاته كمقاول ({contractor.trips.length})
-          </h2>
-          <div className="space-y-2">
-            {contractor.trips.map((t) => (
-              <Link key={t.id} href={`/trips/${t.id}`}>
-                <Card className="flex items-center justify-between p-3 active:scale-[0.99] transition-transform">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold">{t.startPoint} ← {t.endPoint}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {formatShortDate(t.date)}{t.driver ? ` • ${t.driver.name}` : ""}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-left">
-                      <div className="text-sm font-bold tabular-nums">{formatMoney(t.contractorPrice, false)}</div>
-                      <Badge className="bg-muted text-[10px] text-muted-foreground">
-                        {TRIP_STATUS[t.status as keyof typeof TRIP_STATUS]}
-                      </Badge>
-                    </div>
-                    <ChevronLeft className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                </Card>
-              </Link>
-            ))}
-            {contractor.trips.length === 0 && (
-              <p className="py-4 text-center text-sm text-muted-foreground">لا توجد رحلات كمقاول</p>
-            )}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="mb-2 text-sm font-bold text-muted-foreground">
-            سجل التحصيل ({contractorPayments.length})
-          </h2>
-          <Card className="divide-y divide-border">
-            {contractorPayments.length === 0 ? (
-              <p className="p-4 text-center text-sm text-muted-foreground">لا توجد تحصيلات</p>
-            ) : (
-              contractorPayments.map((p) => (
-                <div key={p.id} className="flex items-center justify-between gap-2 p-3 text-sm">
-                  <div className="min-w-0">
-                    <div className="font-medium">{formatMoney(p.amount)}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {formatShortDate(p.date)} • {methodLabel(p.method)}
-                    </div>
-                    <div className="truncate text-xs text-muted-foreground">{p.route}</div>
-                  </div>
-                  <MovementActions
-                    movement={{
-                      id: p.id,
-                      kind: "collection",
-                      label: `تحصيل — ${p.route}`,
-                      amount: p.amount,
-                      method: p.method,
-                      note: p.note,
-                      date: p.date,
-                    }}
-                  />
-                </div>
-              ))
-            )}
-          </Card>
-        </section>
+        <ConsolidatedLog title="سجل التحصيل" verb="تحصيل" items={contractorPayments} />
 
         {/* ======================= جانب السواق ======================= */}
         <div className="flex items-center gap-2 pt-1 text-sm font-bold text-warning">
@@ -436,72 +370,7 @@ export default async function SharedProfile({
           advances={driverExternals}
         />
 
-        <section>
-          <h2 className="mb-2 text-sm font-bold text-muted-foreground">
-            رحلاته كسواق ({driver.trips.length})
-          </h2>
-          <div className="space-y-2">
-            {driver.trips.map((t) => (
-              <Link key={t.id} href={`/trips/${t.id}`}>
-                <Card className="flex items-center justify-between p-3 active:scale-[0.99] transition-transform">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold">{t.startPoint} ← {t.endPoint}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {formatShortDate(t.date)} • {t.contractor.name}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-left">
-                      <div className="text-sm font-bold tabular-nums text-warning">{formatMoney(t.driverDue, false)}</div>
-                      <Badge className="bg-muted text-[10px] text-muted-foreground">
-                        {TRIP_STATUS[t.status as keyof typeof TRIP_STATUS]}
-                      </Badge>
-                    </div>
-                    <ChevronLeft className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                </Card>
-              </Link>
-            ))}
-            {driver.trips.length === 0 && (
-              <p className="py-4 text-center text-sm text-muted-foreground">لا توجد رحلات كسواق</p>
-            )}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="mb-2 text-sm font-bold text-muted-foreground">سجل السداد ({driver.payments.length})</h2>
-          <Card className="divide-y divide-border">
-            {driver.payments.length === 0 ? (
-              <p className="p-4 text-center text-sm text-muted-foreground">لا توجد عمليات سداد</p>
-            ) : (
-              driver.payments.map((p) => (
-                <div key={p.id} className="flex items-center justify-between gap-2 p-3 text-sm">
-                  <div className="min-w-0">
-                    <div className="font-medium text-success">{formatMoney(p.amount)}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {formatShortDate(p.date)} • {methodLabel(p.method)}
-                      {p.trip?.contractor?.name ? ` • المقاول: ${p.trip.contractor.name}` : ""}
-                    </div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {p.note ? p.note : p.trip ? `${p.trip.startPoint} ← ${p.trip.endPoint}` : ""}
-                    </div>
-                  </div>
-                  <MovementActions
-                    movement={{
-                      id: p.id,
-                      kind: "driverPayment",
-                      label: p.trip ? `سداد — ${p.trip.startPoint} ← ${p.trip.endPoint}` : "سداد سواق",
-                      amount: p.amount,
-                      method: p.method,
-                      note: p.note,
-                      date: p.date,
-                    }}
-                  />
-                </div>
-              ))
-            )}
-          </Card>
-        </section>
+        <ConsolidatedLog title="سجل السداد" verb="سداد" items={driver.payments} />
       </div>
     </>
   );
