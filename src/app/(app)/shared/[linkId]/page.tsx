@@ -281,6 +281,7 @@ export default async function SharedProfile({
               contractorId={contractor.id}
               remaining={cDeferred}
               advanceBalance={cAdvBalance}
+              externalCredit={cExternalFor + dExternalFor}
             />
           </div>
         )}
@@ -489,9 +490,10 @@ function extSum(
 ) {
   return rows
     .filter((a) =>
-      role === "lender"
+      a.status !== "SETTLED" &&
+      (role === "lender"
         ? a.lenderType === type && a.lenderId === id
-        : a.borrowerType === type && a.borrowerId === id
+        : a.borrowerType === type && a.borrowerId === id)
     )
     .reduce((s, a) => s + a.amount, 0);
 }

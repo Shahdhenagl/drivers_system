@@ -150,7 +150,10 @@ export async function externalRemainingByParty(
 ): Promise<{ forMap: Map<string, number>; onMap: Map<string, number> }> {
   const rows = await prisma.externalAdvance
     .findMany({
-      where: { OR: [{ borrowerType: partyType }, { lenderType: partyType }] },
+      where: {
+        status: { not: "SETTLED" },
+        OR: [{ borrowerType: partyType }, { lenderType: partyType }],
+      },
       select: {
         borrowerType: true,
         borrowerId: true,

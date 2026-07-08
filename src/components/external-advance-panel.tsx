@@ -21,16 +21,20 @@ import {
   addExternalAdvance,
   deleteExternalAdvance,
   editExternalAdvance,
+  reopenExternalAdvance,
+  settleExternalAdvance,
 } from "@/lib/external-advance-actions";
 import { playSound } from "@/lib/sounds";
 import {
   ArrowDownLeft,
   ArrowUpRight,
   Check,
+  CheckCircle2,
   ChevronDown,
   History,
   Pencil,
   Plus,
+  RotateCcw,
   Search,
   Trash2,
 } from "lucide-react";
@@ -294,18 +298,24 @@ function ExternalAdvanceDialog({
 function RowActions({ row }: { row: ExternalAdvanceRow }) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const settled = row.status === "SETTLED";
 
-  async function onDelete() {
-    if (!confirm("حذف السلفة الخارجية؟ لن يؤثر هذا على خزنة المكتب.")) return;
+  async function run(kind: "settle" | "reopen" | "delete") {
+    if (kind === "delete" && !confirm("حذف السلفة الخارجية نهائيًا؟")) return;
     setLoading(true);
     try {
-      const res = await deleteExternalAdvance(row.id);
+      const res =
+        kind === "settle"
+          ? await settleExternalAdvance(row.id)
+          : kind === "reopen"
+            ? await reopenExternalAdvance(row.id)
+            : await deleteExternalAdvance(row.id);
       if (res?.error) {
         playSound("error");
         alert(res.error);
         return;
       }
-      playSound("success");
+      playSound(kind === "delete" ? "success" : "money");
       router.refresh();
     } catch {
       playSound("error");
@@ -316,16 +326,41 @@ function RowActions({ row }: { row: ExternalAdvanceRow }) {
   }
 
   return (
-    <button
-      type="button"
-      disabled={loading}
-      className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-      onClick={onDelete}
-      aria-label="حذف"
-      title="حذف"
-    >
-      <Trash2 className="h-4 w-4" />
-    </button>
+    <>
+      {settled ? (
+        <button
+          type="button"
+          disabled={loading}
+          className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50"
+          onClick={() => run("reopen")}
+          aria-label="إعادة تفعيل"
+          title="إعادة تفعيل (ترجع للحساب)"
+        >
+          <RotateCcw className="h-4 w-4" />
+        </button>
+      ) : (
+        <button
+          type="button"
+          disabled={loading}
+          className="rounded-lg p-1.5 text-success hover:bg-success/10 disabled:opacity-50"
+          onClick={() => run("settle")}
+          aria-label="تمّت التسوية"
+          title="تمّت التسوية (تخرج من الحساب وتبقى كسجل)"
+        >
+          <CheckCircle2 className="h-4 w-4" />
+        </button>
+      )}
+      <button
+        type="button"
+        disabled={loading}
+        className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+        onClick={() => run("delete")}
+        aria-label="حذف"
+        title="حذف"
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+    </>
   );
 }
 
@@ -339,25 +374,30 @@ export function ExternalAdvancePanel({
   advances: ExternalAdvanceRow[];
 }) {
   const totals = useMemo(() => {
-    return advances.reduce(
-      (acc, a) => {
-        if (
-          a.borrowerType === currentParty.type &&
-          a.borrowerId === currentParty.id
-        ) {
-          acc.onHim += a.amount;
-        }
-        if (
-          a.lenderType === currentParty.type &&
-          a.lenderId === currentParty.id
-        ) {
-          acc.forHim += a.amount;
-        }
-        return acc;
-      },
-      { forHim: 0, onHim: 0 }
-    );
+    return advances
+      .filter((a) => a.status !== "SETTLED")
+      .reduce(
+        (acc, a) => {
+          if (
+            a.borrowerType === currentParty.type &&
+            a.borrowerId === currentParty.id
+          ) {
+            acc.onHim += a.amount;
+          }
+          if (
+            a.lenderType === currentParty.type &&
+            a.lenderId === currentParty.id
+          ) {
+            acc.forHim += a.amount;
+          }
+          return acc;
+        },
+        { forHim: 0, onHim: 0 }
+      );
   }, [advances, currentParty.id, currentParty.type]);
+
+  const activeRows = advances.filter((a) => a.status !== "SETTLED");
+  const settledRows = advances.filter((a) => a.status === "SETTLED");
 
   return (
     <Card className="space-y-3 p-4">
@@ -389,20 +429,34 @@ export function ExternalAdvancePanel({
       </div>
 
       <div className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">
-        سلف بين السواقين والمقاولين تُحسب في حساب كل طرف فور تسجيلها. للإلغاء
-        احذف السلفة.
+        تُحسب في حساب كل طرف فور تسجيلها. زر ✓ يعلّمها «تمّت» فتخرج من الحساب
+        وتبقى كسجل، وزر ↺ يعيدها. الحذف يمسحها نهائيًا.
       </div>
 
-      <ExternalRows rows={advances} currentParty={currentParty} parties={parties} />
+      <ExternalRows
+        rows={activeRows}
+        currentParty={currentParty}
+        parties={parties}
+      />
+      {settledRows.length > 0 && (
+        <ExternalRows
+          title="مسددة (سجل)"
+          rows={settledRows}
+          currentParty={currentParty}
+          parties={parties}
+        />
+      )}
     </Card>
   );
 }
 
 function ExternalRows({
+  title,
   rows,
   currentParty,
   parties,
 }: {
+  title?: string;
   rows: ExternalAdvanceRow[];
   currentParty: { type: PartyType; id: string; name: string };
   parties: PartyOption[];
@@ -411,14 +465,25 @@ function ExternalRows({
 
   return (
     <div className="divide-y divide-border rounded-lg border border-border">
+      {title && (
+        <div className="bg-muted/60 px-2.5 py-1.5 text-[11px] font-bold text-muted-foreground">
+          {title}
+        </div>
+      )}
       {rows.map((row) => {
         const isBorrower =
           row.borrowerType === currentParty.type &&
           row.borrowerId === currentParty.id;
         const otherName = isBorrower ? row.lenderName : row.borrowerName;
         const otherType = isBorrower ? row.lenderType : row.borrowerType;
+        const isSettled = row.status === "SETTLED";
         return (
-          <div key={row.id} className="flex items-center justify-between p-2.5 text-sm">
+          <div
+            key={row.id}
+            className={`flex items-center justify-between p-2.5 text-sm ${
+              isSettled ? "opacity-60" : ""
+            }`}
+          >
             <div className="min-w-0">
               <div
                 className={`flex items-center gap-1 font-medium ${
@@ -435,6 +500,9 @@ function ExternalRows({
               <div className="text-xs text-muted-foreground">
                 {isBorrower ? "استلف من" : "أعطى سلفة لـ"} {otherName} (
                 {partyTypeLabel(otherType)}) • {formatShortDate(row.date)}
+                {isSettled && row.settledAt
+                  ? ` • تمّت ${formatShortDate(row.settledAt)}`
+                  : ""}
               </div>
               {row.note && (
                 <div className="max-w-[220px] truncate text-xs text-muted-foreground">

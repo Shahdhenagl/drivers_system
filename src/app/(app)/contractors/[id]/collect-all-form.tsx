@@ -25,19 +25,21 @@ export function CollectAllForm({
   contractorId,
   remaining,
   advanceBalance = 0,
+  externalCredit = 0,
 }: {
   contractorId: string;
   remaining: number;
   advanceBalance?: number;
+  externalCredit?: number; // سلف خارجية له تُخصم من المطلوب للتحصيل
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
   const advanceDebt = Math.max(advanceBalance, 0);
   const advanceCredit = Math.max(-advanceBalance, 0);
-  const collectable = remaining;
-  const totalOnContractor = collectable + advanceDebt;
-  const net = totalOnContractor - advanceCredit;
+  // المطلوب للتحصيل افتراضيًا = متبقي الرحلات ناقص ما له عندنا (رصيد مكتب + سلف خارجية له)
+  const collectable = Math.max(remaining - advanceCredit - externalCredit, 0);
+  const net = remaining + advanceDebt - advanceCredit - externalCredit;
 
   async function action(formData: FormData) {
     setError("");
@@ -60,7 +62,7 @@ export function CollectAllForm({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="lg" className="w-full" disabled={collectable <= 0}>
+        <Button size="lg" className="w-full" disabled={remaining <= 0}>
           <Banknote className="h-5 w-5" />
           تحصيل الكل
         </Button>
@@ -92,7 +94,19 @@ export function CollectAllForm({
               </span>
             </div>
           )}
+          {externalCredit > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span>سلف خارجية له (تُخصم)</span>
+              <span className="font-bold text-success">
+                − {formatMoney(externalCredit)}
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between border-t border-border pt-1 font-bold">
+            <span>المطلوب للتحصيل</span>
+            <span className="text-destructive">{formatMoney(collectable)}</span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
             <span>صافي الحساب</span>
             <span className={net >= 0 ? "text-destructive" : "text-success"}>
               {net > 0
@@ -104,8 +118,8 @@ export function CollectAllForm({
           </div>
         </div>
         <p className="mb-3 text-center text-xs text-muted-foreground">
-          يتوزّع المبلغ بالأقدم أولًا على الرحلات المستحقة. أي زيادة عن المستحق
-          تتسجّل رصيدًا للمقاول (له عندنا).
+          القيمة الافتراضية = المطلوب بعد خصم ما له عندنا، وتقدر تعدّلها وتحصّل
+          أكتر. يتوزّع بالأقدم أولًا، وأي زيادة تتسجّل رصيدًا للمقاول (له عندنا).
         </p>
         <form action={action} className="space-y-3">
           <div className="space-y-1.5">

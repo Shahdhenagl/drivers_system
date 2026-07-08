@@ -179,12 +179,12 @@ export default async function DriverProfile({
     .filter((a) => a.direction === "IN")
     .reduce((s, a) => s + a.amount, 0);
   const advanceBalance = advOut - advIn;
-  // السلف الخارجية تُحسب بقيمتها الكاملة فور تسجيلها (تُزال بالحذف فقط)
+  // السلف الخارجية تُحسب بقيمتها الكاملة ما لم تُعلَّم "مسددة" (تبقى كسجل)
   const externalFor = externalAdvances
-    .filter((a) => a.lenderType === "DRIVER" && a.lenderId === id)
+    .filter((a) => a.status !== "SETTLED" && a.lenderType === "DRIVER" && a.lenderId === id)
     .reduce((s, a) => s + a.amount, 0);
   const externalOn = externalAdvances
-    .filter((a) => a.borrowerType === "DRIVER" && a.borrowerId === id)
+    .filter((a) => a.status !== "SETTLED" && a.borrowerType === "DRIVER" && a.borrowerId === id)
     .reduce((s, a) => s + a.amount, 0);
   const officeFor = Math.max(-advanceBalance, 0);
   const officeOn = Math.max(advanceBalance, 0);
@@ -201,10 +201,10 @@ export default async function DriverProfile({
       .filter((a) => a.direction === "IN" && inBounds(a.date))
       .reduce((s, a) => s + a.amount, 0);
   const mExternalFor = externalAdvances
-    .filter((a) => a.lenderType === "DRIVER" && a.lenderId === id && inBounds(a.date))
+    .filter((a) => a.status !== "SETTLED" && a.lenderType === "DRIVER" && a.lenderId === id && inBounds(a.date))
     .reduce((s, a) => s + a.amount, 0);
   const mExternalOn = externalAdvances
-    .filter((a) => a.borrowerType === "DRIVER" && a.borrowerId === id && inBounds(a.date))
+    .filter((a) => a.status !== "SETTLED" && a.borrowerType === "DRIVER" && a.borrowerId === id && inBounds(a.date))
     .reduce((s, a) => s + a.amount, 0);
   const sOfficeFor = bounds ? Math.max(-mAdvBal, 0) : officeFor;
   const sOfficeOn = bounds ? Math.max(mAdvBal, 0) : officeOn;
