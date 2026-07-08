@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -34,6 +34,7 @@ export function CollectAllForm({
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
+  const submitting = useRef(false);
   const router = useRouter();
   const advanceDebt = Math.max(advanceBalance, 0);
   const advanceCredit = Math.max(-advanceBalance, 0);
@@ -42,6 +43,8 @@ export function CollectAllForm({
   const net = remaining + advanceDebt - advanceCredit - externalCredit;
 
   async function action(formData: FormData) {
+    if (submitting.current) return; // منع الضغط المزدوج
+    submitting.current = true;
     setError("");
     try {
       const res = await collectAllFromContractor(contractorId, formData);
@@ -56,6 +59,8 @@ export function CollectAllForm({
     } catch {
       playSound("error");
       setError("حصل خطأ غير متوقع، حاول تاني");
+    } finally {
+      submitting.current = false;
     }
   }
 

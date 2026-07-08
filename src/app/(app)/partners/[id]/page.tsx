@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { PrintButton } from "@/components/print-button";
 import { PartnerForm } from "../partner-form";
 import { WithdrawForm } from "../withdraw-form";
+import { DeleteWithdrawalButton } from "../delete-withdrawal-button";
 import { getFinanceOverview } from "@/lib/finance-overview";
 import { getDashboardStats } from "@/lib/dashboard";
 import { formatMoney } from "@/lib/money";
@@ -118,9 +119,9 @@ export default async function PartnerProfile({
               p.withdrawals.map((w) => (
                 <div
                   key={w.id}
-                  className="flex items-center justify-between p-3 text-sm"
+                  className="flex items-center justify-between gap-2 p-3 text-sm"
                 >
-                  <div>
+                  <div className="min-w-0">
                     <div className="font-medium text-destructive">
                       {formatMoney(w.amount)}
                     </div>
@@ -128,12 +129,13 @@ export default async function PartnerProfile({
                       {formatShortDate(w.date)} •{" "}
                       {PAYMENT_METHODS[w.method as keyof typeof PAYMENT_METHODS]}
                     </div>
+                    {w.note && (
+                      <div className="truncate text-xs text-muted-foreground">
+                        {w.note}
+                      </div>
+                    )}
                   </div>
-                  {w.note && (
-                    <div className="max-w-[45%] truncate text-xs text-muted-foreground">
-                      {w.note}
-                    </div>
-                  )}
+                  <DeleteWithdrawalButton id={w.id} />
                 </div>
               ))
             )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -33,6 +33,7 @@ export function PayDriverForm({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const [amountEgp, setAmountEgp] = useState("");
+  const submitting = useRef(false);
   const router = useRouter();
 
   const amountP = toPiastres(amountEgp || "0");
@@ -45,6 +46,8 @@ export function PayDriverForm({
   const net = totalForDriver - advanceDebt;
 
   async function action(formData: FormData) {
+    if (submitting.current) return; // منع الضغط المزدوج
+    submitting.current = true;
     setError("");
     try {
       const res = await payDriverDues(driverId, formData);
@@ -60,10 +63,14 @@ export function PayDriverForm({
     } catch {
       playSound("error");
       setError("حصل خطأ غير متوقع، حاول تاني");
+    } finally {
+      submitting.current = false;
     }
   }
 
   async function doOffset() {
+    if (submitting.current) return;
+    submitting.current = true;
     setError("");
     try {
       const res = await offsetDriverAdvance(driverId);
@@ -78,6 +85,8 @@ export function PayDriverForm({
     } catch {
       playSound("error");
       setError("حصل خطأ غير متوقع، حاول تاني");
+    } finally {
+      submitting.current = false;
     }
   }
 

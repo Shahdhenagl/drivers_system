@@ -90,6 +90,23 @@ export async function addWithdrawal(partnerId: string, formData: FormData) {
   revalidatePath("/finance");
 }
 
+/** حذف سحب شريك — يزيل السحب وقيد دفتر الأستاذ المرتبط (فيرجع للخزنة) */
+export async function deleteWithdrawal(id: string) {
+  const w = await prisma.partnerWithdrawal.findUnique({ where: { id } });
+  if (!w) return { error: "السحب غير موجود" };
+  await prisma.$transaction(async (tx) => {
+    await tx.ledgerEntry.deleteMany({
+      where: { refType: "PartnerWithdrawal", refId: id },
+    });
+    await tx.partnerWithdrawal.delete({ where: { id } });
+  });
+  await audit("DELETE_WITHDRAW", "Partner", w.partnerId, { amount: w.amount });
+  revalidatePath(`/partners/${w.partnerId}`);
+  revalidatePath("/partners");
+  revalidatePath("/finance");
+  revalidatePath("/");
+}
+
 /**
  * تصفية الخزنة: توزيع الربح على الشركاء حسب النسبة (كاش).
  * لو لم يُحدَّد مبلغ يوزّع كامل الربح المتاح. لا يمكن توزيع أكثر من الربح المتاح.

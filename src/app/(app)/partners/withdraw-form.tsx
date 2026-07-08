@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -22,9 +22,13 @@ import { MinusCircle } from "lucide-react";
 export function WithdrawForm({ partnerId }: { partnerId: string }) {
   const [open, setOpen] = useState(false);
   const [err, setErr] = useState("");
+  const submitting = useRef(false);
   const router = useRouter();
 
   async function action(fd: FormData) {
+    // حاجز ضد الضغط المزدوج السريع (يمنع تسجيل السحب مرتين)
+    if (submitting.current) return;
+    submitting.current = true;
     setErr("");
     try {
       const res = await addWithdrawal(partnerId, fd);
@@ -39,6 +43,8 @@ export function WithdrawForm({ partnerId }: { partnerId: string }) {
     } catch {
       playSound("error");
       setErr("حصل خطأ غير متوقع، حاول تاني");
+    } finally {
+      submitting.current = false;
     }
   }
 
