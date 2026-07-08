@@ -115,7 +115,13 @@ function EditMovementDialog({ movement }: { movement: MovementActionData }) {
           {hasMethod && (
             <div className="space-y-1.5">
               <Label>الطريقة</Label>
-              <MethodSelect defaultValue={movement.method ?? "cash"} />
+              <MethodSelect
+                defaultValue={movement.method ?? "cash"}
+                withCollectors={
+                  movement.kind === "collection" ||
+                  movement.kind === "driverPayment"
+                }
+              />
             </div>
           )}
           <div className="space-y-1.5">

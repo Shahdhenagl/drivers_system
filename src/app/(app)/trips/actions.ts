@@ -12,7 +12,7 @@ import {
   effectiveAmounts,
 } from "@/lib/finance";
 import { VIA_DRIVER, methodLabel } from "@/lib/constants";
-import { resolveCollector } from "@/lib/collectors";
+import { resolveCollector, collectorAdvanceMarker } from "@/lib/collectors";
 import { sendTelegram } from "@/lib/telegram";
 import {
   adminDriverPaymentDeleteMessage,
@@ -432,7 +432,7 @@ export async function addCollection(tripId: string, formData: FormData) {
           amount,
           direction: "OUT",
           method,
-          note: note ?? `تحصيل عن طريق ${collector.name}`,
+          note: `${note ? note + " " : ""}تحصيل عن طريق ${collector.name} ${collectorAdvanceMarker("col", col.id)}`,
           tripId,
           date,
         },
@@ -631,11 +631,13 @@ export async function addDriverPayment(tripId: string, formData: FormData) {
     }
   }
 
+  let paymentId: string | null = null;
   await prisma.$transaction(async (tx) => {
     if (payToTrip > 0) {
       const dp = await tx.driverPayment.create({
         data: { tripId, driverId: trip.driverId!, amount: payToTrip, method, date, note },
       });
+      paymentId = dp.id;
       if (!collector) {
         await recordLedger(tx, {
           type: "DRIVER_PAYMENT",
@@ -677,6 +679,7 @@ export async function addDriverPayment(tripId: string, formData: FormData) {
     }
     // المحصّل دفع المبلغ من الأمانة اللي معاه — يقلّ ما يمسكه للمكتب
     if (collector) {
+      const marker = paymentId ? " " + collectorAdvanceMarker("dp", paymentId) : "";
       await tx.advance.create({
         data: {
           partyType: "DRIVER",
@@ -684,7 +687,7 @@ export async function addDriverPayment(tripId: string, formData: FormData) {
           amount,
           direction: "IN",
           method,
-          note: `سداد سواق عن طريق ${collector.name}`,
+          note: `سداد سواق عن طريق ${collector.name}${marker}`,
           date,
         },
       });
@@ -891,13 +894,36 @@ export async function updateTripCollection(id: string, formData: FormData) {
       ? `${note ?? "تحصيل عن طريق السواق"} ${marker}`
       : note;
 
+  const collector = await resolveCollector(method);
+  if (collector && "notFound" in collector) {
+    return { error: `المحصّل «${collector.notFound}» غير موجود في السواقين` };
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.collection.update({
       where: { id },
       data: { amount, method, note: markedNote, date },
     });
     await tx.ledgerEntry.deleteMany({ where: { refType: "Collection", refId: id } });
-    if (method !== VIA_DRIVER) {
+    // أزِل سلفة المحصّل القديمة المرتبطة بهذه الحركة (لو الطريقة القديمة محصّل)
+    await tx.advance.deleteMany({
+      where: { note: { contains: collectorAdvanceMarker("col", id) } },
+    });
+    if (collector) {
+      // تحصيل عن طريق محصّل — يمسك الفلوس (سلفة OUT)، بدون قيد خزنة
+      await tx.advance.create({
+        data: {
+          partyType: "DRIVER",
+          partyId: collector.id,
+          amount,
+          direction: "OUT",
+          method,
+          note: `تحصيل عن طريق ${collector.name} ${collectorAdvanceMarker("col", id)}`,
+          tripId: current.tripId,
+          date,
+        },
+      });
+    } else if (method !== VIA_DRIVER) {
       await recordLedger(tx, {
         type: "COLLECTION",
         direction: "IN",
@@ -986,6 +1012,10 @@ export async function deleteTripCollection(id: string) {
 
   await prisma.$transaction(async (tx) => {
     await tx.ledgerEntry.deleteMany({ where: { refType: "Collection", refId: id } });
+    // أزِل سلفة المحصّل المرتبطة (لو التحصيل كان عن طريق محصّل)
+    await tx.advance.deleteMany({
+      where: { note: { contains: collectorAdvanceMarker("col", id) } },
+    });
     await tx.collection.delete({ where: { id } });
     if (current.method === VIA_DRIVER) {
       const marker = viaDriverMarker(id);
@@ -1045,19 +1075,43 @@ export async function updateTripDriverPayment(id: string, formData: FormData) {
     return { error: "المبلغ يتجاوز مستحق السواق المتبقي" };
   }
 
+  const collector = await resolveCollector(method);
+  if (collector && "notFound" in collector) {
+    return { error: `المحصّل «${collector.notFound}» غير موجود في السواقين` };
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.driverPayment.update({ where: { id }, data: { amount, method, note, date } });
     await tx.ledgerEntry.deleteMany({ where: { refType: "DriverPayment", refId: id } });
-    await recordLedger(tx, {
-      type: "DRIVER_PAYMENT",
-      direction: "OUT",
-      amount,
-      method,
-      description: `سداد سواق — رحلة ${current.trip.startPoint} ← ${current.trip.endPoint}`,
-      refType: "DriverPayment",
-      refId: id,
-      date,
+    // أزِل سلفة المحصّل القديمة المرتبطة بهذه الحركة (لو كانت الطريقة القديمة محصّل)
+    await tx.advance.deleteMany({
+      where: { note: { contains: collectorAdvanceMarker("dp", id) } },
     });
+    if (collector) {
+      // سداد عن طريق محصّل — يقلّ ما يمسكه (سلفة IN)، بدون قيد خزنة
+      await tx.advance.create({
+        data: {
+          partyType: "DRIVER",
+          partyId: collector.id,
+          amount,
+          direction: "IN",
+          method,
+          note: `سداد سواق عن طريق ${collector.name} ${collectorAdvanceMarker("dp", id)}`,
+          date,
+        },
+      });
+    } else {
+      await recordLedger(tx, {
+        type: "DRIVER_PAYMENT",
+        direction: "OUT",
+        amount,
+        method,
+        description: `سداد سواق — رحلة ${current.trip.startPoint} ← ${current.trip.endPoint}`,
+        refType: "DriverPayment",
+        refId: id,
+        date,
+      });
+    }
   });
 
   await audit("EDIT_DRIVER_PAY", "Trip", current.tripId, { paymentId: id, amount, method });
@@ -1099,6 +1153,10 @@ export async function deleteTripDriverPayment(id: string) {
 
   await prisma.$transaction(async (tx) => {
     await tx.ledgerEntry.deleteMany({ where: { refType: "DriverPayment", refId: id } });
+    // أزِل سلفة المحصّل المرتبطة (لو السداد كان عن طريق محصّل)
+    await tx.advance.deleteMany({
+      where: { note: { contains: collectorAdvanceMarker("dp", id) } },
+    });
     await tx.driverPayment.delete({ where: { id } });
   });
 

@@ -3,6 +3,11 @@ import { collectorNameFromMethod } from "@/lib/constants";
 
 export type Collector = { id: string; name: string };
 
+/** علامة تربط سلفة المحصّل بحركتها المصدر (تحصيل/سداد) للتعديل/الحذف لاحقًا */
+export function collectorAdvanceMarker(kind: "col" | "dp", refId: string) {
+  return `[c:${kind}:${refId}]`;
+}
+
 /**
  * لو الطريقة تخص محصّلًا ("عن طريق <اسم>") يرجّع سجل السواق المطابق.
  * - null: الطريقة عادية (مش محصّل).
