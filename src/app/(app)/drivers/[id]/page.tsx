@@ -16,6 +16,7 @@ import { DailyReviewToggle } from "@/components/daily-review-toggle";
 import { MonthFilter } from "@/components/month-filter";
 import { MovementActions } from "../../trips/[id]/movement-actions";
 import { ExtraProfitForm } from "@/components/extra-profit-form";
+import { DriverTipForm } from "@/components/driver-tip-form";
 import { OffsetAccountButton } from "@/components/offset-account-button";
 import { setDriverReviewed } from "../actions";
 import { formatMoney } from "@/lib/money";
@@ -383,9 +384,10 @@ export default async function DriverProfile({
           </div>
         )}
 
-        {/* ربح إضافي */}
-        <div className="print:hidden">
+        {/* ربح إضافي + إكرامية */}
+        <div className="grid grid-cols-2 gap-2 print:hidden">
           <ExtraProfitForm partyType="DRIVER" partyId={d.id} />
+          <DriverTipForm driverId={d.id} />
         </div>
         {extraProfits.length > 0 && (
           <Card className="divide-y divide-border">

@@ -11,6 +11,7 @@ export async function getFinanceOverview() {
     partnerWithdrawalAgg,
     capitalSetting,
     extraProfitAgg,
+    driverTipAgg,
   ] = await Promise.all([
       prisma.trip.findMany({
         select: {
@@ -49,6 +50,10 @@ export async function getFinanceOverview() {
       prisma.ledgerEntry
         .aggregate({ where: { type: "EXTRA_PROFIT" }, _sum: { amount: true } })
         .catch(() => ({ _sum: { amount: 0 } })),
+      // إكراميات السواقين — تُخصم من الربح
+      prisma.ledgerEntry
+        .aggregate({ where: { type: "DRIVER_TIP" }, _sum: { amount: true } })
+        .catch(() => ({ _sum: { amount: 0 } })),
     ]);
 
   // المبالغ الفعلية: عادية للرحلات النشطة، والغرامة للملغية (صفر عند السماح)
@@ -67,9 +72,10 @@ export async function getFinanceOverview() {
   const totalPaidDrivers = driverPayAgg._sum.amount ?? 0;
   const totalRemainingDrivers = Math.max(totalDriverDue - totalPaidDrivers, 0);
   const totalExpenses = expenseAgg._sum.amount ?? 0;
-  // أرباح إضافية محصّلة (خارج الرحلات) تُضاف للربح
+  // أرباح إضافية محصّلة (خارج الرحلات) تُضاف للربح، وإكراميات السواقين تُخصم منه
   const totalExtraProfit = extraProfitAgg._sum.amount ?? 0;
-  const grossProfit = totalRevenue - totalDriverDue + totalExtraProfit;
+  const totalDriverTips = driverTipAgg._sum.amount ?? 0;
+  const grossProfit = totalRevenue - totalDriverDue + totalExtraProfit - totalDriverTips;
   const netProfit = grossProfit - totalExpenses;
   const capital = Number(capitalSetting?.value ?? "0");
 
@@ -112,6 +118,7 @@ export async function getFinanceOverview() {
     0,
     totalCollected +
       totalExtraProfit -
+      totalDriverTips -
       totalDriverDue -
       totalExpenses -
       totalPartnerWithdrawals
@@ -126,6 +133,7 @@ export async function getFinanceOverview() {
     totalRemainingDrivers,
     totalExpenses,
     totalExtraProfit,
+    totalDriverTips,
     grossProfit,
     netProfit,
     totalPartnerWithdrawals,
