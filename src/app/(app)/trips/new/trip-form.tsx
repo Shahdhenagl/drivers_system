@@ -292,46 +292,18 @@ export function TripForm({
             required
           />
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="driverTip">زيادة للسواق</Label>
+        <div className="space-y-1.5 md:col-span-2">
+          <Label htmlFor="contractorToDriver">سداد من المقاول للسواق</Label>
           <Input
-            id="driverTip"
-            name="driverTip"
+            id="contractorToDriver"
+            name="contractorToDriver"
             type="number"
             step="0.01"
             inputMode="decimal"
             placeholder="0"
           />
           <p className="text-[11px] text-muted-foreground">
-            تزيد ما يقبضه السواق وتُخصم من ربحك
-          </p>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="customerDiscount">خصم للمقاول</Label>
-          <Input
-            id="customerDiscount"
-            name="customerDiscount"
-            type="number"
-            step="0.01"
-            inputMode="decimal"
-            placeholder="0"
-          />
-          <p className="text-[11px] text-muted-foreground">
-            يقلّل سعر المقاول ويُخصم من ربحك
-          </p>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="contractorSurcharge">زيادة على المقاول</Label>
-          <Input
-            id="contractorSurcharge"
-            name="contractorSurcharge"
-            type="number"
-            step="0.01"
-            inputMode="decimal"
-            placeholder="0"
-          />
-          <p className="text-[11px] text-muted-foreground">
-            تزيد سعر المقاول وتزيد ربحك
+            اختياري. يُسجّل كتحصيل من المقاول وسداد للسواق، وأي زيادة عن التسوية تُسجّل سلفة على السواق.
           </p>
         </div>
       </Card>

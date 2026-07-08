@@ -56,33 +56,100 @@ export async function createTrip(formData: FormData) {
 
   const dateStr = get("date");
   const tripDate = dateStr ? new Date(dateStr) : new Date();
-  const trip = await prisma.trip.create({
-    data: {
-      contractorId,
-      driverId,
-      date: tripDate,
-      time: formatWeekday(tripDate),
-      startPoint: get("startPoint"),
-      endPoint: get("endPoint"),
-      vehicleType: get("vehicleType") || null,
-      description: get("description") || null,
-      distance: get("distance") ? Number(get("distance")) : null,
-      contractorPrice: toPiastres(get("contractorPrice") || "0"),
-      driverDue: toPiastres(get("driverDue") || "0"),
-      driverTip: toPiastres(get("driverTip") || "0"),
-      customerDiscount: toPiastres(get("customerDiscount") || "0"),
-      contractorSurcharge: toPiastres(get("contractorSurcharge") || "0"),
-      notes: get("notes") || null,
-      status: "NEW",
-      collectionStatus: "NONE",
-    },
+  const contractorPrice = toPiastres(get("contractorPrice") || "0");
+  const driverDue = toPiastres(get("driverDue") || "0");
+  const contractorToDriver = toPiastres(get("contractorToDriver") || "0");
+  if (contractorToDriver < 0) return { error: "قيمة سداد المقاول للسواق غير صحيحة" };
+
+  let tripId = "";
+  await prisma.$transaction(async (tx) => {
+    const trip = await tx.trip.create({
+      data: {
+        contractorId,
+        driverId,
+        date: tripDate,
+        time: formatWeekday(tripDate),
+        startPoint: get("startPoint"),
+        endPoint: get("endPoint"),
+        vehicleType: get("vehicleType") || null,
+        description: get("description") || null,
+        distance: get("distance") ? Number(get("distance")) : null,
+        contractorPrice,
+        driverDue,
+        driverTip: 0,
+        customerDiscount: 0,
+        contractorSurcharge: 0,
+        notes: get("notes") || null,
+        status: "NEW",
+        collectionStatus: "NONE",
+      },
+    });
+    tripId = trip.id;
+
+    if (contractorToDriver > 0) {
+      const [contractor, driver] = await Promise.all([
+        tx.contractor.findUnique({
+          where: { id: contractorId },
+          select: { name: true },
+        }),
+        tx.driver.findUnique({
+          where: { id: driverId },
+          select: { name: true },
+        }),
+      ]);
+      const settle = Math.min(contractorToDriver, contractorPrice, driverDue);
+      const externalDebt = Math.max(contractorToDriver - settle, 0);
+      const note = "سداد من المقاول للسواق عند إنشاء الرحلة";
+
+      if (settle > 0) {
+        const col = await tx.collection.create({
+          data: { tripId: trip.id, amount: settle, method: VIA_DRIVER, date: tripDate, note },
+        });
+        const marker = viaDriverMarker(col.id);
+        const markedNote = `${note} ${marker}`;
+        await tx.collection.update({
+          where: { id: col.id },
+          data: { note: markedNote },
+        });
+        await tx.driverPayment.create({
+          data: {
+            tripId: trip.id,
+            driverId,
+            amount: settle,
+            method: VIA_DRIVER,
+            date: tripDate,
+            note: markedNote,
+          },
+        });
+        await tx.trip.update({
+          where: { id: trip.id },
+          data: { collectionStatus: deriveCollectionStatus(contractorPrice, settle) },
+        });
+      }
+
+      if (externalDebt > 0 && contractor && driver) {
+        await tx.externalAdvance.create({
+          data: {
+            borrowerType: "DRIVER",
+            borrowerId: driverId,
+            borrowerName: driver.name,
+            lenderType: "CONTRACTOR",
+            lenderId: contractorId,
+            lenderName: contractor.name,
+            amount: externalDebt,
+            date: tripDate,
+            note: `زيادة سداد من المقاول للسواق عند إنشاء رحلة ${trip.startPoint} ← ${trip.endPoint}`,
+          },
+        });
+      }
+    }
   });
-  await audit("CREATE", "Trip", trip.id);
+  await audit("CREATE", "Trip", tripId, { contractorToDriver });
 
   // إشعار الأدمن بالطلب الجديد عبر تيليجرام (لا يعطّل الإنشاء لو فشل)
   try {
     const full = await prisma.trip.findUnique({
-      where: { id: trip.id },
+      where: { id: tripId },
       include: { contractor: true, driver: true },
     });
     if (full) await sendTelegram(adminNewTripMessage(full));
@@ -91,8 +158,10 @@ export async function createTrip(formData: FormData) {
   }
 
   revalidatePath("/trips");
+  revalidatePath(`/contractors/${contractorId}`);
+  revalidatePath(`/drivers/${driverId}`);
   revalidatePath("/");
-  redirect(`/trips/${trip.id}`);
+  redirect(`/trips/${tripId}`);
 }
 
 /**
