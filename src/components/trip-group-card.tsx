@@ -51,6 +51,11 @@ export function TripGroupCard({
   const from = new Date(Math.min(...dates));
   const to = new Date(Math.max(...dates));
   const route = trips[0];
+  // المسار ونوع العربية بقيا لكل يوم — نعرض الموحّد أو نشير للتعدد
+  const sameStart = trips.every((t) => t.startPoint === route.startPoint);
+  const sameEnd = trips.every((t) => t.endPoint === route.endPoint);
+  const sameVehicle = trips.every((t) => t.vehicleType === route.vehicleType);
+  const vehicleLabel = sameVehicle ? route.vehicleType : "عربيات متعددة";
 
   return (
     <Link href={`/trips/group/${groupId}`}>
@@ -67,20 +72,24 @@ export function TripGroupCard({
         <div className="space-y-1.5 text-sm">
           <div className="flex items-center gap-2">
             <MapPin className="h-4 w-4 shrink-0 text-success" />
-            <span className="truncate">{route.startPoint}</span>
+            <span className="truncate">
+              {sameStart ? route.startPoint : "نقاط بداية متعددة"}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <Flag className="h-4 w-4 shrink-0 text-destructive" />
-            <span className="truncate">{route.endPoint}</span>
+            <span className="truncate">
+              {sameEnd ? route.endPoint : "نقاط نهاية متعددة"}
+            </span>
           </div>
         </div>
 
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <User className="h-3 w-3" />
           {route.contractor.name}
-          {route.vehicleType && (
+          {vehicleLabel && (
             <span className="mr-auto rounded-md bg-muted px-1.5 py-0.5">
-              {route.vehicleType}
+              {vehicleLabel}
             </span>
           )}
         </div>

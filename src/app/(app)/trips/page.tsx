@@ -84,7 +84,8 @@ export default async function TripsPage({
 
   let trips = await prisma.trip.findMany({
     where,
-    orderBy: { date: "desc" },
+    // ترتيب زمني: الأقدم أولًا (السبت ثم الأحد ثم الاثنين…)
+    orderBy: [{ date: "asc" }, { createdAt: "asc" }],
     include: {
       contractor: { select: { name: true } },
       driver: { select: { name: true } },

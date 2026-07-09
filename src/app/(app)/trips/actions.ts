@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { toPiastres, formatMoney } from "@/lib/money";
@@ -86,63 +87,17 @@ export async function createTrip(formData: FormData) {
     });
     tripId = trip.id;
 
-    if (contractorToDriver > 0) {
-      const [contractor, driver] = await Promise.all([
-        tx.contractor.findUnique({
-          where: { id: contractorId },
-          select: { name: true },
-        }),
-        tx.driver.findUnique({
-          where: { id: driverId },
-          select: { name: true },
-        }),
-      ]);
-      const settle = Math.min(contractorToDriver, contractorPrice, driverDue);
-      const externalDebt = Math.max(contractorToDriver - settle, 0);
-      const note = "سداد من المقاول للسواق عند إنشاء الرحلة";
-
-      if (settle > 0) {
-        const col = await tx.collection.create({
-          data: { tripId: trip.id, amount: settle, method: VIA_DRIVER, date: tripDate, note },
-        });
-        const marker = viaDriverMarker(col.id);
-        const markedNote = `${note} ${marker}`;
-        await tx.collection.update({
-          where: { id: col.id },
-          data: { note: markedNote },
-        });
-        await tx.driverPayment.create({
-          data: {
-            tripId: trip.id,
-            driverId,
-            amount: settle,
-            method: VIA_DRIVER,
-            date: tripDate,
-            note: markedNote,
-          },
-        });
-        await tx.trip.update({
-          where: { id: trip.id },
-          data: { collectionStatus: deriveCollectionStatus(contractorPrice, settle) },
-        });
-      }
-
-      if (externalDebt > 0 && contractor && driver) {
-        await tx.externalAdvance.create({
-          data: {
-            borrowerType: "DRIVER",
-            borrowerId: driverId,
-            borrowerName: driver.name,
-            lenderType: "CONTRACTOR",
-            lenderId: contractorId,
-            lenderName: contractor.name,
-            amount: externalDebt,
-            date: tripDate,
-            note: `زيادة سداد من المقاول للسواق عند إنشاء رحلة ${trip.startPoint} ← ${trip.endPoint}`,
-          },
-        });
-      }
-    }
+    await applyContractorToDriver(tx, {
+      tripId: trip.id,
+      contractorId,
+      driverId: driverId!,
+      amount: contractorToDriver,
+      contractorPrice,
+      driverDue,
+      date: tripDate,
+      startPoint: trip.startPoint,
+      endPoint: trip.endPoint,
+    });
   });
   await audit("CREATE", "Trip", tripId, { contractorToDriver });
 
@@ -165,8 +120,78 @@ export async function createTrip(formData: FormData) {
 }
 
 /**
- * إنشاء حجز متعدد الأيام: كل يوم رحلة مستقلة (بتاريخها وسواقها وأسعارها)
- * لكن مرتبطة بنفس groupId. تُحسب مستحقات كل سواق وأرباح المكتب لكل يوم عاديًا.
+ * سداد من المقاول للسواق وقت إنشاء الرحلة:
+ * يُسجَّل تحصيلًا من المقاول وسدادًا للسواق بقدر التسوية (لا يمسّ الخزنة)،
+ * وأي زيادة تُسجَّل سلفة خارجية على السواق للمقاول.
+ */
+async function applyContractorToDriver(
+  tx: Prisma.TransactionClient,
+  opts: {
+    tripId: string;
+    contractorId: string;
+    driverId: string;
+    amount: number;
+    contractorPrice: number;
+    driverDue: number;
+    date: Date;
+    startPoint: string;
+    endPoint: string;
+  }
+) {
+  const { tripId, contractorId, driverId, amount, date } = opts;
+  if (amount <= 0) return;
+
+  const [contractor, driver] = await Promise.all([
+    tx.contractor.findUnique({ where: { id: contractorId }, select: { name: true } }),
+    tx.driver.findUnique({ where: { id: driverId }, select: { name: true } }),
+  ]);
+  const settle = Math.min(amount, opts.contractorPrice, opts.driverDue);
+  const externalDebt = Math.max(amount - settle, 0);
+  const note = "سداد من المقاول للسواق عند إنشاء الرحلة";
+
+  if (settle > 0) {
+    const col = await tx.collection.create({
+      data: { tripId, amount: settle, method: VIA_DRIVER, date, note },
+    });
+    const markedNote = `${note} ${viaDriverMarker(col.id)}`;
+    await tx.collection.update({ where: { id: col.id }, data: { note: markedNote } });
+    await tx.driverPayment.create({
+      data: {
+        tripId,
+        driverId,
+        amount: settle,
+        method: VIA_DRIVER,
+        date,
+        note: markedNote,
+      },
+    });
+    await tx.trip.update({
+      where: { id: tripId },
+      data: { collectionStatus: deriveCollectionStatus(opts.contractorPrice, settle) },
+    });
+  }
+
+  if (externalDebt > 0 && contractor && driver) {
+    await tx.externalAdvance.create({
+      data: {
+        borrowerType: "DRIVER",
+        borrowerId: driverId,
+        borrowerName: driver.name,
+        lenderType: "CONTRACTOR",
+        lenderId: contractorId,
+        lenderName: contractor.name,
+        amount: externalDebt,
+        date,
+        note: `زيادة سداد من المقاول للسواق عند إنشاء رحلة ${opts.startPoint} ← ${opts.endPoint}`,
+      },
+    });
+  }
+}
+
+/**
+ * إنشاء حجز متعدد الأيام: كل يوم رحلة مستقلة (بتاريخها وسواقها ونوع عربيتها
+ * ومسارها وأسعارها) لكن مرتبطة بنفس groupId. تُحسب مستحقات كل سواق وأرباح
+ * المكتب لكل يوم عاديًا.
  */
 export async function createMultiDayTrip(formData: FormData) {
   const get = (k: string) => String(formData.get(k) ?? "").trim();
@@ -184,19 +209,18 @@ export async function createMultiDayTrip(formData: FormData) {
     await audit("CREATE", "Contractor", c.id, { via: "trip" });
   }
 
-  const startPoint = get("startPoint");
-  const endPoint = get("endPoint");
-  const vehicleType = get("vehicleType") || null;
   const description = get("description") || null;
   const notes = get("notes") || null;
-  if (!startPoint || !endPoint)
-    return { error: "اكتب نقطة البداية والنهاية" };
 
   type Day = {
     date: string;
     driverId: string;
+    vehicleType: string;
+    startPoint: string;
+    endPoint: string;
     contractorPrice: string;
     driverDue: string;
+    viaDriver: string;
   };
   let days: Day[] = [];
   try {
@@ -206,32 +230,54 @@ export async function createMultiDayTrip(formData: FormData) {
   }
   if (!Array.isArray(days) || days.length === 0)
     return { error: "أضف يومًا واحدًا على الأقل" };
-  for (const d of days) {
-    if (!d.date) return { error: "اختر تاريخ كل يوم" };
-    if (!d.driverId) return { error: "اختر سواق لكل يوم" };
+  for (let i = 0; i < days.length; i++) {
+    const d = days[i];
+    if (!d.date) return { error: `اختر تاريخ اليوم ${i + 1}` };
+    if (!d.driverId) return { error: `اختر سواق اليوم ${i + 1}` };
+    if (!d.startPoint?.trim() || !d.endPoint?.trim())
+      return { error: `اكتب نقطة البداية والنهاية لليوم ${i + 1}` };
+    if (toPiastres(d.viaDriver || "0") < 0)
+      return { error: `قيمة التحصيل عن طريق السواق غير صحيحة في اليوم ${i + 1}` };
   }
+
+  // ترتيب الأيام زمنيًا قبل الحفظ
+  const sorted = [...days].sort((a, b) => +new Date(a.date) - +new Date(b.date));
 
   const groupId = crypto.randomUUID();
   await prisma.$transaction(async (tx) => {
-    for (const d of days) {
+    for (const d of sorted) {
       const dt = new Date(d.date);
-      await tx.trip.create({
+      const contractorPrice = toPiastres(d.contractorPrice || "0");
+      const driverDue = toPiastres(d.driverDue || "0");
+      const trip = await tx.trip.create({
         data: {
           contractorId,
           driverId: d.driverId,
           date: dt,
           time: formatWeekday(dt),
-          startPoint,
-          endPoint,
-          vehicleType,
+          startPoint: d.startPoint.trim(),
+          endPoint: d.endPoint.trim(),
+          vehicleType: d.vehicleType?.trim() || null,
           description,
           notes,
-          contractorPrice: toPiastres(d.contractorPrice || "0"),
-          driverDue: toPiastres(d.driverDue || "0"),
+          contractorPrice,
+          driverDue,
           status: "NEW",
           collectionStatus: "NONE",
           groupId,
         },
+      });
+
+      await applyContractorToDriver(tx, {
+        tripId: trip.id,
+        contractorId,
+        driverId: d.driverId,
+        amount: toPiastres(d.viaDriver || "0"),
+        contractorPrice,
+        driverDue,
+        date: dt,
+        startPoint: trip.startPoint,
+        endPoint: trip.endPoint,
       });
     }
   });
@@ -251,11 +297,13 @@ export async function createMultiDayTrip(formData: FormData) {
       (a, d) => a + toPiastres(d.driverDue || "0"),
       0
     );
+    const routes = sorted.map((d) => `📍 ${d.startPoint} ← ${d.endPoint}`);
+    const uniqueRoutes = [...new Set(routes)];
     await sendTelegram(
       [
         `🆕 <b>حجز متعدد الأيام (${days.length} أيام)</b>`,
         `👤 المقاول: ${contractor?.name ?? ""}`,
-        `📍 ${startPoint} ← ${endPoint}`,
+        ...uniqueRoutes,
         `💰 إجمالي المقاول: ${formatMoney(totalContractor)}`,
         `💵 إجمالي السواقين: ${formatMoney(totalDriver)}`,
         `📈 الربح: ${formatMoney(totalContractor - totalDriver)}`,
@@ -266,6 +314,11 @@ export async function createMultiDayTrip(formData: FormData) {
   }
 
   revalidatePath("/trips");
+  revalidatePath(`/contractors/${contractorId}`);
+  for (const driverId of new Set(sorted.map((d) => d.driverId))) {
+    revalidatePath(`/drivers/${driverId}`);
+  }
+  revalidatePath("/finance");
   revalidatePath("/");
   redirect(`/trips/group/${groupId}`);
 }

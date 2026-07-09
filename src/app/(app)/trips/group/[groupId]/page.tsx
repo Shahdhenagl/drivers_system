@@ -55,6 +55,11 @@ export default async function TripGroupPage({
   const totalPaidDrivers = fins.reduce((a, x) => a + x.fin.paidToDriver, 0);
 
   const route = trips[0];
+  // المسار ونوع العربية لكل يوم — الترويسة تعرض الموحّد فقط
+  const sameStart = trips.every((t) => t.startPoint === route.startPoint);
+  const sameEnd = trips.every((t) => t.endPoint === route.endPoint);
+  const sameVehicle = trips.every((t) => t.vehicleType === route.vehicleType);
+  const vehicleLabel = sameVehicle ? route.vehicleType : "عربيات متعددة";
 
   return (
     <>
@@ -74,14 +79,16 @@ export default async function TripGroupPage({
           </Badge>
           <div className="space-y-2 text-sm">
             <div className="flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-success" /> {route.startPoint}
+              <MapPin className="h-4 w-4 text-success" />{" "}
+              {sameStart ? route.startPoint : "نقاط بداية متعددة"}
             </div>
             <div className="flex items-center gap-2">
-              <Flag className="h-4 w-4 text-destructive" /> {route.endPoint}
+              <Flag className="h-4 w-4 text-destructive" />{" "}
+              {sameEnd ? route.endPoint : "نقاط نهاية متعددة"}
             </div>
-            {route.vehicleType && (
+            {vehicleLabel && (
               <div className="flex items-center gap-2">
-                <Truck className="h-4 w-4 text-muted-foreground" /> {route.vehicleType}
+                <Truck className="h-4 w-4 text-muted-foreground" /> {vehicleLabel}
               </div>
             )}
             <Link
@@ -129,6 +136,17 @@ export default async function TripGroupPage({
                         </Badge>
                         <ChevronLeft className="h-4 w-4 text-muted-foreground" />
                       </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <MapPin className="h-3 w-3 shrink-0 text-success" />
+                      <span className="truncate">
+                        {t.startPoint} ← {t.endPoint}
+                      </span>
+                      {t.vehicleType && (
+                        <span className="mr-auto shrink-0 rounded-md bg-muted px-1.5 py-0.5">
+                          {t.vehicleType}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Truck className="h-3 w-3" />

@@ -22,17 +22,28 @@ export function RouteFields({
   routes,
   vehicleType,
   onPickRoute,
+  onRouteChange,
   defaultStart = "",
   defaultEnd = "",
+  idPrefix = "",
+  named = true,
 }: {
   routes: RouteMemory[];
   vehicleType?: string;
   onPickRoute?: (contractorPriceEgp: string, driverDueEgp: string) => void;
+  /** يُستدعى عند أي تغيير — للاستعمال بدون حقول form (مثل أيام الحجز المتعدد) */
+  onRouteChange?: (startPoint: string, endPoint: string) => void;
   defaultStart?: string;
   defaultEnd?: string;
+  /** بادئة للـ id عند وجود أكثر من نسخة في نفس الصفحة */
+  idPrefix?: string;
+  /** false = بدون خاصية name (القيم تُرسل يدويًا) */
+  named?: boolean;
 }) {
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(defaultEnd);
+  const startId = `${idPrefix}startPoint`;
+  const endId = `${idPrefix}endPoint`;
   const [openField, setOpenField] = useState<null | "start" | "end">(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -76,6 +87,7 @@ export function RouteFields({
     setStart(r.startPoint);
     setEnd(r.endPoint);
     setOpenField(null);
+    onRouteChange?.(r.startPoint, r.endPoint);
     onPickRoute?.(String(toEgp(r.contractorPrice)), String(toEgp(r.driverDue)));
   }
 
@@ -84,16 +96,17 @@ export function RouteFields({
   return (
     <div ref={rootRef} className="space-y-3">
       <div className="relative space-y-1.5">
-        <Label htmlFor="startPoint">نقطة البداية *</Label>
+        <Label htmlFor={startId}>نقطة البداية *</Label>
         <Input
-          id="startPoint"
-          name="startPoint"
+          id={startId}
+          name={named ? "startPoint" : undefined}
           autoComplete="off"
           required
           value={start}
           onChange={(e) => {
             setStart(e.target.value);
             setOpenField("start");
+            onRouteChange?.(e.target.value, end);
           }}
           onFocus={() => setOpenField("start")}
         />
@@ -103,16 +116,17 @@ export function RouteFields({
       </div>
 
       <div className="relative space-y-1.5">
-        <Label htmlFor="endPoint">نقطة النهاية *</Label>
+        <Label htmlFor={endId}>نقطة النهاية *</Label>
         <Input
-          id="endPoint"
-          name="endPoint"
+          id={endId}
+          name={named ? "endPoint" : undefined}
           autoComplete="off"
           required
           value={end}
           onChange={(e) => {
             setEnd(e.target.value);
             setOpenField("end");
+            onRouteChange?.(start, e.target.value);
           }}
           onFocus={() => setOpenField("end")}
         />
