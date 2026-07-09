@@ -7,6 +7,7 @@ import type { RouteMemory } from "@/components/route-fields";
 import { CalendarDays, CalendarRange } from "lucide-react";
 
 type Option = { id: string; name: string; phone: string };
+type DriverOption = Option & { vehicleType: string };
 
 export function NewTripTabs({
   contractors,
@@ -16,7 +17,7 @@ export function NewTripTabs({
   initialDriverId,
 }: {
   contractors: Option[];
-  drivers: Option[];
+  drivers: DriverOption[];
   routes: RouteMemory[];
   initialContractorId?: string;
   initialDriverId?: string;

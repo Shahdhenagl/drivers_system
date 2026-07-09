@@ -300,7 +300,9 @@ export default async function ContractorProfile({
     { label: "شهري", from: startOfDay(addDays(now, -29)), to: endOfDay(now) },
   ];
   const reports = reportPeriods.map((p) => {
-    const inP = c.trips.filter((t) => t.date >= p.from && t.date <= p.to);
+    const inP = c.trips
+      .filter((t) => t.date >= p.from && t.date <= p.to)
+      .sort((a, b) => +a.date - +b.date);
     const total = inP.reduce((a, t) => a + effectiveAmounts(t).contractor, 0);
     const settled = inP.reduce(
       (a, t) => a + t.collections.reduce((s, x) => s + x.amount, 0),
@@ -311,7 +313,14 @@ export default async function ContractorProfile({
       periodLabel: p.label,
       from: p.from,
       to: p.to,
-      tripsCount: inP.length,
+      trips: inP.map((t) => ({
+        date: t.date,
+        startPoint: t.startPoint,
+        endPoint: t.endPoint,
+        vehicleType: t.vehicleType,
+        price: effectiveAmounts(t).contractor,
+        collected: t.collections.reduce((s, x) => s + x.amount, 0),
+      })),
       total,
       settled,
       remainingTotal: deferredAll,

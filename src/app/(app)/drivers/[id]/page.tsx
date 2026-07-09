@@ -315,7 +315,9 @@ export default async function DriverProfile({
     { label: "شهري", from: startOfDay(addDays(now, -29)), to: endOfDay(now) },
   ];
   const reports = reportPeriods.map((p) => {
-    const inP = d.trips.filter((t) => t.date >= p.from && t.date <= p.to);
+    const inP = d.trips
+      .filter((t) => t.date >= p.from && t.date <= p.to)
+      .sort((a, b) => +a.date - +b.date);
     const total = inP.reduce((a, t) => a + effectiveAmounts(t).driver, 0);
     const settled = inP.reduce(
       (a, t) => a + t.driverPayments.reduce((s, x) => s + x.amount, 0),
@@ -330,6 +332,7 @@ export default async function DriverProfile({
         date: t.date,
         startPoint: t.startPoint,
         endPoint: t.endPoint,
+        vehicleType: t.vehicleType,
         driverDue: effectiveAmounts(t).driver,
         paid: t.driverPayments.reduce((s, x) => s + x.amount, 0),
       })),

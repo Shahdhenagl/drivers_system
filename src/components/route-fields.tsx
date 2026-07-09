@@ -57,16 +57,19 @@ export function RouteFields({
     return () => document.removeEventListener("mousedown", onDown);
   }, []);
 
+  // السعر محفوظ لكل (البداية، النهاية، نوع العربية). لو مفيش سعر محفوظ لنوع
+  // العربية ده، نرجع لآخر سعر لنفس المسار بأي نوع.
   useEffect(() => {
-    const exact = routes.find(
+    const sameRoute = routes.filter(
       (r) =>
         normalize(r.startPoint) === normalize(start) &&
-        normalize(r.endPoint) === normalize(end) &&
-        (!vehicleType || r.vehicleType === vehicleType)
+        normalize(r.endPoint) === normalize(end)
     );
-    if (exact) {
-      onPickRoute?.(String(toEgp(exact.contractorPrice)), String(toEgp(exact.driverDue)));
-    }
+    if (sameRoute.length === 0) return;
+    const match =
+      (vehicleType && sameRoute.find((r) => r.vehicleType === vehicleType)) ||
+      sameRoute[0];
+    onPickRoute?.(String(toEgp(match.contractorPrice)), String(toEgp(match.driverDue)));
   }, [end, onPickRoute, routes, start, vehicleType]);
 
   function suggestions(field: "start" | "end") {

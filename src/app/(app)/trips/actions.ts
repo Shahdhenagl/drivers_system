@@ -212,6 +212,8 @@ export async function createMultiDayTrip(formData: FormData) {
   type Day = {
     date: string;
     driverId: string;
+    newDriverName?: string;
+    newDriverPhone?: string;
     vehicleType: string;
     startPoint: string;
     endPoint: string;
@@ -231,10 +233,36 @@ export async function createMultiDayTrip(formData: FormData) {
     const d = days[i];
     if (!d.date) return { error: `اختر تاريخ اليوم ${i + 1}` };
     if (!d.driverId) return { error: `اختر سواق اليوم ${i + 1}` };
+    if (
+      d.driverId === "__new__" &&
+      (!d.newDriverName?.trim() || !d.newDriverPhone?.trim())
+    )
+      return { error: `اكتب اسم ورقم السواق الجديد لليوم ${i + 1}` };
     if (!d.startPoint?.trim() || !d.endPoint?.trim())
       return { error: `اكتب نقطة البداية والنهاية لليوم ${i + 1}` };
     if (toPiastres(d.viaDriver || "0") < 0)
       return { error: `قيمة التحصيل عن طريق السواق غير صحيحة في اليوم ${i + 1}` };
+  }
+
+  // سواقون جدد أثناء الحجز — نفس الرقم في أكثر من يوم يُنشئ سواقًا واحدًا
+  const newDriverIds = new Map<string, string>();
+  for (const d of days) {
+    if (d.driverId !== "__new__") continue;
+    const phone = d.newDriverPhone!.trim();
+    let id = newDriverIds.get(phone);
+    if (!id) {
+      const dr = await prisma.driver.create({
+        data: {
+          name: d.newDriverName!.trim(),
+          phone,
+          vehicleType: d.vehicleType?.trim() || "غير محدد",
+        },
+      });
+      id = dr.id;
+      newDriverIds.set(phone, id);
+      await audit("CREATE", "Driver", id, { via: "multiDayTrip" });
+    }
+    d.driverId = id;
   }
 
   // ترتيب الأيام زمنيًا قبل الحفظ

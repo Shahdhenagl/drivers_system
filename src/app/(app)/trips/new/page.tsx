@@ -20,7 +20,8 @@ export default async function NewTripPage({
     }),
     prisma.driver.findMany({
       orderBy: { name: "asc" },
-      select: { id: true, name: true, phone: true },
+      // نوع السيارة المسجَّل يملأ "نوع العربية" تلقائيًا عند اختيار السواق
+      select: { id: true, name: true, phone: true, vehicleType: true },
     }),
     // ذاكرة الأسعار: أحدث الرحلات لبناء قائمة مسارات فريدة بآخر سعر لكل مسار
     prisma.trip.findMany({

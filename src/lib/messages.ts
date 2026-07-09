@@ -199,12 +199,21 @@ export function driverReminder(t: TripForMsg): string {
   );
 }
 
+type ContractorReportTrip = {
+  date: Date;
+  startPoint: string;
+  endPoint: string;
+  vehicleType?: string | null;
+  price: number;
+  collected: number;
+};
+
 type PeriodReport = {
   name: string;
   periodLabel: string;
   from: Date;
   to: Date;
-  tripsCount: number;
+  trips: ContractorReportTrip[];
   total: number;
   settled: number;
   remainingTotal: number;
@@ -213,7 +222,7 @@ type PeriodReport = {
   externalOn: number;
 };
 
-/** تقرير دوري للمقاول (أسبوعي/شهري) */
+/** تقرير دوري للمقاول (أسبوعي/شهري) — يشمل تفاصيل كل رحلة بتاريخها وسعرها */
 export function contractorReport(r: PeriodReport): string {
   const advanceDebt = Math.max(r.advanceBalance, 0);
   const advanceCredit = Math.max(-r.advanceBalance, 0);
@@ -221,11 +230,28 @@ export function contractorReport(r: PeriodReport): string {
   const totalForContractor = advanceCredit + r.externalFor;
   const fullOnContractor = totalOnContractor + r.externalOn;
   const net = fullOnContractor - totalForContractor;
+
+  const tripLines = r.trips.length
+    ? [
+        "🚚 تفاصيل الرحلات:",
+        ...r.trips.map((t, i) => {
+          const rem = Math.max(t.price - t.collected, 0);
+          return (
+            `${i + 1}) ${formatShortDate(t.date)} | ${t.startPoint} ← ${t.endPoint}` +
+            (t.vehicleType ? ` | ${t.vehicleType}` : "") +
+            `\n    السعر: ${formatMoney(t.price)} — مدفوع: ${formatMoney(t.collected)}` +
+            (rem > 0 ? ` — متبقٍّ: ${formatMoney(rem)}` : " ✅")
+          );
+        }),
+      ]
+    : [];
+
   return (
     [
       `📊 تقرير ${r.periodLabel} — ${r.name}`,
       `🗓️ من ${formatShortDate(r.from)} إلى ${formatShortDate(r.to)}`,
-      `🚛 عدد الرحلات: ${r.tripsCount}`,
+      `🚛 عدد الرحلات: ${r.trips.length}`,
+      ...tripLines,
       `💰 قيمة رحلات الفترة: ${formatMoney(r.total)}`,
       `✅ المحصّل خلال الفترة: ${formatMoney(r.settled)}`,
       "",
@@ -252,6 +278,7 @@ type DriverReportTrip = {
   date: Date;
   startPoint: string;
   endPoint: string;
+  vehicleType?: string | null;
   driverDue: number;
   paid: number;
 };
@@ -286,11 +313,13 @@ export function driverReport(r: DriverReportData): string {
   const tripLines = r.trips.length
     ? [
         "",
-        "🚚 <b>تفاصيل الرحلات:</b>",
+        "🚚 تفاصيل الرحلات:",
         ...r.trips.map((t, i) => {
           const rem = Math.max(t.driverDue - t.paid, 0);
           return (
-            `${i + 1}) ${formatShortDate(t.date)} | ${t.startPoint} ← ${t.endPoint}\n` +
+            `${i + 1}) ${formatShortDate(t.date)} | ${t.startPoint} ← ${t.endPoint}` +
+            (t.vehicleType ? ` | ${t.vehicleType}` : "") +
+            `\n` +
             `    مستحقك: ${formatMoney(t.driverDue)} — مدفوع: ${formatMoney(t.paid)}` +
             (rem > 0 ? ` — متبقٍّ: ${formatMoney(rem)}` : " ✅")
           );

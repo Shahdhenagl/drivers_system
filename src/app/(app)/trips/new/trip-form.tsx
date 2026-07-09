@@ -19,11 +19,12 @@ import { createTrip } from "../actions";
 import { playSound } from "@/lib/sounds";
 import { toDateInput } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
-import { TRIP_VEHICLE_TYPES } from "@/lib/vehicle-types";
+import { TRIP_VEHICLE_TYPES, driverVehicleType } from "@/lib/vehicle-types";
 import { History } from "lucide-react";
 import Link from "next/link";
 
 type Option = { id: string; name: string; phone: string };
+type DriverOption = Option & { vehicleType: string };
 
 function weekdayFromDateInput(value: string) {
   if (!value) return "";
@@ -40,7 +41,7 @@ export function TripForm({
   initialDriverId,
 }: {
   contractors: Option[];
-  drivers: Option[];
+  drivers: DriverOption[];
   routes: RouteMemory[];
   initialContractorId?: string;
   initialDriverId?: string;
@@ -50,7 +51,9 @@ export function TripForm({
   );
   const [driverId, setDriverId] = useState<string>(initialDriverId ?? "");
   const [tripDate, setTripDate] = useState(() => toDateInput(new Date()));
-  const [vehicleType, setVehicleType] = useState("");
+  const [vehicleType, setVehicleType] = useState(() =>
+    driverVehicleType(drivers.find((d) => d.id === initialDriverId))
+  );
   const [contractorPrice, setContractorPrice] = useState("");
   const [driverDue, setDriverDue] = useState("");
   const [contractorPriceTouched, setContractorPriceTouched] = useState(false);
@@ -253,6 +256,12 @@ export function TripForm({
           onChange={(v) => {
             setDriverId(v);
             setInvalid((p) => ({ ...p, driver: false }));
+            // نوع العربية يجي تلقائي من السواق المختار — ويفضل قابلًا للتغيير
+            const auto = driverVehicleType(drivers.find((d) => d.id === v));
+            if (auto) {
+              setVehicleType(auto);
+              setInvalid((p) => ({ ...p, vehicle: false }));
+            }
           }}
           options={drivers}
           placeholder="اختر السواق"
@@ -279,7 +288,11 @@ export function TripForm({
               className={invalid.newDriverPhone ? "border-destructive ring-1 ring-destructive" : ""}
               onChange={() => setInvalid((p) => ({ ...p, newDriverPhone: false }))}
             />
-            <Input name="newDriverVehicleType" placeholder="نوع السيارة" />
+            {/* السواق الجديد يُسجَّل بنوع العربية المختار للرحلة */}
+            <input type="hidden" name="newDriverVehicleType" value={vehicleType} />
+            <p className="text-[11px] text-muted-foreground">
+              هيتسجّل بنوع العربية المختار للرحلة{vehicleType ? `: ${vehicleType}` : ""}
+            </p>
           </div>
         )}
       </Card>

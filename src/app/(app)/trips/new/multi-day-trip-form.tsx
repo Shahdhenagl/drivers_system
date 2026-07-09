@@ -20,10 +20,11 @@ import { createMultiDayTrip } from "../actions";
 import { playSound } from "@/lib/sounds";
 import { toDateInput } from "@/lib/format";
 import { formatMoney, toPiastres } from "@/lib/money";
-import { TRIP_VEHICLE_TYPES } from "@/lib/vehicle-types";
+import { TRIP_VEHICLE_TYPES, driverVehicleType } from "@/lib/vehicle-types";
 import { Plus, Trash2, CalendarDays } from "lucide-react";
 
 type Option = { id: string; name: string; phone: string };
+type DriverOption = Option & { vehicleType: string };
 
 let daySeq = 0;
 
@@ -31,12 +32,17 @@ export type Day = {
   id: string;
   date: string;
   driverId: string;
+  /** بيانات سواق جديد يُنشأ مع الحجز (عند driverId === "__new__") */
+  newDriverName: string;
+  newDriverPhone: string;
   vehicleType: string;
   startPoint: string;
   endPoint: string;
   contractorPrice: string;
   driverDue: string;
   viaDriver: string;
+  /** المستخدم كتب السعر بنفسه — عندها لا نكتب فوقه من ذاكرة الأسعار */
+  priceTouched: boolean;
 };
 
 function newDay(offset: number): Day {
@@ -46,12 +52,15 @@ function newDay(offset: number): Day {
     id: `d${++daySeq}`,
     date: toDateInput(d),
     driverId: "",
+    newDriverName: "",
+    newDriverPhone: "",
     vehicleType: "",
     startPoint: "",
     endPoint: "",
     contractorPrice: "",
     driverDue: "",
     viaDriver: "",
+    priceTouched: false,
   };
 }
 
@@ -62,7 +71,7 @@ export function MultiDayTripForm({
   initialContractorId,
 }: {
   contractors: Option[];
-  drivers: Option[];
+  drivers: DriverOption[];
   routes: RouteMemory[];
   initialContractorId?: string;
 }) {
@@ -88,12 +97,8 @@ export function MultiDayTripForm({
     (i: number, contractor: string, driver: string) => {
       setDays((prev) =>
         prev.map((d, idx) =>
-          idx === i
-            ? {
-                ...d,
-                contractorPrice: d.contractorPrice || contractor,
-                driverDue: d.driverDue || driver,
-              }
+          idx === i && !d.priceTouched
+            ? { ...d, contractorPrice: contractor, driverDue: driver }
             : d
         )
       );
@@ -129,6 +134,8 @@ export function MultiDayTripForm({
     for (let i = 0; i < days.length; i++) {
       const d = days[i];
       if (!d.driverId) return fail(`اختر سواق اليوم ${i + 1}`);
+      if (d.driverId === "__new__" && (!d.newDriverName.trim() || !d.newDriverPhone.trim()))
+        return fail(`اكتب اسم ورقم السواق الجديد لليوم ${i + 1}`);
       if (!d.vehicleType) return fail(`اختر نوع العربية لليوم ${i + 1}`);
       if (!d.startPoint.trim() || !d.endPoint.trim())
         return fail(`اكتب نقطة البداية والنهاية لليوم ${i + 1}`);
@@ -262,7 +269,7 @@ function DayCard({
 }: {
   index: number;
   day: Day;
-  drivers: Option[];
+  drivers: DriverOption[];
   routes: RouteMemory[];
   canRemove: boolean;
   setDay: (i: number, patch: Partial<Day>) => void;
@@ -311,10 +318,35 @@ function DayCard({
         <Label>السواق *</Label>
         <SearchSelect
           value={day.driverId}
-          onChange={(v) => setDay(index, { driverId: v })}
+          onChange={(v) => {
+            // نوع العربية يجي تلقائي من السواق المختار — ويفضل قابلًا للتغيير
+            const auto = driverVehicleType(drivers.find((d) => d.id === v));
+            setDay(index, auto ? { driverId: v, vehicleType: auto } : { driverId: v });
+          }}
           options={drivers}
           placeholder="اختر السواق"
+          newLabel="سواق جديد"
         />
+        {day.driverId === "__new__" && (
+          <div className="space-y-2 rounded-lg border border-dashed border-primary/40 p-3">
+            <Input
+              placeholder="اسم السواق *"
+              value={day.newDriverName}
+              onChange={(e) => setDay(index, { newDriverName: e.target.value })}
+              required
+            />
+            <Input
+              placeholder="رقم الموبايل *"
+              inputMode="tel"
+              value={day.newDriverPhone}
+              onChange={(e) => setDay(index, { newDriverPhone: e.target.value })}
+              required
+            />
+            <p className="text-[11px] text-muted-foreground">
+              هيتسجّل بنوع العربية المختار لليوم ده.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="space-y-1.5">
@@ -355,7 +387,9 @@ function DayCard({
             step="0.01"
             inputMode="decimal"
             value={day.contractorPrice}
-            onChange={(e) => setDay(index, { contractorPrice: e.target.value })}
+            onChange={(e) =>
+              setDay(index, { contractorPrice: e.target.value, priceTouched: true })
+            }
             required
           />
         </div>
@@ -366,7 +400,9 @@ function DayCard({
             step="0.01"
             inputMode="decimal"
             value={day.driverDue}
-            onChange={(e) => setDay(index, { driverDue: e.target.value })}
+            onChange={(e) =>
+              setDay(index, { driverDue: e.target.value, priceTouched: true })
+            }
             required
           />
         </div>
