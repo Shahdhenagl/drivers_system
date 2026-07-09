@@ -10,9 +10,9 @@ import { formatShortDate } from "@/lib/format";
 import {
   TRIP_STATUS,
   TRIP_STATUS_COLOR,
+  tripStatus,
   COLLECTION_STATUS,
   COLLECTION_STATUS_COLOR,
-  type TripStatus,
   type CollectionStatus,
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -121,7 +121,7 @@ export default async function TripGroupPage({
           </h2>
           <div className="space-y-2">
             {fins.map(({ trip: t, fin }, i) => {
-              const st = t.status as TripStatus;
+              const st = tripStatus(t.status);
               const cs = t.collectionStatus as CollectionStatus;
               return (
                 <Link key={t.id} href={`/trips/${t.id}`}>

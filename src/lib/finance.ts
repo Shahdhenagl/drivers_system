@@ -177,28 +177,19 @@ export async function externalRemainingByParty(
 }
 
 export type TripAmounts = {
-  status: string;
+  status?: string;
   contractorPrice: number;
   driverDue: number;
   driverTip?: number | null; // زيادة للسواق
   customerDiscount?: number | null; // خصم للمقاول
   contractorSurcharge?: number | null; // زيادة على المقاول
-  contractorPenalty?: number | null;
-  driverPenalty?: number | null;
 };
 
 /**
  * المبالغ الفعلية للرحلة:
- * - رحلة عادية: سعر المقاول ناقص خصم العميل، ومستحق السواق زائد الاكرامية.
- * - رحلة ملغية: غرامة العميل ونصيب السواق منها (صفر في حالة السماح).
+ * سعر المقاول ناقص خصم العميل زائد الزيادة، ومستحق السواق زائد الإكرامية.
  */
 export function effectiveAmounts(trip: TripAmounts) {
-  if (trip.status === "CANCELLED") {
-    return {
-      contractor: trip.contractorPenalty ?? 0,
-      driver: trip.driverPenalty ?? 0,
-    };
-  }
   return {
     contractor:
       trip.contractorPrice -
@@ -213,7 +204,39 @@ export type TripLike = TripAmounts & {
   driverPayments: { amount: number }[];
 };
 
-/** حسابات الرحلة الواحدة (تراعي الغرامة عند الإلغاء) */
+/**
+ * يعيد حساب حالة التحصيل وحالة الطلب من واقع الحركات:
+ * «مكتملة» = تم التحصيل بالكامل من المقاول وسداد مستحق السواق بالكامل،
+ * وغير ذلك «مؤكدة». تُستدعى بعد أي تعديل على المبالغ أو الحركات.
+ */
+export async function syncTripStatus(db: DB, tripId: string) {
+  const trip = await db.trip.findUnique({
+    where: { id: tripId },
+    select: {
+      contractorPrice: true,
+      driverDue: true,
+      driverTip: true,
+      customerDiscount: true,
+      contractorSurcharge: true,
+      collections: { select: { amount: true } },
+      driverPayments: { select: { amount: true } },
+    },
+  });
+  if (!trip) return;
+  const eff = effectiveAmounts(trip);
+  const collected = trip.collections.reduce((a, c) => a + c.amount, 0);
+  const paid = trip.driverPayments.reduce((a, p) => a + p.amount, 0);
+  const settled = collected >= eff.contractor && paid >= eff.driver;
+  await db.trip.update({
+    where: { id: tripId },
+    data: {
+      collectionStatus: deriveCollectionStatus(eff.contractor, collected),
+      status: settled ? "COMPLETED" : "CONFIRMED",
+    },
+  });
+}
+
+/** حسابات الرحلة الواحدة */
 export function tripFinancials(trip: TripLike) {
   const eff = effectiveAmounts(trip);
   const collected = trip.collections.reduce((a, c) => a + c.amount, 0);

@@ -81,11 +81,11 @@ export default async function DashboardPage() {
             href="/trips?filter=tomorrow"
           />
           <StatCard
-            label="قيد التنفيذ"
-            value={stats.inProgressCount}
+            label="طلبات مؤكدة"
+            value={stats.openCount}
             icon={Loader}
             tone="warning"
-            href="/trips?status=IN_PROGRESS"
+            href="/trips?status=CONFIRMED"
           />
           <StatCard
             label="عملاء متأخرون"

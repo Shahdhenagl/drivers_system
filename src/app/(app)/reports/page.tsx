@@ -39,7 +39,7 @@ export default async function ReportsPage({
     const lte = endOfDay(new Date(to));
     const [trips, collections, driverPayments, expenses] = await Promise.all([
       prisma.trip.findMany({
-        where: { date: { gte, lte }, status: { not: "CANCELLED" } },
+        where: { date: { gte, lte } },
         select: {
           contractorPrice: true,
           driverDue: true,

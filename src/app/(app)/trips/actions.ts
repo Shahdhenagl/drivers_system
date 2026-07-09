@@ -9,8 +9,8 @@ import { toPiastres, formatMoney } from "@/lib/money";
 import {
   recordLedger,
   planSpend,
-  deriveCollectionStatus,
   effectiveAmounts,
+  syncTripStatus,
 } from "@/lib/finance";
 import { VIA_DRIVER, methodLabel } from "@/lib/constants";
 import { resolveCollector, collectorAdvanceMarker } from "@/lib/collectors";
@@ -81,7 +81,7 @@ export async function createTrip(formData: FormData) {
         customerDiscount: 0,
         contractorSurcharge: 0,
         notes: get("notes") || null,
-        status: "NEW",
+        status: "CONFIRMED",
         collectionStatus: "NONE",
       },
     });
@@ -98,6 +98,7 @@ export async function createTrip(formData: FormData) {
       startPoint: trip.startPoint,
       endPoint: trip.endPoint,
     });
+    await syncTripStatus(tx, trip.id);
   });
   await audit("CREATE", "Trip", tripId, { contractorToDriver });
 
@@ -164,10 +165,6 @@ async function applyContractorToDriver(
         date,
         note: markedNote,
       },
-    });
-    await tx.trip.update({
-      where: { id: tripId },
-      data: { collectionStatus: deriveCollectionStatus(opts.contractorPrice, settle) },
     });
   }
 
@@ -262,7 +259,7 @@ export async function createMultiDayTrip(formData: FormData) {
           notes,
           contractorPrice,
           driverDue,
-          status: "NEW",
+          status: "CONFIRMED",
           collectionStatus: "NONE",
           groupId,
         },
@@ -279,6 +276,7 @@ export async function createMultiDayTrip(formData: FormData) {
         startPoint: trip.startPoint,
         endPoint: trip.endPoint,
       });
+      await syncTripStatus(tx, trip.id);
     }
   });
   await audit("CREATE", "Trip", groupId, { multiDay: days.length });
@@ -345,98 +343,11 @@ export async function updateTrip(id: string, formData: FormData) {
       driverId: get("driverId") || null,
     },
   });
+  // المبالغ اتغيّرت — أعد اشتقاق حالة التحصيل وحالة الطلب
+  await syncTripStatus(prisma, id);
   await audit("UPDATE", "Trip", id);
   revalidatePath(`/trips/${id}`);
   revalidatePath("/trips");
-}
-
-/**
- * إلغاء الطلب — مع اختيار سماح أو غرامة.
- * في حالة الغرامة: العميل يدفع غرامة، السواق يأخذ نصيبًا منها، والباقي إيراد المكتب.
- */
-export async function cancelTrip(id: string, formData: FormData) {
-  const type = String(formData.get("penaltyType") ?? "NONE");
-  const method = String(formData.get("method") ?? "cash");
-  let contractorPenalty = 0;
-  let driverPenalty = 0;
-
-  if (type === "PENALTY") {
-    contractorPenalty = toPiastres(String(formData.get("contractorPenalty") ?? "0"));
-    driverPenalty = toPiastres(String(formData.get("driverPenalty") ?? "0"));
-    if (contractorPenalty < 0 || driverPenalty < 0) {
-      return { error: "قيم الغرامة غير صحيحة" };
-    }
-    if (driverPenalty > contractorPenalty) {
-      return { error: "نصيب السواق لا يمكن أن يتجاوز غرامة العميل" };
-    }
-  }
-
-  const trip = await prisma.trip.findUnique({
-    where: { id },
-    include: { collections: true, driverPayments: true, contractor: true, driver: true },
-  });
-  if (!trip) return { error: "الرحلة غير موجودة" };
-  if (trip.status === "CANCELLED") return { error: "الطلب ملغي بالفعل" };
-
-  const collected = trip.collections.reduce((a, c) => a + c.amount, 0);
-  const paid = trip.driverPayments.reduce((a, p) => a + p.amount, 0);
-  // غرامة العميل تدخل الخزنة، ونصيب السواق يخرج منها (بعد خصم ما سبق تحصيله/دفعه)
-  const penaltyToCollect = Math.max(contractorPenalty - collected, 0);
-  const penaltyToPayDriver = Math.max(driverPenalty - paid, 0);
-
-  await prisma.$transaction(async (tx) => {
-    if (penaltyToCollect > 0) {
-      const col = await tx.collection.create({
-        data: { tripId: id, amount: penaltyToCollect, method, note: "غرامة إلغاء" },
-      });
-      await recordLedger(tx, {
-        type: "COLLECTION",
-        direction: "IN",
-        amount: penaltyToCollect,
-        method,
-        description: `غرامة إلغاء — رحلة ${trip.startPoint} ← ${trip.endPoint}`,
-        refType: "Collection",
-        refId: col.id,
-      });
-    }
-    if (penaltyToPayDriver > 0 && trip.driverId) {
-      const dp = await tx.driverPayment.create({
-        data: {
-          tripId: id,
-          driverId: trip.driverId,
-          amount: penaltyToPayDriver,
-          method,
-          note: "نصيب غرامة إلغاء",
-        },
-      });
-      await recordLedger(tx, {
-        type: "DRIVER_PAYMENT",
-        direction: "OUT",
-        amount: penaltyToPayDriver,
-        method,
-        description: `نصيب سواق من غرامة إلغاء — رحلة ${trip.startPoint} ← ${trip.endPoint}`,
-        refType: "DriverPayment",
-        refId: dp.id,
-      });
-    }
-    await tx.trip.update({
-      where: { id },
-      data: {
-        status: "CANCELLED",
-        contractorPenalty,
-        driverPenalty,
-        collectionStatus: deriveCollectionStatus(
-          contractorPenalty,
-          collected + penaltyToCollect
-        ),
-      },
-    });
-  });
-
-  await audit("CANCEL", "Trip", id, { type, contractorPenalty, driverPenalty });
-  revalidatePath(`/trips/${id}`);
-  revalidatePath("/trips");
-  revalidatePath("/finance");
   revalidatePath("/");
 }
 
@@ -474,36 +385,7 @@ export async function deleteTrip(id: string) {
   redirect("/trips");
 }
 
-/** تغيير حالة الرحلة */
-export async function setTripStatus(id: string, status: string) {
-  const current = await prisma.trip.findUnique({
-    where: { id },
-    select: { status: true, driverId: true },
-  });
-  if (!current) return { error: "الرحلة غير موجودة" };
-  // الطلب الملغي مقفول — لا تغيير للحالة
-  if (current.status === "CANCELLED") {
-    return { error: "الطلب ملغي — لا يمكن إجراء أي عملية عليه" };
-  }
-  // قاعدة: لا يمكن إنهاء الرحلة بدون اختيار سواق
-  if (status === "COMPLETED" && !current.driverId) {
-    return { error: "لا يمكن إنهاء الرحلة بدون اختيار سواق" };
-  }
-  await prisma.trip.update({ where: { id }, data: { status } });
-  await audit("STATUS", "Trip", id, { status });
-  revalidatePath(`/trips/${id}`);
-  revalidatePath("/trips");
-  revalidatePath("/");
-}
-
 export async function addNote(id: string, formData: FormData) {
-  const current = await prisma.trip.findUnique({
-    where: { id },
-    select: { status: true },
-  });
-  if (current?.status === "CANCELLED") {
-    return { error: "الطلب ملغي — لا يمكن إجراء أي عملية عليه" };
-  }
   const note = String(formData.get("note") ?? "").trim();
   await prisma.trip.update({ where: { id }, data: { notes: note || null } });
   await audit("NOTE", "Trip", id);
@@ -524,13 +406,10 @@ export async function addCollection(tripId: string, formData: FormData) {
     include: { collections: true },
   });
   if (!trip) return { error: "الرحلة غير موجودة" };
-  if (trip.status === "CANCELLED") {
-    return { error: "الطلب ملغي — لا يمكن التحصيل عليه" };
-  }
 
   const eff = effectiveAmounts(trip);
   const collected = trip.collections.reduce((a, c) => a + c.amount, 0);
-  // قاعدة: لا يمكن تحصيل مبلغ أكبر من قيمة الرحلة (أو الغرامة عند الإلغاء)
+  // قاعدة: لا يمكن تحصيل مبلغ أكبر من قيمة الرحلة
   if (collected + amount > eff.contractor) {
     return { error: "المبلغ يتجاوز قيمة الرحلة المتبقية" };
   }
@@ -571,11 +450,7 @@ export async function addCollection(tripId: string, formData: FormData) {
         date,
       });
     }
-    const newStatus = deriveCollectionStatus(eff.contractor, collected + amount);
-    await tx.trip.update({
-      where: { id: tripId },
-      data: { collectionStatus: newStatus },
-    });
+    await syncTripStatus(tx, tripId);
   });
 
   await audit("COLLECT", "Trip", tripId, { amount, method });
@@ -605,9 +480,6 @@ export async function collectViaDriver(tripId: string, formData: FormData) {
     include: { collections: true, driverPayments: true, contractor: true, driver: true },
   });
   if (!trip) return { error: "الرحلة غير موجودة" };
-  if (trip.status === "CANCELLED") {
-    return { error: "الطلب ملغي — لا يمكن إجراء أي عملية عليه" };
-  }
   if (!trip.driverId) return { error: "لا يوجد سواق على الرحلة" };
 
   const eff = effectiveAmounts(trip);
@@ -676,12 +548,7 @@ export async function collectViaDriver(tripId: string, formData: FormData) {
       });
       externalRows.push(row);
     }
-    // تحديث حالة التحصيل
-    const newStatus = deriveCollectionStatus(eff.contractor, collected + collectAmount);
-    await tx.trip.update({
-      where: { id: tripId },
-      data: { collectionStatus: newStatus },
-    });
+    await syncTripStatus(tx, tripId);
   });
 
   await audit("COLLECT_VIA_DRIVER", "Trip", tripId, { amount, externalDebt });
@@ -727,9 +594,6 @@ export async function addDriverPayment(tripId: string, formData: FormData) {
     include: { driverPayments: true },
   });
   if (!trip) return { error: "الرحلة غير موجودة" };
-  if (trip.status === "CANCELLED") {
-    return { error: "الطلب ملغي — لا يمكن إجراء أي عملية عليه" };
-  }
   if (!trip.driverId) return { error: "لا يوجد سواق على الرحلة" };
 
   const paidEff = effectiveAmounts(trip);
@@ -814,6 +678,7 @@ export async function addDriverPayment(tripId: string, formData: FormData) {
         },
       });
     }
+    await syncTripStatus(tx, tripId);
   });
 
   await audit("DRIVER_PAY", "Trip", tripId, { amount, method, advancePortion });
@@ -843,13 +708,7 @@ export async function contractorBorrowFromDriver(
     include: { collections: true },
   });
   if (!trip) return { error: "الرحلة غير موجودة" };
-  if (trip.status === "CANCELLED")
-    return { error: "الطلب ملغي — لا يمكن إجراء أي عملية عليه" };
   if (!trip.driverId) return { error: "لا يوجد سواق على الرحلة" };
-
-  const collected = trip.collections.reduce((a, c) => a + c.amount, 0);
-  const newEffContractor =
-    trip.contractorPrice + amount - trip.customerDiscount;
 
   await prisma.$transaction(async (tx) => {
     await tx.trip.update({
@@ -857,12 +716,12 @@ export async function contractorBorrowFromDriver(
       data: {
         contractorPrice: { increment: amount },
         driverDue: { increment: amount },
-        collectionStatus: deriveCollectionStatus(newEffContractor, collected),
       },
     });
     await tx.tripTransfer.create({
       data: { tripId, type: "CONTRACTOR_FROM_DRIVER", amount, date, note },
     });
+    await syncTripStatus(tx, tripId);
   });
 
   await audit("TRIP_TRANSFER", "Trip", tripId, {
@@ -897,8 +756,6 @@ export async function contractorBorrowFromOffice(
     include: { contractor: true },
   });
   if (!trip) return { error: "الرحلة غير موجودة" };
-  if (trip.status === "CANCELLED")
-    return { error: "الطلب ملغي — لا يمكن إجراء أي عملية عليه" };
 
   const plan = await planSpend(method, amount, fallback);
   if (!plan.ok) {
@@ -983,7 +840,6 @@ export async function updateTripCollection(id: string, formData: FormData) {
     },
   });
   if (!current) return { error: "حركة التحصيل غير موجودة" };
-  if (current.trip.status === "CANCELLED") return { error: "الطلب ملغي" };
 
   const eff = effectiveAmounts(current.trip);
   const otherCollected = current.trip.collections
@@ -1109,10 +965,7 @@ export async function updateTripCollection(id: string, formData: FormData) {
       await tx.driverPayment.delete({ where: { id: linkedPayment.id } });
       await tx.externalAdvance.deleteMany({ where: { note: { contains: marker } } });
     }
-    await tx.trip.update({
-      where: { id: current.tripId },
-      data: { collectionStatus: deriveCollectionStatus(eff.contractor, otherCollected + amount) },
-    });
+    await syncTripStatus(tx, current.tripId);
   });
 
   await audit("EDIT_COLLECTION", "Trip", current.tripId, { collectionId: id, amount, method });
@@ -1125,12 +978,6 @@ export async function deleteTripCollection(id: string) {
     include: { trip: { include: { collections: true, driverPayments: true } } },
   });
   if (!current) return { error: "حركة التحصيل غير موجودة" };
-  if (current.trip.status === "CANCELLED") return { error: "الطلب ملغي" };
-
-  const eff = effectiveAmounts(current.trip);
-  const otherCollected = current.trip.collections
-    .filter((c) => c.id !== id)
-    .reduce((a, c) => a + c.amount, 0);
 
   await prisma.$transaction(async (tx) => {
     await tx.ledgerEntry.deleteMany({ where: { refType: "Collection", refId: id } });
@@ -1155,10 +1002,7 @@ export async function deleteTripCollection(id: string) {
       }
       await tx.externalAdvance.deleteMany({ where: { note: { contains: marker } } });
     }
-    await tx.trip.update({
-      where: { id: current.tripId },
-      data: { collectionStatus: deriveCollectionStatus(eff.contractor, otherCollected) },
-    });
+    await syncTripStatus(tx, current.tripId);
   });
 
   await audit("DELETE_COLLECTION", "Trip", current.tripId, { collectionId: id });
@@ -1186,7 +1030,6 @@ export async function updateTripDriverPayment(id: string, formData: FormData) {
     },
   });
   if (!current) return { error: "حركة السداد غير موجودة" };
-  if (current.trip.status === "CANCELLED") return { error: "الطلب ملغي" };
   if (current.method === VIA_DRIVER) return { error: "عدّل تحصيل السواق من حركة التحصيل نفسها" };
 
   const eff = effectiveAmounts(current.trip);
@@ -1234,6 +1077,7 @@ export async function updateTripDriverPayment(id: string, formData: FormData) {
         date,
       });
     }
+    await syncTripStatus(tx, current.tripId);
   });
 
   await audit("EDIT_DRIVER_PAY", "Trip", current.tripId, { paymentId: id, amount, method });
@@ -1270,7 +1114,6 @@ export async function deleteTripDriverPayment(id: string) {
     },
   });
   if (!current) return { error: "حركة السداد غير موجودة" };
-  if (current.trip.status === "CANCELLED") return { error: "الطلب ملغي" };
   if (current.method === VIA_DRIVER) return { error: "احذف تحصيل السواق من حركة التحصيل نفسها" };
 
   await prisma.$transaction(async (tx) => {
@@ -1280,6 +1123,7 @@ export async function deleteTripDriverPayment(id: string) {
       where: { note: { contains: collectorAdvanceMarker("dp", id) } },
     });
     await tx.driverPayment.delete({ where: { id } });
+    await syncTripStatus(tx, current.tripId);
   });
 
   await audit("DELETE_DRIVER_PAY", "Trip", current.tripId, { paymentId: id });
@@ -1314,7 +1158,6 @@ export async function updateTripTransfer(id: string, formData: FormData) {
     include: { trip: { include: { collections: true, driverPayments: true } } },
   });
   if (!current) return { error: "التحويل غير موجود" };
-  if (current.trip.status === "CANCELLED") return { error: "الطلب ملغي" };
   if (current.type !== "CONTRACTOR_FROM_DRIVER") {
     return { error: "هذا التحويل يعدّل من سجل السلف" };
   }
@@ -1332,13 +1175,10 @@ export async function updateTripTransfer(id: string, formData: FormData) {
   await prisma.$transaction(async (tx) => {
     await tx.trip.update({
       where: { id: current.tripId },
-      data: {
-        contractorPrice: nextContractorPrice,
-        driverDue: nextDriverDue,
-        collectionStatus: deriveCollectionStatus(nextEffContractor, collected),
-      },
+      data: { contractorPrice: nextContractorPrice, driverDue: nextDriverDue },
     });
     await tx.tripTransfer.update({ where: { id }, data: { amount, note, date } });
+    await syncTripStatus(tx, current.tripId);
   });
 
   await audit("EDIT_TRIP_TRANSFER", "Trip", current.tripId, { transferId: id, amount });
@@ -1351,7 +1191,6 @@ export async function deleteTripTransfer(id: string) {
     include: { trip: { include: { collections: true, driverPayments: true } } },
   });
   if (!current) return { error: "التحويل غير موجود" };
-  if (current.trip.status === "CANCELLED") return { error: "الطلب ملغي" };
   if (current.type !== "CONTRACTOR_FROM_DRIVER") {
     return { error: "هذا التحويل يحذف من سجل السلف" };
   }
@@ -1368,13 +1207,10 @@ export async function deleteTripTransfer(id: string) {
   await prisma.$transaction(async (tx) => {
     await tx.trip.update({
       where: { id: current.tripId },
-      data: {
-        contractorPrice: nextContractorPrice,
-        driverDue: nextDriverDue,
-        collectionStatus: deriveCollectionStatus(nextEffContractor, collected),
-      },
+      data: { contractorPrice: nextContractorPrice, driverDue: nextDriverDue },
     });
     await tx.tripTransfer.delete({ where: { id } });
+    await syncTripStatus(tx, current.tripId);
   });
 
   await audit("DELETE_TRIP_TRANSFER", "Trip", current.tripId, { transferId: id });
@@ -1393,7 +1229,6 @@ export async function updateTripAdvance(id: string, formData: FormData) {
   if (!current || !current.tripId) return { error: "السلفة غير موجودة على الطلب" };
   const trip = await prisma.trip.findUnique({ where: { id: current.tripId }, include: { contractor: true } });
   if (!trip) return { error: "الطلب غير موجود" };
-  if (trip.status === "CANCELLED") return { error: "الطلب ملغي" };
 
   await prisma.$transaction(async (tx) => {
     await tx.advance.update({ where: { id }, data: { amount, method, note, date } });

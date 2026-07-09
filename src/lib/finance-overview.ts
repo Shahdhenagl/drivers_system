@@ -16,14 +16,11 @@ export async function getFinanceOverview() {
   ] = await Promise.all([
       prisma.trip.findMany({
         select: {
-          status: true,
           contractorPrice: true,
           driverDue: true,
           driverTip: true,
           customerDiscount: true,
           contractorSurcharge: true,
-          contractorPenalty: true,
-          driverPenalty: true,
         },
       }),
       prisma.expense.aggregate({ _sum: { amount: true } }),
@@ -57,17 +54,9 @@ export async function getFinanceOverview() {
         .catch(() => ({ _sum: { amount: 0 } })),
     ]);
 
-  // المبالغ الفعلية: عادية للرحلات النشطة، والغرامة للملغية (صفر عند السماح)
   const eff = trips.map(effectiveAmounts);
   const totalRevenue = eff.reduce((a, e) => a + e.contractor, 0);
   const totalDriverDue = eff.reduce((a, e) => a + e.driver, 0);
-  const totalPenaltyRevenue = trips.reduce(
-    (a, t) =>
-      t.status === "CANCELLED"
-        ? a + ((t.contractorPenalty ?? 0) - (t.driverPenalty ?? 0))
-        : a,
-    0
-  );
   const totalCollected = collectionAgg._sum.amount ?? 0;
   const totalDeferred = Math.max(totalRevenue - totalCollected, 0);
   const totalPaidDrivers = driverPayAgg._sum.amount ?? 0;
@@ -140,7 +129,6 @@ export async function getFinanceOverview() {
     totalPartnerWithdrawals,
     distributableProfit,
     realizedProfit,
-    totalPenaltyRevenue,
     totalDriverAdvances,
     totalDriverAdvancesOwed,
     totalContractorAdvances,

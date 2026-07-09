@@ -38,7 +38,7 @@ export default async function SharedPage({
       where: { linkId: { not: null }, ...nameFilter },
       orderBy: { createdAt: "desc" },
       include: {
-        trips: { select: { status: true, contractorPrice: true, driverDue: true, driverTip: true, customerDiscount: true, contractorSurcharge: true, contractorPenalty: true, driverPenalty: true, collections: { select: { amount: true } } } },
+        trips: { select: { status: true, contractorPrice: true, driverDue: true, driverTip: true, customerDiscount: true, contractorSurcharge: true, collections: { select: { amount: true } } } },
       },
     }),
     prisma.driver.findMany({
@@ -46,7 +46,7 @@ export default async function SharedPage({
       select: {
         id: true,
         linkId: true,
-        trips: { select: { status: true, driverDue: true, driverTip: true, contractorPrice: true, customerDiscount: true, contractorSurcharge: true, contractorPenalty: true, driverPenalty: true, driverPayments: { select: { amount: true } } } },
+        trips: { select: { status: true, driverDue: true, driverTip: true, contractorPrice: true, customerDiscount: true, contractorSurcharge: true, driverPayments: { select: { amount: true } } } },
       },
     }),
   ]);

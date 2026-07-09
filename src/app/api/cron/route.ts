@@ -57,7 +57,6 @@ export async function GET(req: NextRequest) {
     const trips = await prisma.trip.findMany({
       where: {
         date: { gte: startOfDay(t), lte: endOfDay(t) },
-        status: { not: "CANCELLED" },
       },
       include: { contractor: true, driver: true },
       orderBy: { time: "asc" },
@@ -87,7 +86,6 @@ export async function GET(req: NextRequest) {
 
     const candidates = await prisma.trip.findMany({
       where: {
-        status: { not: "CANCELLED" },
         time: { not: null },
         date: { gte: startOfDay(now), lte: endOfDay(addDays(now, 1)) },
       },

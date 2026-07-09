@@ -15,11 +15,8 @@ export const dynamic = "force-dynamic";
 
 const STATUS_CHIPS = [
   { key: "", label: "الكل" },
-  { key: "NEW", label: TRIP_STATUS.NEW },
   { key: "CONFIRMED", label: TRIP_STATUS.CONFIRMED },
-  { key: "IN_PROGRESS", label: TRIP_STATUS.IN_PROGRESS },
   { key: "COMPLETED", label: TRIP_STATUS.COMPLETED },
-  { key: "CANCELLED", label: TRIP_STATUS.CANCELLED },
 ];
 
 export default async function TripsPage({
@@ -36,9 +33,9 @@ export default async function TripsPage({
   const sp = await searchParams;
   const where: Prisma.TripWhereInput = {};
 
-  // الطلبات الملغية لا تظهر في "الكل" — فقط عند اختيار فلتر "ملغية"
-  if (sp.status) where.status = sp.status;
-  else where.status = { not: "CANCELLED" };
+  // «مؤكدة» تشمل أي حالة قديمة غير «مكتملة» (جديدة/قيد التنفيذ/ملغية)
+  if (sp.status === "COMPLETED") where.status = "COMPLETED";
+  else if (sp.status === "CONFIRMED") where.status = { not: "COMPLETED" };
 
   // قائمة الشهور المتاحة (من أقدم طلب حتى الشهر الحالي)
   const minAgg = await prisma.trip.aggregate({ _min: { date: true } });
@@ -98,7 +95,7 @@ export default async function TripsPage({
     trips = trips.filter((t) => {
       const collected = t.collections.reduce((a, c) => a + c.amount, 0);
       const due = t.contractorPrice - t.customerDiscount;
-      return t.status !== "CANCELLED" && collected < due;
+      return collected < due;
     });
   }
 

@@ -23,11 +23,11 @@ import {
 import {
   TRIP_STATUS,
   TRIP_STATUS_COLOR,
+  tripStatus,
   COLLECTION_STATUS,
   COLLECTION_STATUS_COLOR,
   methodLabel,
   VIA_DRIVER,
-  type TripStatus,
   type CollectionStatus,
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -63,7 +63,7 @@ export default async function TripDetail({
   if (!trip) notFound();
 
   const fin = tripFinancials(trip);
-  const st = trip.status as TripStatus;
+  const st = tripStatus(trip.status);
   const cs = trip.collectionStatus as CollectionStatus;
 
   const msgData = {
@@ -274,24 +274,13 @@ export default async function TripDetail({
         {/* الملخص المالي */}
         <Card className="space-y-3 p-4">
           <div className="grid grid-cols-3 gap-2 text-center">
-            {st === "CANCELLED" ? (
-              <>
-                <Money label="غرامة العميل" value={fin.effContractor} />
-                <Money label="نصيب السواق" value={fin.effDriver} tone="warning" />
-                <Money label="إيراد الغرامة" value={fin.profit} tone="primary" />
-              </>
-            ) : (
-              <>
-                <Money label="سعر المقاول" value={trip.contractorPrice} />
-                <Money label="مستحق السواق" value={trip.driverDue} tone="warning" />
-                <Money label="الربح" value={fin.profit} tone="primary" />
-              </>
-            )}
+            <Money label="سعر المقاول" value={trip.contractorPrice} />
+            <Money label="مستحق السواق" value={trip.driverDue} tone="warning" />
+            <Money label="الربح" value={fin.profit} tone="primary" />
           </div>
-          {st !== "CANCELLED" &&
-            (trip.driverTip > 0 ||
-              trip.customerDiscount > 0 ||
-              trip.contractorSurcharge > 0) && (
+          {(trip.driverTip > 0 ||
+            trip.customerDiscount > 0 ||
+            trip.contractorSurcharge > 0) && (
               <div className="space-y-1 rounded-lg bg-muted/60 p-2 text-xs">
                 {trip.driverTip > 0 && (
                   <div className="flex items-center justify-between">
@@ -349,7 +338,6 @@ export default async function TripDetail({
         {/* العمليات */}
         <TripActions
           tripId={trip.id}
-          status={trip.status}
           hasDriver={!!trip.driverId}
           remainingCollection={fin.remainingCollection}
           remainingDriver={fin.remainingDriver}

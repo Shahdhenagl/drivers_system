@@ -95,7 +95,7 @@ export async function payDriverDues(driverId: string, formData: FormData) {
   if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
 
   const trips = await prisma.trip.findMany({
-    where: { driverId, status: { not: "CANCELLED" } },
+    where: { driverId },
     orderBy: { date: "asc" },
     include: { driverPayments: true },
   });
@@ -199,7 +199,7 @@ export async function payDriverDues(driverId: string, formData: FormData) {
  */
 export async function offsetDriverAdvance(driverId: string) {
   const trips = await prisma.trip.findMany({
-    where: { driverId, status: { not: "CANCELLED" } },
+    where: { driverId },
     orderBy: { date: "asc" },
     include: { driverPayments: true },
   });

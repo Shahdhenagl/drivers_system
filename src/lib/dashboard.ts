@@ -11,19 +11,15 @@ export async function getDashboardStats() {
   const weekStart = startOfDay(addDays(now, -6));
   const monthStart = startOfDay(addDays(now, -29));
 
-  const notCancelled = { status: { not: "CANCELLED" } } as const;
-
-  const [todayCount, tomorrowCount, inProgressCount] = await Promise.all([
+  const [todayCount, tomorrowCount, openCount] = await Promise.all([
+    prisma.trip.count({ where: { date: { gte: todayStart, lte: todayEnd } } }),
     prisma.trip.count({
-      where: { date: { gte: todayStart, lte: todayEnd }, ...notCancelled },
+      where: { date: { gte: tomorrowStart, lte: tomorrowEnd } },
     }),
-    prisma.trip.count({
-      where: { date: { gte: tomorrowStart, lte: tomorrowEnd }, ...notCancelled },
-    }),
-    prisma.trip.count({ where: { status: "IN_PROGRESS" } }),
+    // «مؤكدة» = أي طلب لم يكتمل حسابه بعد
+    prisma.trip.count({ where: { status: { not: "COMPLETED" } } }),
   ]);
 
-  // العملاء المتأخرون: تشمل الرحلات النشطة وغرامات الإلغاء غير المسددة
   const openTrips = await prisma.trip.findMany({
     select: {
       contractorId: true,
@@ -32,10 +28,8 @@ export async function getDashboardStats() {
       driverDue: true,
       driverTip: true,
       customerDiscount: true,
-      contractorPenalty: true,
-      driverPenalty: true,
+      contractorSurcharge: true,
       date: true,
-      status: true,
       collections: { select: { amount: true } },
       driverPayments: { select: { amount: true } },
     },
@@ -68,20 +62,15 @@ export async function getDashboardStats() {
     }
   }
 
-  // صافي الربح حسب الفترة: ربح الرحلات المكتملة + غرامات الإلغاء - مصروفات الفترة
+  // صافي الربح حسب الفترة: ربح الرحلات المكتملة - مصروفات الفترة
   const completed = await prisma.trip.findMany({
-    where: {
-      status: { in: ["COMPLETED", "CANCELLED"] },
-      date: { gte: monthStart },
-    },
+    where: { status: "COMPLETED", date: { gte: monthStart } },
     select: {
-      status: true,
       contractorPrice: true,
       driverDue: true,
       driverTip: true,
       customerDiscount: true,
-      contractorPenalty: true,
-      driverPenalty: true,
+      contractorSurcharge: true,
       date: true,
     },
   });
@@ -106,7 +95,7 @@ export async function getDashboardStats() {
   return {
     todayCount,
     tomorrowCount,
-    inProgressCount,
+    openCount,
     overdueContractorsCount: overdueContractors.size,
     overdueAmount,
     driversOwedCount: driversOwed.size,

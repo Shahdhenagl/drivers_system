@@ -21,7 +21,7 @@ import { sameCairoDay } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
-import { EXTRA_PROFIT_METHOD, TIP_METHOD, methodLabel, TRIP_STATUS } from "@/lib/constants";
+import { EXTRA_PROFIT_METHOD, TIP_METHOD, methodLabel, TRIP_STATUS, tripStatus } from "@/lib/constants";
 import { ExtraProfitForm } from "@/components/extra-profit-form";
 import { TipForm } from "@/components/driver-tip-form";
 import { PartyAdjustments } from "@/components/party-adjustments";
@@ -171,7 +171,7 @@ export default async function SharedProfile({
       id: `ctrip-${t.id}`,
       date: t.date,
       description: `رحلة ${t.startPoint} ← ${t.endPoint}`,
-      details: `${t.driver ? `السواق: ${t.driver.name} • ` : ""}${TRIP_STATUS[t.status as keyof typeof TRIP_STATUS]}`,
+      details: `${t.driver ? `السواق: ${t.driver.name} • ` : ""}${TRIP_STATUS[tripStatus(t.status)]}`,
       onParty: effectiveAmounts(t).contractor,
     })),
     ...contractorPayments.map((p) => ({
@@ -214,7 +214,7 @@ export default async function SharedProfile({
       id: `dtrip-${t.id}`,
       date: t.date,
       description: `رحلة ${t.startPoint} ← ${t.endPoint}`,
-      details: `المقاول: ${t.contractor.name} • ${TRIP_STATUS[t.status as keyof typeof TRIP_STATUS]}`,
+      details: `المقاول: ${t.contractor.name} • ${TRIP_STATUS[tripStatus(t.status)]}`,
       forParty: effectiveAmounts(t).driver,
     })),
     ...driver.payments.map((p) => ({

@@ -107,11 +107,6 @@ export default async function FinancePage() {
           <Indicator label="سلف المقاولين" value={ov.totalContractorAdvances} tone="warning" />
           <Indicator label="إجمالي المصروفات" value={ov.totalExpenses} tone="destructive" />
           <Indicator label="إجمالي الربح" value={ov.grossProfit} tone="primary" />
-          <Indicator
-            label="إيراد الغرامات"
-            value={ov.totalPenaltyRevenue}
-            tone="primary"
-          />
           <Indicator label="سحوبات الشركاء" value={ov.totalPartnerWithdrawals} />
           <Indicator
             label="الربح القابل للتوزيع (محصّل)"

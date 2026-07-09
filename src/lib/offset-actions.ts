@@ -20,7 +20,7 @@ export async function offsetAccount(
 
   if (partyType === "DRIVER") {
     const trips = await prisma.trip.findMany({
-      where: { driverId: partyId, status: { not: "CANCELLED" } },
+      where: { driverId: partyId },
       orderBy: { date: "asc" },
       include: { driverPayments: true },
     });

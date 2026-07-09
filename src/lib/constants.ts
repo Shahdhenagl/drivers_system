@@ -1,23 +1,26 @@
 // اسم المكتب (يظهر في الواجهة ويُختَم به كل الرسائل)
 export const COMPANY_NAME = "مكتب رحلات الأصدقاء";
 
-// حالات الرحلة
+/**
+ * حالتان فقط: كل طلب يُسجَّل «مؤكدة»، ويتحوّل تلقائيًا إلى «مكتملة» لما يتم
+ * التحصيل بالكامل من المقاول ويُسدَّد مستحق السواق بالكامل. أي تعديل يفتح
+ * مبلغًا متبقيًا يرجّع الطلب «مؤكدة» تلقائيًا. الطلب قابل للتعديل في الحالتين.
+ */
 export const TRIP_STATUS = {
-  NEW: "جديدة",
   CONFIRMED: "مؤكدة",
-  IN_PROGRESS: "قيد التنفيذ",
   COMPLETED: "مكتملة",
-  CANCELLED: "ملغية",
 } as const;
 export type TripStatus = keyof typeof TRIP_STATUS;
 
 export const TRIP_STATUS_COLOR: Record<TripStatus, string> = {
-  NEW: "bg-muted text-muted-foreground",
   CONFIRMED: "bg-blue-500/15 text-blue-400",
-  IN_PROGRESS: "bg-warning/15 text-warning",
   COMPLETED: "bg-success/15 text-success",
-  CANCELLED: "bg-destructive/15 text-destructive",
 };
+
+/** أي حالة قديمة (جديدة/قيد التنفيذ/ملغية) تُقرأ كـ«مؤكدة» */
+export function tripStatus(status: string): TripStatus {
+  return status === "COMPLETED" ? "COMPLETED" : "CONFIRMED";
+}
 
 // حالة التحصيل من المقاول
 export const COLLECTION_STATUS = {

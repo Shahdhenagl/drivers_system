@@ -49,8 +49,6 @@ export default async function DriversPage({
             driverDue: true,
             driverTip: true,
             customerDiscount: true,
-            contractorPenalty: true,
-            driverPenalty: true,
             driverPayments: { select: { amount: true } },
           },
         },

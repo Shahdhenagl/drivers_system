@@ -35,7 +35,7 @@ import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
 import { contractorReport } from "@/lib/messages";
-import { COMPANY_NAME, methodLabel, TRIP_STATUS, EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
+import { COMPANY_NAME, methodLabel, TRIP_STATUS, tripStatus, EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
 import {
   Phone,
   MessageCircle,
@@ -236,7 +236,7 @@ export default async function ContractorProfile({
       id: `trip-${t.id}`,
       date: t.date,
       description: `رحلة ${t.startPoint} ← ${t.endPoint}`,
-      details: `${t.driver ? `السواق: ${t.driver.name} • ` : ""}${TRIP_STATUS[t.status as keyof typeof TRIP_STATUS]}`,
+      details: `${t.driver ? `السواق: ${t.driver.name} • ` : ""}${TRIP_STATUS[tripStatus(t.status)]}`,
       onParty: effectiveAmounts(t).contractor,
     })),
     ...payments.map((p) => ({
@@ -356,7 +356,7 @@ export default async function ContractorProfile({
           counterparty: t.driver?.name,
           contractorPrice: effectiveAmounts(t).contractor,
           driverDue: effectiveAmounts(t).driver,
-          statusLabel: TRIP_STATUS[t.status as keyof typeof TRIP_STATUS],
+          statusLabel: TRIP_STATUS[tripStatus(t.status)],
         }))}
       />
       <div className="space-y-4 py-3 print:hidden">

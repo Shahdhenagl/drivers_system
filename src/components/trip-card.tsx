@@ -6,9 +6,9 @@ import { formatShortDate } from "@/lib/format";
 import {
   TRIP_STATUS,
   TRIP_STATUS_COLOR,
+  tripStatus,
   COLLECTION_STATUS,
   COLLECTION_STATUS_COLOR,
-  type TripStatus,
   type CollectionStatus,
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -36,7 +36,7 @@ export function TripCard({ trip }: { trip: TripCardData }) {
     trip.contractorPrice -
     (trip.customerDiscount ?? 0) -
     (trip.driverDue + (trip.driverTip ?? 0));
-  const st = trip.status as TripStatus;
+  const st = tripStatus(trip.status);
   const cs = trip.collectionStatus as CollectionStatus;
 
   return (
