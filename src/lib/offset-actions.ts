@@ -173,3 +173,40 @@ export async function offsetAccount(
   revalidatePath("/contractors");
   revalidatePath("/finance");
 }
+
+/**
+ * بدء حساب جديد (أرشفة كشف الحساب): تصفير العرض فقط — تُخفي الحركات القديمة من
+ * الكشف الجاري وتبدأ من صفر. البيانات كلها تبقى محفوظة في قاعدة البيانات،
+ * فالربح والتقارير تظل صحيحة وشغّالة. تُستخدم بعد المقاصّة لما يتساوى له وعليه.
+ */
+export async function startNewStatement(
+  partyType: "DRIVER" | "CONTRACTOR",
+  partyId: string
+) {
+  const now = new Date();
+  try {
+    if (partyType === "DRIVER") {
+      await prisma.driver.update({
+        where: { id: partyId },
+        data: { statementClearedAt: now },
+      });
+      revalidatePath(`/drivers/${partyId}`);
+      revalidatePath("/drivers");
+    } else {
+      await prisma.contractor.update({
+        where: { id: partyId },
+        data: { statementClearedAt: now },
+      });
+      revalidatePath(`/contractors/${partyId}`);
+      revalidatePath("/contractors");
+    }
+  } catch {
+    return { error: "تعذّر بدء حساب جديد — تأكد من تحديث قاعدة البيانات" };
+  }
+  await audit(
+    "CLEAR_STATEMENT",
+    partyType === "DRIVER" ? "Driver" : "Contractor",
+    partyId
+  );
+  revalidatePath("/shared");
+}

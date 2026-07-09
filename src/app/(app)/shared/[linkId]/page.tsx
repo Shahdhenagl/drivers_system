@@ -10,7 +10,9 @@ import { AccountTotalSummary } from "@/components/account-total-summary";
 import { DailyReviewToggle } from "@/components/daily-review-toggle";
 import { CollectAllForm } from "../../contractors/[id]/collect-all-form";
 import { PayDriverForm } from "../../drivers/pay-driver-form";
-import { ConsolidatedLog } from "@/components/consolidated-log";
+import { PartyStatement } from "@/components/party-statement";
+import { StartNewStatementButton } from "@/components/start-new-statement-button";
+import type { StatementRow } from "@/components/party-print-statement";
 import { SharedForm } from "../shared-form";
 import { DeleteSharedButton } from "../delete-shared-button";
 import { setSharedReviewed } from "../actions";
@@ -19,7 +21,7 @@ import { sameCairoDay } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
-import { EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
+import { EXTRA_PROFIT_METHOD, TIP_METHOD, methodLabel, TRIP_STATUS } from "@/lib/constants";
 import { ExtraProfitForm } from "@/components/extra-profit-form";
 import { TipForm } from "@/components/driver-tip-form";
 import { PartyAdjustments } from "@/components/party-adjustments";
@@ -162,6 +164,110 @@ export default async function SharedProfile({
   const reviewedToday = contractor.lastReviewedAt
     ? sameCairoDay(contractor.lastReviewedAt, new Date())
     : false;
+
+  // ===== كشف الحساب المختصر لكل جانب =====
+  const cStatementRows: StatementRow[] = [
+    ...contractor.trips.map((t) => ({
+      id: `ctrip-${t.id}`,
+      date: t.date,
+      description: `رحلة ${t.startPoint} ← ${t.endPoint}`,
+      details: `${t.driver ? `السواق: ${t.driver.name} • ` : ""}${TRIP_STATUS[t.status as keyof typeof TRIP_STATUS]}`,
+      onParty: effectiveAmounts(t).contractor,
+    })),
+    ...contractorPayments.map((p) => ({
+      id: `collection-${p.id}`,
+      date: p.date,
+      description: `تحصيل من المقاول - ${methodLabel(p.method)}`,
+      details: p.route,
+      paid: p.amount,
+    })),
+    ...contractorAdvances.map((a) => ({
+      id: `cadvance-${a.id}`,
+      date: a.date,
+      description:
+        a.direction === "OUT"
+          ? `استلم من المكتب - ${methodLabel(a.method)}`
+          : `دفع للمكتب - ${methodLabel(a.method)}`,
+      details: a.note,
+      onParty: a.direction === "OUT" ? a.amount : undefined,
+      paid: a.direction === "IN" ? a.amount : undefined,
+      received: a.direction === "OUT" ? a.amount : undefined,
+    })),
+    ...contractorExternals.map((a) => {
+      const isBorrower = a.borrowerType === "CONTRACTOR" && a.borrowerId === contractor.id;
+      return {
+        id: `cexternal-${a.id}`,
+        date: a.date,
+        description: isBorrower
+          ? `استلم سلفة خارجية من ${a.lenderName}`
+          : `دفع سلفة خارجية إلى ${a.borrowerName}`,
+        details: `${a.status === "SETTLED" ? "مسددة" : "مفتوحة"}${a.note ? ` • ${a.note}` : ""}`,
+        forParty: isBorrower ? undefined : a.amount,
+        onParty: isBorrower ? a.amount : undefined,
+        paid: isBorrower ? undefined : a.amount,
+        received: isBorrower ? a.amount : undefined,
+      };
+    }),
+  ];
+  const dStatementRows: StatementRow[] = [
+    ...driver.trips.map((t) => ({
+      id: `dtrip-${t.id}`,
+      date: t.date,
+      description: `رحلة ${t.startPoint} ← ${t.endPoint}`,
+      details: `المقاول: ${t.contractor.name} • ${TRIP_STATUS[t.status as keyof typeof TRIP_STATUS]}`,
+      forParty: effectiveAmounts(t).driver,
+    })),
+    ...driver.payments.map((p) => ({
+      id: `payment-${p.id}`,
+      date: p.date,
+      description: `سداد للسواق - ${methodLabel(p.method)}`,
+      details: p.note
+        ? p.note
+        : p.trip
+          ? `${p.trip.startPoint} ← ${p.trip.endPoint}`
+          : null,
+      received: p.amount,
+    })),
+    ...driverAdvances.map((a) => ({
+      id: `dadvance-${a.id}`,
+      date: a.date,
+      description:
+        a.direction === "OUT"
+          ? `استلم من المكتب - ${methodLabel(a.method)}`
+          : `دفع للمكتب - ${methodLabel(a.method)}`,
+      details: a.note,
+      onParty: a.direction === "OUT" ? a.amount : undefined,
+      paid: a.direction === "IN" ? a.amount : undefined,
+      received: a.direction === "OUT" ? a.amount : undefined,
+    })),
+    ...driverExternals.map((a) => {
+      const isBorrower = a.borrowerType === "DRIVER" && a.borrowerId === driver.id;
+      return {
+        id: `dexternal-${a.id}`,
+        date: a.date,
+        description: isBorrower
+          ? `استلم سلفة خارجية من ${a.lenderName}`
+          : `دفع سلفة خارجية إلى ${a.borrowerName}`,
+        details: `${a.status === "SETTLED" ? "مسددة" : "مفتوحة"}${a.note ? ` • ${a.note}` : ""}`,
+        forParty: isBorrower ? undefined : a.amount,
+        onParty: isBorrower ? a.amount : undefined,
+        paid: isBorrower ? undefined : a.amount,
+        received: isBorrower ? a.amount : undefined,
+      };
+    }),
+  ];
+  const cClearedAt =
+    (contractor as { statementClearedAt?: Date | null }).statementClearedAt ?? null;
+  const dClearedAt =
+    (driver as { statementClearedAt?: Date | null }).statementClearedAt ?? null;
+  const cVisibleRows = cClearedAt
+    ? cStatementRows.filter((r) => +r.date >= +cClearedAt)
+    : cStatementRows;
+  const dVisibleRows = dClearedAt
+    ? dStatementRows.filter((r) => +r.date >= +dClearedAt)
+    : dStatementRows;
+  const cRowsNet = stmtNet(cVisibleRows);
+  const dRowsNet = stmtNet(dVisibleRows);
 
   const phones = [contractor.phone, contractor.altPhone, contractor.phone3];
   const sharedData = {
@@ -321,7 +427,17 @@ export default async function SharedProfile({
           advances={contractorExternals}
         />
 
-        <ConsolidatedLog title="سجل التحصيل" verb="تحصيل" items={contractorPayments} />
+        {cRowsNet === 0 && cVisibleRows.length > 0 && (
+          <div className="print:hidden">
+            <StartNewStatementButton partyType="CONTRACTOR" partyId={contractor.id} />
+          </div>
+        )}
+
+        <PartyStatement
+          title="كشف الحساب (كمقاول)"
+          rows={cVisibleRows}
+          clearedAt={cClearedAt}
+        />
 
         {/* ======================= جانب السواق ======================= */}
         <div className="flex items-center gap-2 pt-1 text-sm font-bold text-warning">
@@ -370,9 +486,27 @@ export default async function SharedProfile({
           advances={driverExternals}
         />
 
-        <ConsolidatedLog title="سجل السداد" verb="سداد" items={driver.payments} />
+        {dRowsNet === 0 && dVisibleRows.length > 0 && (
+          <div className="print:hidden">
+            <StartNewStatementButton partyType="DRIVER" partyId={driver.id} />
+          </div>
+        )}
+
+        <PartyStatement
+          title="كشف الحساب (كسواق)"
+          rows={dVisibleRows}
+          clearedAt={dClearedAt}
+        />
       </div>
     </>
+  );
+}
+
+/** صافي كشف الحساب من الصفوف: + = له، − = عليه (نفس حساب مكوّن الكشف) */
+function stmtNet(rows: StatementRow[]) {
+  return rows.reduce(
+    (s, r) => s + ((r.forParty ?? r.paid ?? 0) - (r.onParty ?? r.received ?? 0)),
+    0
   );
 }
 

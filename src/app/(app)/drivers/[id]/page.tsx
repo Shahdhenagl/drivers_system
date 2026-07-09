@@ -18,7 +18,8 @@ import { ExtraProfitForm } from "@/components/extra-profit-form";
 import { TipForm } from "@/components/driver-tip-form";
 import { PartyAdjustments } from "@/components/party-adjustments";
 import { OffsetAccountButton } from "@/components/offset-account-button";
-import { ConsolidatedLog } from "@/components/consolidated-log";
+import { StartNewStatementButton } from "@/components/start-new-statement-button";
+import { PartyStatement } from "@/components/party-statement";
 import { setDriverReviewed } from "../actions";
 import { formatMoney } from "@/lib/money";
 import {
@@ -285,6 +286,11 @@ export default async function DriverProfile({
     { forParty: 0, onParty: 0, paid: 0, received: 0 }
   );
   const netDriver = summaryFor - summaryOn;
+  // أرشفة كشف الحساب: نعرض الحركات الأحدث من تاريخ التصفير فقط (البيانات محفوظة)
+  const clearedAt = (d as { statementClearedAt?: Date | null }).statementClearedAt ?? null;
+  const visibleStatementRows = clearedAt
+    ? statementRows.filter((r) => +r.date >= +clearedAt)
+    : statementRows;
 
   // تقارير واتساب دورية
   const reportPeriods = [
@@ -469,6 +475,13 @@ export default async function DriverProfile({
           </div>
         )}
 
+        {/* بدء حساب جديد — يظهر لما يتساوى له وعليه */}
+        {netDriver === 0 && visibleStatementRows.length > 0 && (
+          <div className="print:hidden">
+            <StartNewStatementButton partyType="DRIVER" partyId={d.id} />
+          </div>
+        )}
+
         {/* ربح إضافي + إكرامية */}
         <div className="grid grid-cols-2 gap-2 print:hidden">
           <ExtraProfitForm partyType="DRIVER" partyId={d.id} />
@@ -513,8 +526,12 @@ export default async function DriverProfile({
           </div>
         </Card>
 
-        {/* سجل السداد المجمّع (سداد 8000 يوم كذا) */}
-        <ConsolidatedLog title="سجل السداد" verb="سداد" items={monthPayments} />
+        {/* كشف حساب مختصر: تاريخ • بيان • له • عليه • الرصيد الجاري + الفرق */}
+        <PartyStatement
+          title="كشف الحساب"
+          rows={visibleStatementRows}
+          clearedAt={clearedAt}
+        />
       </div>
     </>
   );

@@ -26,6 +26,8 @@ model Contractor {
   lastReviewedAt DateTime?
   // حساب مشترك: معرّف يربط سجل المقاول بسجل السواق لنفس الشخص (سواق ومقاول معًا)
   linkId    String?
+  // أرشفة كشف الحساب: تُخفي المعاملات قبل هذا التاريخ من الكشف الجاري (البيانات تبقى محفوظة)
+  statementClearedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -49,6 +51,8 @@ model Driver {
   lastReviewedAt DateTime?
   // حساب مشترك: معرّف يربط سجل السواق بسجل المقاول لنفس الشخص
   linkId        String?
+  // أرشفة كشف الحساب: تُخفي المعاملات قبل هذا التاريخ من الكشف الجاري (البيانات تبقى محفوظة)
+  statementClearedAt DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

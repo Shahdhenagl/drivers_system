@@ -17,7 +17,8 @@ import { ExtraProfitForm } from "@/components/extra-profit-form";
 import { TipForm } from "@/components/driver-tip-form";
 import { PartyAdjustments } from "@/components/party-adjustments";
 import { OffsetAccountButton } from "@/components/offset-account-button";
-import { ConsolidatedLog } from "@/components/consolidated-log";
+import { StartNewStatementButton } from "@/components/start-new-statement-button";
+import { PartyStatement } from "@/components/party-statement";
 import { CollectAllForm } from "./collect-all-form";
 import { setContractorReviewed } from "../actions";
 import { formatMoney } from "@/lib/money";
@@ -287,6 +288,11 @@ export default async function ContractorProfile({
     { forParty: 0, onParty: 0, paid: 0, received: 0 }
   );
   const netContractor = summaryOn - summaryFor;
+  // أرشفة كشف الحساب: نعرض الحركات الأحدث من تاريخ التصفير فقط (البيانات محفوظة)
+  const clearedAt = (c as { statementClearedAt?: Date | null }).statementClearedAt ?? null;
+  const visibleStatementRows = clearedAt
+    ? statementRows.filter((r) => +r.date >= +clearedAt)
+    : statementRows;
 
   // تقارير واتساب دورية
   const reportPeriods = [
@@ -473,6 +479,13 @@ export default async function ContractorProfile({
           </div>
         )}
 
+        {/* بدء حساب جديد — يظهر لما يتساوى له وعليه */}
+        {netContractor === 0 && visibleStatementRows.length > 0 && (
+          <div className="print:hidden">
+            <StartNewStatementButton partyType="CONTRACTOR" partyId={c.id} />
+          </div>
+        )}
+
         {/* ربح إضافي + إكرامية */}
         <div className="grid grid-cols-2 gap-2 print:hidden">
           <ExtraProfitForm partyType="CONTRACTOR" partyId={c.id} />
@@ -517,8 +530,12 @@ export default async function ContractorProfile({
           </div>
         </Card>
 
-        {/* سجل التحصيل المجمّع (تحصيل 8000 يوم كذا) */}
-        <ConsolidatedLog title="سجل التحصيل" verb="تحصيل" items={payments} />
+        {/* كشف حساب مختصر: تاريخ • بيان • له • عليه • الرصيد الجاري + الفرق */}
+        <PartyStatement
+          title="كشف الحساب"
+          rows={visibleStatementRows}
+          clearedAt={clearedAt}
+        />
       </div>
     </>
   );
