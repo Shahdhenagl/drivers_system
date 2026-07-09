@@ -35,7 +35,15 @@ import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
 import { driverReport } from "@/lib/messages";
-import { COMPANY_NAME, methodLabel, TRIP_STATUS, tripStatus, EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
+import {
+  COMPANY_NAME,
+  driverIdFromAccountMethod,
+  methodLabel,
+  TRIP_STATUS,
+  tripStatus,
+  EXTRA_PROFIT_METHOD,
+  TIP_METHOD,
+} from "@/lib/constants";
 import {
   Phone,
   MessageCircle,
@@ -245,7 +253,16 @@ export default async function DriverProfile({
       received: p.amount,
     })),
     ...advances
-      .filter((a) => inBounds(a.date))
+      .filter((a) => inBounds(a.date) && driverIdFromAccountMethod(a.method))
+      .map((a) => ({
+        id: `partner-settlement-${a.id}`,
+        date: a.date,
+        description: "ربح شريك على حساب السواق",
+        details: a.note,
+        forParty: a.amount,
+      })),
+    ...advances
+      .filter((a) => inBounds(a.date) && !driverIdFromAccountMethod(a.method))
       .map((a) => ({
         id: `advance-${a.id}`,
         date: a.date,

@@ -13,7 +13,7 @@ import { getDashboardStats } from "@/lib/dashboard";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
-import { PAYMENT_METHODS } from "@/lib/constants";
+import { methodLabel } from "@/lib/constants";
 import { Pencil, ArrowRight, Handshake } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -127,7 +127,7 @@ export default async function PartnerProfile({
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {formatShortDate(w.date)} •{" "}
-                      {PAYMENT_METHODS[w.method as keyof typeof PAYMENT_METHODS]}
+                      {methodLabel(w.method)}
                     </div>
                     {w.note && (
                       <div className="truncate text-xs text-muted-foreground">

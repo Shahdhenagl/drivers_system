@@ -33,7 +33,7 @@ export async function addExpense(formData: FormData) {
   }
   if (collector) {
     await prisma.$transaction(async (tx) => {
-      await tx.expense.create({
+      const exp = await tx.expense.create({
         data: {
           name,
           category: get("category") || null,
@@ -51,7 +51,7 @@ export async function addExpense(formData: FormData) {
           amount,
           direction: "IN",
           method,
-          note: `مصروف عن طريق ${collector.name}: ${name}`,
+          note: `مصروف عن طريق ${collector.name}: ${name} [expense:${exp.id}]`,
           date,
         },
       });
@@ -227,13 +227,40 @@ export async function adjustTreasury(formData: FormData) {
 export async function deleteExpense(id: string) {
   const exp = await prisma.expense.findUnique({ where: { id } });
   if (!exp) return;
+  const collector = await resolveCollector(exp.method);
   await prisma.$transaction(async (tx) => {
     await tx.ledgerEntry.deleteMany({
       where: { refType: "Expense", refId: id },
     });
+    if (collector && !("notFound" in collector)) {
+      const linkedAdvance = await tx.advance.findFirst({
+        where: {
+          partyType: "DRIVER",
+          partyId: collector.id,
+          amount: exp.amount,
+          direction: "IN",
+          method: exp.method,
+          OR: [
+            { note: { contains: `[expense:${id}]` } },
+            {
+              note: `مصروف عن طريق ${collector.name}: ${exp.name}`,
+              date: exp.date,
+            },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      if (linkedAdvance) {
+        await tx.advance.delete({ where: { id: linkedAdvance.id } });
+      }
+    }
     await tx.expense.delete({ where: { id } });
   });
   await audit("DELETE", "Expense", id);
   revalidatePath("/finance");
+  if (collector && !("notFound" in collector)) {
+    revalidatePath(`/drivers/${collector.id}`);
+    revalidatePath("/drivers");
+  }
   revalidatePath("/");
 }

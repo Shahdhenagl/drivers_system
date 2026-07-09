@@ -14,16 +14,27 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/submit-button";
-import { MethodSelect } from "@/components/method-select";
 import { distributeProfits } from "./actions";
 import { playSound } from "@/lib/sounds";
 import { formatMoney, toEgp } from "@/lib/money";
+import {
+  driverAccountMethodValue,
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_KEYS,
+} from "@/lib/constants";
 import { PieChart } from "lucide-react";
+
+type PartnerOption = { id: string; name: string };
+type DriverOption = { id: string; name: string };
 
 export function DistributeForm({
   distributableProfit,
+  partners,
+  drivers,
 }: {
   distributableProfit: number;
+  partners: PartnerOption[];
+  drivers: DriverOption[];
 }) {
   const [open, setOpen] = useState(false);
   const [err, setErr] = useState("");
@@ -65,7 +76,7 @@ export function DistributeForm({
         </p>
         <form action={action} className="space-y-3">
           <div className="space-y-1.5">
-            <Label htmlFor="amount">المبلغ الموزّع (ج.م) *</Label>
+            <Label htmlFor="amount">المبلغ الموزع (ج.م) *</Label>
             <Input
               id="amount"
               name="amount"
@@ -78,14 +89,35 @@ export function DistributeForm({
               required
               autoFocus
             />
-            <p className="text-xs text-muted-foreground">
-              مملوء بكامل الربح المتاح — يُقسَّم تلقائيًا على الشركاء حسب نسبهم، ولا يمكن تجاوزه.
-            </p>
           </div>
-          <div className="space-y-1.5">
-            <Label>طريقة الصرف</Label>
-            <MethodSelect />
+
+          <div className="space-y-2">
+            <Label>استلام كل شريك</Label>
+            {partners.map((partner) => (
+              <div key={partner.id} className="grid gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {partner.name}
+                </span>
+                <select
+                  name={`method_${partner.id}`}
+                  defaultValue="cash"
+                  className="h-10 rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {PAYMENT_METHOD_KEYS.map((m) => (
+                    <option key={m} value={m}>
+                      {PAYMENT_METHODS[m]}
+                    </option>
+                  ))}
+                  {drivers.map((driver) => (
+                    <option key={driver.id} value={driverAccountMethodValue(driver.id)}>
+                      حساب السواق - {driver.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
           </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="note">ملاحظة</Label>
             <Textarea id="note" name="note" />

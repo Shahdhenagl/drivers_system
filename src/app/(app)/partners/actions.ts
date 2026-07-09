@@ -9,6 +9,11 @@ import { getFinanceOverview } from "@/lib/finance-overview";
 import { toPiastres, formatMoney } from "@/lib/money";
 import { sendTelegram } from "@/lib/telegram";
 import { adminDistributionMessage } from "@/lib/messages";
+import {
+  driverIdFromAccountMethod,
+  methodLabel,
+  PAYMENT_METHOD_KEYS,
+} from "@/lib/constants";
 
 export async function createPartner(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
@@ -56,7 +61,6 @@ export async function deletePartner(id: string) {
   redirect("/partners");
 }
 
-/** سحب فردي لشريك */
 export async function addWithdrawal(partnerId: string, formData: FormData) {
   const amount = toPiastres(String(formData.get("amount") ?? "0"));
   const method = String(formData.get("method") ?? "cash");
@@ -78,7 +82,7 @@ export async function addWithdrawal(partnerId: string, formData: FormData) {
       direction: "OUT",
       amount,
       method,
-      description: `سحب شريك — ${partner?.name ?? ""}`,
+      description: `سحب شريك - ${partner?.name ?? ""}`,
       refType: "PartnerWithdrawal",
       refId: w.id,
     });
@@ -90,30 +94,41 @@ export async function addWithdrawal(partnerId: string, formData: FormData) {
   revalidatePath("/finance");
 }
 
-/** حذف سحب شريك — يزيل السحب وقيد دفتر الأستاذ المرتبط (فيرجع للخزنة) */
 export async function deleteWithdrawal(id: string) {
   const w = await prisma.partnerWithdrawal.findUnique({ where: { id } });
   if (!w) return { error: "السحب غير موجود" };
+  const driverId = driverIdFromAccountMethod(w.method);
+
   await prisma.$transaction(async (tx) => {
     await tx.ledgerEntry.deleteMany({
       where: { refType: "PartnerWithdrawal", refId: id },
     });
+    if (driverId) {
+      const linkedAdvance = await tx.advance.findFirst({
+        where: {
+          partyType: "DRIVER",
+          partyId: driverId,
+          amount: w.amount,
+          direction: "IN",
+          method: w.method,
+          note: { contains: `[withdrawal:${id}]` },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      if (linkedAdvance) await tx.advance.delete({ where: { id: linkedAdvance.id } });
+    }
     await tx.partnerWithdrawal.delete({ where: { id } });
   });
+
   await audit("DELETE_WITHDRAW", "Partner", w.partnerId, { amount: w.amount });
   revalidatePath(`/partners/${w.partnerId}`);
   revalidatePath("/partners");
   revalidatePath("/finance");
+  if (driverId) revalidatePath(`/drivers/${driverId}`);
   revalidatePath("/");
 }
 
-/**
- * تصفية الخزنة: توزيع الربح على الشركاء حسب النسبة (كاش).
- * لو لم يُحدَّد مبلغ يوزّع كامل الربح المتاح. لا يمكن توزيع أكثر من الربح المتاح.
- * يرسل تقريرًا بالتوزيع والنسب لكل شريك على تيليجرام.
- */
 export async function distributeProfits(formData: FormData) {
-  const method = String(formData.get("method") ?? "cash");
   const note = String(formData.get("note") ?? "").trim() || null;
 
   const partners = await prisma.partner.findMany();
@@ -122,51 +137,100 @@ export async function distributeProfits(formData: FormData) {
   const totalShare = partners.reduce((a, p) => a + p.sharePercent, 0);
   if (totalShare <= 0) return { error: "نسب الشركاء غير صحيحة" };
 
-  // الربح المتاح للتوزيع = صافي الربح بعد المصروفات وسحوبات الشركاء السابقة
   const ov = await getFinanceOverview();
   const pool = Math.max(ov.distributableProfit, 0);
-  if (pool <= 0)
-    return { error: "لا يوجد ربح متاح للتوزيع — راجع صافي الربح أو المصروفات أولًا" };
+  if (pool <= 0) return { error: "لا يوجد ربح متاح للتوزيع" };
 
-  // لو تُرك المبلغ فارغًا نوزّع كامل الربح المتاح
   const raw = toPiastres(String(formData.get("amount") ?? "0"));
   const amount = raw > 0 ? raw : pool;
   if (amount > pool) {
     return {
-      error: `الربح المتاح للتوزيع ${formatMoney(pool)} — لا يمكن توزيع أكثر منه`,
+      error: `الربح المتاح للتوزيع ${formatMoney(pool)} - لا يمكن توزيع أكثر منه`,
     };
   }
 
-  // لا بد من توفّر كاش فعلي بالخزنة يغطّي التوزيع
-  const plan = await planSpend(method, amount, false);
-  if (!plan.ok) {
-    return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
+  const shares = partners
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      percent: p.sharePercent,
+      amount: Math.round((amount * p.sharePercent) / totalShare),
+      method: String(formData.get(`method_${p.id}`) ?? "cash"),
+    }))
+    .filter((s) => s.amount > 0);
+
+  const driverIds = shares
+    .map((s) => driverIdFromAccountMethod(s.method))
+    .filter((id): id is string => Boolean(id));
+  const drivers = driverIds.length
+    ? await prisma.driver.findMany({
+        where: { id: { in: driverIds } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const driverById = new Map(drivers.map((d) => [d.id, d]));
+
+  for (const s of shares) {
+    const driverId = driverIdFromAccountMethod(s.method);
+    if (driverId && !driverById.has(driverId)) {
+      return { error: `حساب السواق المختار للشريك ${s.name} غير موجود` };
+    }
+    if (!driverId && !PAYMENT_METHOD_KEYS.includes(s.method as never)) {
+      return { error: `طريقة استلام غير صحيحة للشريك ${s.name}` };
+    }
   }
 
-  const shares: { name: string; percent: number; amount: number }[] = [];
+  const methodTotals = new Map<string, number>();
+  for (const s of shares) {
+    if (driverIdFromAccountMethod(s.method)) continue;
+    methodTotals.set(s.method, (methodTotals.get(s.method) ?? 0) + s.amount);
+  }
+  for (const [m, total] of methodTotals) {
+    const plan = await planSpend(m, total, false);
+    if (!plan.ok) {
+      return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
+    }
+  }
+
+  const reportShares: { name: string; percent: number; amount: number }[] = [];
   await prisma.$transaction(async (tx) => {
     const settlement = await tx.settlement.create({
       data: { totalProfit: amount, note },
     });
-    for (const p of partners) {
-      const share = Math.round((amount * p.sharePercent) / totalShare);
-      if (share <= 0) continue;
-      shares.push({ name: p.name, percent: p.sharePercent, amount: share });
+    for (const s of shares) {
+      const driverId = driverIdFromAccountMethod(s.method);
+      const driver = driverId ? driverById.get(driverId) : null;
       const w = await tx.partnerWithdrawal.create({
         data: {
-          partnerId: p.id,
-          amount: share,
-          method,
-          note: "توزيع أرباح",
+          partnerId: s.id,
+          amount: s.amount,
+          method: s.method,
+          note: driver
+            ? `توزيع أرباح على حساب السواق ${driver.name}`
+            : "توزيع أرباح",
           settlementId: settlement.id,
         },
       });
+      reportShares.push({ name: s.name, percent: s.percent, amount: s.amount });
+      if (driver) {
+        await tx.advance.create({
+          data: {
+            partyType: "DRIVER",
+            partyId: driver.id,
+            amount: s.amount,
+            direction: "IN",
+            method: s.method,
+            note: `ربح شريك مستلم على حساب السواق - ${s.name} [withdrawal:${w.id}]`,
+          },
+        });
+        continue;
+      }
       await recordLedger(tx, {
         type: "PARTNER_WITHDRAWAL",
         direction: "OUT",
-        amount: share,
-        method,
-        description: `توزيع أرباح — ${p.name} (${p.sharePercent}%)`,
+        amount: s.amount,
+        method: s.method,
+        description: `توزيع أرباح - ${s.name} (${s.percent}%) - ${methodLabel(s.method)}`,
         refType: "PartnerWithdrawal",
         refId: w.id,
       });
@@ -175,16 +239,17 @@ export async function distributeProfits(formData: FormData) {
 
   await audit("DISTRIBUTE", "Settlement", undefined, { amount });
 
-  // تقرير التوزيع على تيليجرام (لا يعطّل العملية لو فشل)
   try {
     await sendTelegram(
-      adminDistributionMessage({ total: amount, method, note, shares })
+      adminDistributionMessage({ total: amount, method: "mixed", note, shares: reportShares })
     );
   } catch {
-    // تجاهل فشل الإشعار
+    // Ignore notification errors.
   }
 
   revalidatePath("/partners");
+  for (const driverId of driverIds) revalidatePath(`/drivers/${driverId}`);
+  if (driverIds.length) revalidatePath("/drivers");
   revalidatePath("/finance");
   revalidatePath("/");
 }

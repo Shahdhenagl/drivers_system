@@ -60,10 +60,21 @@ export const TIP_METHOD = "party_tip";
 // على حسابهم (سلفة) ولا يدخل خزنة المكتب حتى يُحصَّل منهم لاحقًا. ثابتون بالاسم.
 export const COLLECTORS = ["عبد العزيز نوح", "عوض البطل"] as const;
 export const COLLECTOR_METHOD_PREFIX = "عن طريق ";
+export const DRIVER_ACCOUNT_METHOD_PREFIX = "driver_account:";
 
 /** قيمة طريقة الدفع لمحصّل معيّن، مثل: "عن طريق عبد العزيز نوح" */
 export function collectorMethodValue(name: string): string {
   return `${COLLECTOR_METHOD_PREFIX}${name}`;
+}
+
+export function driverAccountMethodValue(driverId: string): string {
+  return `${DRIVER_ACCOUNT_METHOD_PREFIX}${driverId}`;
+}
+
+export function driverIdFromAccountMethod(m: string): string | null {
+  return m.startsWith(DRIVER_ACCOUNT_METHOD_PREFIX)
+    ? m.slice(DRIVER_ACCOUNT_METHOD_PREFIX.length)
+    : null;
 }
 
 /** لو الطريقة تخص محصّلًا معروفًا يرجّع اسمه، وإلا null */
@@ -75,10 +86,12 @@ export function collectorNameFromMethod(m: string): string | null {
 
 /** اسم طريقة الدفع للعرض (يشمل الطرق الخاصة والمحصّلين) */
 export function methodLabel(m: string): string {
+  if (m === "mixed") return "متعدد";
   if (m === VIA_DRIVER) return "عن طريق السواق";
   if (m === OFFSET) return "خصم من السلفة";
   if (m === EXTRA_PROFIT_METHOD) return "ربح إضافي";
   if (m === TIP_METHOD) return "إكرامية";
+  if (driverIdFromAccountMethod(m)) return "على حساب السواق";
   // طرق المحصّلين مخزَّنة بنصها الظاهر ("عن طريق <اسم>") فتُعرض كما هي
   if (collectorNameFromMethod(m)) return m;
   return PAYMENT_METHODS[m as PaymentMethod] ?? m;
