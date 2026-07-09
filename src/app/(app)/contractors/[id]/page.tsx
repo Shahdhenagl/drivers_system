@@ -346,6 +346,18 @@ export default async function ContractorProfile({
           netAmount: Math.abs(netContractor),
         }}
         rows={statementRows}
+        counterpartyLabel="السواق"
+        trips={trips.map((t) => ({
+          id: t.id,
+          date: t.date,
+          startPoint: t.startPoint,
+          endPoint: t.endPoint,
+          vehicleType: t.vehicleType,
+          counterparty: t.driver?.name,
+          contractorPrice: effectiveAmounts(t).contractor,
+          driverDue: effectiveAmounts(t).driver,
+          statusLabel: TRIP_STATUS[t.status as keyof typeof TRIP_STATUS],
+        }))}
       />
       <div className="space-y-4 py-3 print:hidden">
         <Link

@@ -212,6 +212,20 @@
     color: #4b5563;
     font-size: 10px;
   }
+  .print-statement__section-title {
+    margin-top: 16px;
+    border-bottom: 1px solid #111827;
+    padding-bottom: 3px;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .print-statement__section-title + .print-statement__table {
+    margin-top: 6px;
+  }
+  .print-statement__table tfoot td {
+    background: #f3f4f6;
+    font-weight: 900;
+  }
   .print-statement__empty {
     padding: 18px !important;
     text-align: center;

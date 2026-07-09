@@ -12,6 +12,20 @@ export type StatementRow = {
   received?: number;
 };
 
+/** رحلة في جدول تفاصيل الرحلات بكشف الحساب المطبوع */
+export type PrintTrip = {
+  id: string;
+  date: Date;
+  startPoint: string;
+  endPoint: string;
+  vehicleType?: string | null;
+  /** الطرف المقابل: اسم السواق في ملف المقاول، واسم المقاول في ملف السواق */
+  counterparty?: string | null;
+  contractorPrice: number;
+  driverDue: number;
+  statusLabel?: string;
+};
+
 export function PartyPrintStatement({
   companyName,
   partyType,
@@ -21,6 +35,8 @@ export function PartyPrintStatement({
   generatedAt,
   summary,
   rows,
+  trips,
+  counterpartyLabel,
 }: {
   companyName: string;
   partyType: string;
@@ -37,8 +53,18 @@ export function PartyPrintStatement({
     netAmount: number;
   };
   rows: StatementRow[];
+  trips?: PrintTrip[];
+  counterpartyLabel?: string;
 }) {
   const sortedRows = [...rows].sort((a, b) => +a.date - +b.date);
+  const sortedTrips = [...(trips ?? [])].sort((a, b) => +a.date - +b.date);
+  const tripTotals = sortedTrips.reduce(
+    (acc, t) => ({
+      contractorPrice: acc.contractorPrice + t.contractorPrice,
+      driverDue: acc.driverDue + t.driverDue,
+    }),
+    { contractorPrice: 0, driverDue: 0 }
+  );
 
   return (
     <section dir="rtl" className="hidden print:block">
@@ -79,6 +105,65 @@ export function PartyPrintStatement({
           <SummaryCell label={summary.netLabel} value={summary.netAmount} strong />
         </div>
 
+        {trips && (
+          <>
+            <div className="print-statement__section-title">
+              تفاصيل الرحلات ({sortedTrips.length})
+            </div>
+            <table className="print-statement__table">
+              <thead>
+                <tr>
+                  <th>التاريخ</th>
+                  <th>الرحلة</th>
+                  <th>نوع العربية</th>
+                  {counterpartyLabel ? <th>{counterpartyLabel}</th> : null}
+                  <th>سعر المقاول</th>
+                  <th>مستحق السواق</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedTrips.length === 0 ? (
+                  <tr>
+                    <td colSpan={counterpartyLabel ? 6 : 5} className="print-statement__empty">
+                      لا توجد رحلات في الفترة المحددة
+                    </td>
+                  </tr>
+                ) : (
+                  sortedTrips.map((t) => (
+                    <tr key={t.id}>
+                      <td>{formatShortDate(t.date)}</td>
+                      <td>
+                        <div className="print-statement__desc">
+                          {t.startPoint} ← {t.endPoint}
+                        </div>
+                        {t.statusLabel ? (
+                          <div className="print-statement__details">{t.statusLabel}</div>
+                        ) : null}
+                      </td>
+                      <td>{t.vehicleType || "-"}</td>
+                      {counterpartyLabel ? <td>{t.counterparty || "-"}</td> : null}
+                      <MoneyCell value={t.contractorPrice} />
+                      <MoneyCell value={t.driverDue} />
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {sortedTrips.length > 0 && (
+                <tfoot>
+                  <tr>
+                    <td colSpan={counterpartyLabel ? 4 : 3}>
+                      <strong>الإجمالي</strong>
+                    </td>
+                    <MoneyCell value={tripTotals.contractorPrice} />
+                    <MoneyCell value={tripTotals.driverDue} />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </>
+        )}
+
+        <div className="print-statement__section-title">حركات الحساب</div>
         <table className="print-statement__table">
           <thead>
             <tr>
