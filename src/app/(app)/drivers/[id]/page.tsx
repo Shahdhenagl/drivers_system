@@ -43,6 +43,7 @@ import {
   tripStatus,
   EXTRA_PROFIT_METHOD,
   TIP_METHOD,
+  isSystemAdvanceMethod,
 } from "@/lib/constants";
 import {
   Phone,
@@ -266,8 +267,9 @@ export default async function DriverProfile({
       .map((a) => ({
         id: `advance-${a.id}`,
         date: a.date,
-        description:
-          a.direction === "OUT"
+        description: isSystemAdvanceMethod(a.method)
+          ? methodLabel(a.method)
+          : a.direction === "OUT"
             ? `استلم من المكتب - ${methodLabel(a.method)}`
             : `دفع للمكتب - ${methodLabel(a.method)}`,
         details: a.note,
@@ -369,19 +371,21 @@ export default async function DriverProfile({
                 : "الحساب متعادل",
           netAmount: Math.abs(netDriver),
         }}
-        rows={statementRows}
+        rows={visibleStatementRows}
         counterpartyLabel="المقاول"
-        trips={trips.map((t) => ({
-          id: t.id,
-          date: t.date,
-          startPoint: t.startPoint,
-          endPoint: t.endPoint,
-          vehicleType: t.vehicleType,
-          counterparty: t.contractor.name,
-          contractorPrice: effectiveAmounts(t).contractor,
-          driverDue: effectiveAmounts(t).driver,
-          statusLabel: TRIP_STATUS[tripStatus(t.status)],
-        }))}
+        trips={trips
+          .filter((t) => !clearedAt || +t.date >= +clearedAt)
+          .map((t) => ({
+            id: t.id,
+            date: t.date,
+            startPoint: t.startPoint,
+            endPoint: t.endPoint,
+            vehicleType: t.vehicleType,
+            counterparty: t.contractor.name,
+            contractorPrice: effectiveAmounts(t).contractor,
+            driverDue: effectiveAmounts(t).driver,
+            statusLabel: TRIP_STATUS[tripStatus(t.status)],
+          }))}
       />
       <div className="space-y-4 py-3 print:hidden">
         <Link

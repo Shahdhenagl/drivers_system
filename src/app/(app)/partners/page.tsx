@@ -151,7 +151,7 @@ export default async function PartnersPage({
 
         {partners.length > 0 && (
           <DistributeForm
-            distributableProfit={ov.distributableProfit}
+            distributableProfit={ov.realizedProfit}
             partners={partners.map((p) => ({ id: p.id, name: p.name }))}
             drivers={drivers}
           />

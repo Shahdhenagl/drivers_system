@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { recordLedger, planSpend } from "@/lib/finance";
 import { toPiastres } from "@/lib/money";
-import { methodLabel } from "@/lib/constants";
+import { methodLabel, isSystemAdvanceMethod } from "@/lib/constants";
 import { sendTelegram } from "@/lib/telegram";
 import { adminAdvanceDeleteMessage, adminAdvanceMessage } from "@/lib/messages";
 
@@ -162,6 +162,14 @@ export async function editAdvance(id: string, formData: FormData) {
   const adv = await prisma.advance.findUnique({ where: { id } });
   if (!adv) return { error: "الحركة غير موجودة" };
 
+  // حركات مولّدة تلقائيًا (مقاصّة/محصّل/عن طريق السواق/ربح إضافي/إكرامية) لا تُعدَّل من هنا
+  if (isSystemAdvanceMethod(adv.method)) {
+    return {
+      error:
+        "هذه حركة مرتبطة بعملية أخرى (مقاصّة/تحصيل عن طريق طرف) — عدّلها من مصدرها لا من لوحة السلف",
+    };
+  }
+
   const name = await partyName(adv.partyType, adv.partyId);
   if (!name) return { error: "الطرف غير موجود" };
 
@@ -173,6 +181,24 @@ export async function editAdvance(id: string, formData: FormData) {
       ? "ADVANCE_OUT"
       : "ADVANCE_IN";
 
+  // صرف جديد (OUT): امنع نزول الخزنة تحت الصفر — احسب المتاح بعد استبعاد القيد القديم
+  let outEntries: { method: string; amount: number }[] = [{ method, amount }];
+  if (direction === "OUT") {
+    const oldOut =
+      adv.direction === "OUT"
+        ? await prisma.ledgerEntry.aggregate({
+            where: { refType: "Advance", refId: id, direction: "OUT" },
+            _sum: { amount: true },
+          })
+        : { _sum: { amount: 0 } };
+    // نعيد إضافة القيمة القديمة افتراضيًا ثم نخطّط الصرف الجديد على الرصيد المصحّح
+    const plan = await planSpend(method, amount, false, oldOut._sum.amount ?? 0);
+    if (!plan.ok) {
+      return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
+    }
+    outEntries = plan.entries;
+  }
+
   await prisma.$transaction(async (tx) => {
     // احذف قيود الدفتر القديمة لهذه الحركة (قد تكون أكثر من قيد لو صُرفت من عدة وسائل)
     await tx.ledgerEntry.deleteMany({ where: { refType: "Advance", refId: id } });
@@ -180,19 +206,33 @@ export async function editAdvance(id: string, formData: FormData) {
       where: { id },
       data: { amount, method, note, direction, date },
     });
-    await recordLedger(tx, {
-      type: ledgerType,
-      direction: direction as "IN" | "OUT",
-      amount,
-      method,
-      description:
-        direction === "OUT"
-          ? `${label} ${pLabel} — ${name}`
-          : `${label} من ${pLabel} — ${name}`,
-      refType: "Advance",
-      refId: id,
-      date,
-    });
+    if (direction === "OUT") {
+      for (const e of outEntries) {
+        await recordLedger(tx, {
+          type: ledgerType,
+          direction: "OUT",
+          amount: e.amount,
+          method: e.method,
+          description:
+            `${label} ${pLabel} — ${name}` +
+            (outEntries.length > 1 ? ` (${methodLabel(e.method)})` : ""),
+          refType: "Advance",
+          refId: id,
+          date,
+        });
+      }
+    } else {
+      await recordLedger(tx, {
+        type: ledgerType,
+        direction: "IN",
+        amount,
+        method,
+        description: `${label} من ${pLabel} — ${name}`,
+        refType: "Advance",
+        refId: id,
+        date,
+      });
+    }
   });
 
   await audit(
@@ -212,6 +252,14 @@ export async function editAdvance(id: string, formData: FormData) {
 export async function deleteAdvance(id: string) {
   const adv = await prisma.advance.findUnique({ where: { id } });
   if (!adv) return { error: "الحركة غير موجودة" };
+
+  // حركات مولّدة تلقائيًا لها نصف مقابل على رحلة — حذفها من هنا يترك الحساب مختلًّا
+  if (isSystemAdvanceMethod(adv.method)) {
+    return {
+      error:
+        "هذه حركة مرتبطة بعملية أخرى (مقاصّة/تحصيل عن طريق طرف) — احذفها من مصدرها لا من لوحة السلف",
+    };
+  }
 
   const name = await partyName(adv.partyType, adv.partyId);
   if (!name) return { error: "الطرف غير موجود" };

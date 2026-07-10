@@ -21,6 +21,15 @@ export async function createPartner(formData: FormData) {
   if (!name || sharePercent <= 0)
     return { error: "اكتب اسم الشريك ونسبة صحيحة" };
 
+  // مجموع نسب الشركاء لا يتجاوز 100%
+  const others = await prisma.partner.aggregate({ _sum: { sharePercent: true } });
+  const othersTotal = others._sum.sharePercent ?? 0;
+  if (othersTotal + sharePercent > 100) {
+    return {
+      error: `مجموع نسب الشركاء لا يتجاوز 100% — المتبقّي المتاح ${100 - othersTotal}%`,
+    };
+  }
+
   const p = await prisma.partner.create({
     data: {
       name,
@@ -37,6 +46,18 @@ export async function updatePartner(id: string, formData: FormData) {
   const sharePercent = Number(formData.get("sharePercent") ?? "0");
   if (!name || sharePercent <= 0)
     return { error: "اكتب اسم الشريك ونسبة صحيحة" };
+
+  // مجموع نسب الشركاء (بعد هذا التعديل) لا يتجاوز 100%
+  const others = await prisma.partner.aggregate({
+    where: { id: { not: id } },
+    _sum: { sharePercent: true },
+  });
+  const othersTotal = others._sum.sharePercent ?? 0;
+  if (othersTotal + sharePercent > 100) {
+    return {
+      error: `مجموع نسب الشركاء لا يتجاوز 100% — المتبقّي المتاح ${100 - othersTotal}%`,
+    };
+  }
 
   await prisma.partner.update({
     where: { id },
@@ -66,6 +87,22 @@ export async function addWithdrawal(partnerId: string, formData: FormData) {
   const method = String(formData.get("method") ?? "cash");
   const note = String(formData.get("note") ?? "").trim() || null;
   if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
+
+  // السحب لا يتجاوز نصيب الشريك من الربح المحصّل نقدًا ناقص ما سحبه سابقًا
+  const partnerRow = await prisma.partner.findUnique({
+    where: { id: partnerId },
+    include: { withdrawals: { select: { amount: true } } },
+  });
+  if (!partnerRow) return { error: "الشريك غير موجود" };
+  const ov = await getFinanceOverview();
+  const entitlement = Math.round((ov.grossRealizedProfit * partnerRow.sharePercent) / 100);
+  const alreadyWithdrawn = partnerRow.withdrawals.reduce((a, w) => a + w.amount, 0);
+  const partnerAvailable = Math.max(entitlement - alreadyWithdrawn, 0);
+  if (amount > partnerAvailable) {
+    return {
+      error: `نصيب الشريك المتاح للسحب ${formatMoney(partnerAvailable)} — لا يمكن سحب أكثر منه`,
+    };
+  }
 
   const plan = await planSpend(method, amount, false);
   if (!plan.ok) {
@@ -136,10 +173,17 @@ export async function distributeProfits(formData: FormData) {
 
   const totalShare = partners.reduce((a, p) => a + p.sharePercent, 0);
   if (totalShare <= 0) return { error: "نسب الشركاء غير صحيحة" };
+  // التوزيع يتطلّب اكتمال النسب إلى 100% حتى يأخذ كل شريك نصيبه الصحيح كاملًا
+  if (Math.abs(totalShare - 100) > 0.001) {
+    return {
+      error: `مجموع نسب الشركاء ${totalShare}% — يجب أن يكون 100% قبل التوزيع`,
+    };
+  }
 
   const ov = await getFinanceOverview();
-  const pool = Math.max(ov.distributableProfit, 0);
-  if (pool <= 0) return { error: "لا يوجد ربح متاح للتوزيع" };
+  // التوزيع من الربح المحصّل نقدًا فقط — لا يُوزَّع ربح لم يدخل الخزنة فعلًا (حماية رأس المال)
+  const pool = Math.max(ov.realizedProfit, 0);
+  if (pool <= 0) return { error: "لا يوجد ربح محصّل نقدًا متاح للتوزيع" };
 
   const raw = toPiastres(String(formData.get("amount") ?? "0"));
   const amount = raw > 0 ? raw : pool;
@@ -149,15 +193,20 @@ export async function distributeProfits(formData: FormData) {
     };
   }
 
-  const shares = partners
-    .map((p) => ({
-      id: p.id,
-      name: p.name,
-      percent: p.sharePercent,
-      amount: Math.round((amount * p.sharePercent) / totalShare),
-      method: String(formData.get(`method_${p.id}`) ?? "cash"),
-    }))
-    .filter((s) => s.amount > 0);
+  const allShares = partners.map((p) => ({
+    id: p.id,
+    name: p.name,
+    percent: p.sharePercent,
+    amount: Math.round((amount * p.sharePercent) / totalShare),
+    method: String(formData.get(`method_${p.id}`) ?? "cash"),
+  }));
+  // تصحيح فرق التقريب حتى يساوي مجموع الأنصبة المبلغ المطلوب بالضبط (يُضاف للأكبر نصيبًا)
+  const roundingDiff = amount - allShares.reduce((a, s) => a + s.amount, 0);
+  if (roundingDiff !== 0 && allShares.length > 0) {
+    const biggest = allShares.reduce((a, b) => (b.amount > a.amount ? b : a));
+    biggest.amount += roundingDiff;
+  }
+  const shares = allShares.filter((s) => s.amount > 0);
 
   const driverIds = shares
     .map((s) => driverIdFromAccountMethod(s.method))

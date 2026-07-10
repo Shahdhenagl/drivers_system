@@ -31,32 +31,16 @@ export async function offsetAccount(
       })
       .filter((x) => x.rem > 0);
     const tripRemaining = tripItems.reduce((s, x) => s + x.rem, 0); // له
-    // ما عليه: سلف خارجية مستلِف + سلف مكتب عليه
-    const externals = await prisma.externalAdvance
-      .findMany({
-        where: { status: { not: "SETTLED" }, borrowerType: "DRIVER", borrowerId: partyId },
-        orderBy: { date: "asc" },
-      })
-      .catch(() => []);
+    // نقاصّ مستحق السواق مع سلف المكتب عليه فقط (لا نمسّ السلف الخارجية —
+    // دَيْنٌ لطرف ثالث لا يجوز إغلاقه بلا تعويضه، وإلا تسرّبت قيمة).
     const officeDebt = Math.max(advBal, 0);
     if (tripRemaining <= 0) return { error: "لا يوجد مستحق للسواق للمقاصّة" };
-    if (externals.length === 0 && officeDebt <= 0)
-      return { error: "لا يوجد ما يُقاصّ (لا سلف عليه)" };
+    if (officeDebt <= 0)
+      return { error: "لا يوجد سلف مكتب على السواق للمقاصّة" };
 
     let applied = 0;
     await prisma.$transaction(async (tx) => {
-      let budget = tripRemaining;
-      for (const e of externals) {
-        if (e.amount <= budget) {
-          await tx.externalAdvance.update({
-            where: { id: e.id },
-            data: { status: "SETTLED", settledAt: new Date() },
-          });
-          budget -= e.amount;
-          applied += e.amount;
-        }
-      }
-      const officeOffset = Math.min(officeDebt, budget);
+      const officeOffset = Math.min(officeDebt, tripRemaining);
       if (officeOffset > 0) {
         await tx.advance.create({
           data: {
@@ -68,7 +52,6 @@ export async function offsetAccount(
             note: "مقاصّة حساب",
           },
         });
-        budget -= officeOffset;
         applied += officeOffset;
       }
       // خصم المطبَّق من مستحقات الرحلات بقيود سداد بدون كاش
@@ -111,31 +94,15 @@ export async function offsetAccount(
     })
     .filter((x) => x.rem > 0);
   const deferred = tripItems.reduce((s, x) => s + x.rem, 0); // عليه
-  const externals = await prisma.externalAdvance
-    .findMany({
-      where: { status: { not: "SETTLED" }, lenderType: "CONTRACTOR", lenderId: partyId },
-      orderBy: { date: "asc" },
-    })
-    .catch(() => []);
+  // نقاصّ آجل المقاول مع رصيد المكتب له فقط (لا نمسّ السلف الخارجية لطرف ثالث).
   const officeCredit = Math.max(-advBal, 0); // له
   if (deferred <= 0) return { error: "لا يوجد آجل على المقاول للمقاصّة" };
-  if (externals.length === 0 && officeCredit <= 0)
-    return { error: "لا يوجد ما يُقاصّ (لا مستحقات له)" };
+  if (officeCredit <= 0)
+    return { error: "لا يوجد رصيد مكتب للمقاول للمقاصّة" };
 
   let applied = 0;
   await prisma.$transaction(async (tx) => {
-    let budget = deferred;
-    for (const e of externals) {
-      if (e.amount <= budget) {
-        await tx.externalAdvance.update({
-          where: { id: e.id },
-          data: { status: "SETTLED", settledAt: new Date() },
-        });
-        budget -= e.amount;
-        applied += e.amount;
-      }
-    }
-    const officeOffset = Math.min(officeCredit, budget);
+    const officeOffset = Math.min(officeCredit, deferred);
     if (officeOffset > 0) {
       await tx.advance.create({
         data: {
@@ -147,7 +114,6 @@ export async function offsetAccount(
           note: "مقاصّة حساب",
         },
       });
-      budget -= officeOffset;
       applied += officeOffset;
     }
     // خصم المطبَّق من آجل الرحلات بقيود تحصيل بدون كاش

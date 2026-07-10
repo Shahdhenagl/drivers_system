@@ -84,6 +84,22 @@ export function collectorNameFromMethod(m: string): string | null {
   return (COLLECTORS as readonly string[]).includes(name) ? name : null;
 }
 
+/**
+ * حركة سلفة "مولّدة تلقائيًا" لها نصف مقابل على الرحلة (تحصيل/سداد) ولا قيد خزنة لها:
+ * المقاصّة، والتحصيل/السداد عن طريق محصّل، والتحصيل عن طريق السواق، والربح الإضافي/الإكرامية.
+ * هذه لا يجوز تعديلها/حذفها عبر مسار السلف العام (editAdvance/deleteAdvance) لأنه يتجاهل
+ * نصفها المقابل ويُنشئ قيد خزنة زائفًا — تُدار من مصدرها فقط.
+ */
+export function isSystemAdvanceMethod(m: string): boolean {
+  return (
+    m === OFFSET ||
+    m === VIA_DRIVER ||
+    m === EXTRA_PROFIT_METHOD ||
+    m === TIP_METHOD ||
+    collectorNameFromMethod(m) !== null
+  );
+}
+
 /** اسم طريقة الدفع للعرض (يشمل الطرق الخاصة والمحصّلين) */
 export function methodLabel(m: string): string {
   if (m === "mixed") return "متعدد";

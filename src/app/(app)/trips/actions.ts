@@ -12,7 +12,7 @@ import {
   effectiveAmounts,
   syncTripStatus,
 } from "@/lib/finance";
-import { VIA_DRIVER, methodLabel } from "@/lib/constants";
+import { VIA_DRIVER, methodLabel, COLLECTOR_METHOD_PREFIX } from "@/lib/constants";
 import { resolveCollector, collectorAdvanceMarker } from "@/lib/collectors";
 import { sendTelegram } from "@/lib/telegram";
 import {
@@ -353,26 +353,64 @@ export async function updateTrip(id: string, formData: FormData) {
   const get = (k: string) => String(formData.get(k) ?? "").trim();
   const dateStr = get("date");
   const tripDate = dateStr ? new Date(dateStr) : null;
-  await prisma.trip.update({
+
+  const current = await prisma.trip.findUnique({
     where: { id },
-    data: {
-      date: tripDate ?? undefined,
-      time: tripDate ? formatWeekday(tripDate) : get("time") || null,
-      startPoint: get("startPoint"),
-      endPoint: get("endPoint"),
-      vehicleType: get("vehicleType") || null,
-      description: get("description") || null,
-      distance: get("distance") ? Number(get("distance")) : null,
-      contractorPrice: toPiastres(get("contractorPrice") || "0"),
-      driverDue: toPiastres(get("driverDue") || "0"),
-      driverTip: toPiastres(get("driverTip") || "0"),
-      customerDiscount: toPiastres(get("customerDiscount") || "0"),
-      contractorSurcharge: toPiastres(get("contractorSurcharge") || "0"),
-      driverId: get("driverId") || null,
-    },
+    include: { collections: true, driverPayments: true },
   });
-  // المبالغ اتغيّرت — أعد اشتقاق حالة التحصيل وحالة الطلب
-  await syncTripStatus(prisma, id);
+  if (!current) return { error: "الرحلة غير موجودة" };
+
+  const newDriverId = get("driverId") || null;
+  const newEff = effectiveAmounts({
+    contractorPrice: toPiastres(get("contractorPrice") || "0"),
+    driverDue: toPiastres(get("driverDue") || "0"),
+    driverTip: toPiastres(get("driverTip") || "0"),
+    customerDiscount: toPiastres(get("customerDiscount") || "0"),
+    contractorSurcharge: toPiastres(get("contractorSurcharge") || "0"),
+  });
+  const collected = current.collections.reduce((a, c) => a + c.amount, 0);
+  const paid = current.driverPayments.reduce((a, p) => a + p.amount, 0);
+
+  // منع خفض السعر/المستحق تحت ما تم تحصيله/سداده فعلًا (يترك فرقًا غير متتبَّع)
+  if (newEff.contractor < collected) {
+    return {
+      error: `سعر المقاول الجديد أقل من المحصَّل فعلًا (${formatMoney(collected)}) — عدّل التحصيل أولًا`,
+    };
+  }
+  if (newEff.driver < paid) {
+    return {
+      error: `مستحق السواق الجديد أقل من المدفوع فعلًا (${formatMoney(paid)}) — عدّل السداد أولًا`,
+    };
+  }
+  // تغيير السواق بعد وجود سدادات يترك سدادات معلّقة على سواق آخر
+  if (paid > 0 && newDriverId !== current.driverId) {
+    return {
+      error: "لا يمكن تغيير السواق بعد تسجيل سداد على الرحلة — احذف السدادات أولًا",
+    };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.trip.update({
+      where: { id },
+      data: {
+        date: tripDate ?? undefined,
+        time: tripDate ? formatWeekday(tripDate) : get("time") || null,
+        startPoint: get("startPoint"),
+        endPoint: get("endPoint"),
+        vehicleType: get("vehicleType") || null,
+        description: get("description") || null,
+        distance: get("distance") ? Number(get("distance")) : null,
+        contractorPrice: toPiastres(get("contractorPrice") || "0"),
+        driverDue: toPiastres(get("driverDue") || "0"),
+        driverTip: toPiastres(get("driverTip") || "0"),
+        customerDiscount: toPiastres(get("customerDiscount") || "0"),
+        contractorSurcharge: toPiastres(get("contractorSurcharge") || "0"),
+        driverId: newDriverId,
+      },
+    });
+    // المبالغ اتغيّرت — أعد اشتقاق حالة التحصيل وحالة الطلب
+    await syncTripStatus(tx, id);
+  });
   await audit("UPDATE", "Trip", id);
   revalidatePath(`/trips/${id}`);
   revalidatePath("/trips");
@@ -400,6 +438,17 @@ export async function deleteTrip(id: string) {
     if (dpIds.length > 0) {
       await tx.ledgerEntry.deleteMany({
         where: { refType: "DriverPayment", refId: { in: dpIds } },
+      });
+    }
+    // إزالة سلف المحصّلين الناتجة عن سداد عن طريق محصّل (لا قيد خزنة لها، ولا تُحذف بالـ Cascade).
+    // نقتصر على سلف المحصّلين ("عن طريق …") حتى لا نمسّ سلفة "مقاول استلف من المكتب" (لها قيد حقيقي).
+    // الربط عبر tripId (الجديدة) أو علامة الدفعة [c:dp:<id>] (القديمة).
+    await tx.advance.deleteMany({
+      where: { tripId: id, method: { startsWith: COLLECTOR_METHOD_PREFIX } },
+    });
+    for (const dpId of dpIds) {
+      await tx.advance.deleteMany({
+        where: { note: { contains: collectorAdvanceMarker("dp", dpId) } },
       });
     }
     // حذف الرحلة (يحذف تلقائيًا الدفعات المرتبطة عبر Cascade)
@@ -702,6 +751,7 @@ export async function addDriverPayment(tripId: string, formData: FormData) {
           direction: "IN",
           method,
           note: `سداد سواق عن طريق ${collector.name}${marker}`,
+          tripId,
           date,
         },
       });
@@ -1258,22 +1308,51 @@ export async function updateTripAdvance(id: string, formData: FormData) {
   const trip = await prisma.trip.findUnique({ where: { id: current.tripId }, include: { contractor: true } });
   if (!trip) return { error: "الطلب غير موجود" };
 
+  // صرف (OUT): أعِد تخطيط الصرف على الوسائل ومنع نزول الخزنة تحت الصفر
+  // (مع إعادة قيمة القيد القديم للرصيد المتاح) بدل طيّه في وسيلة واحدة.
+  let outEntries: { method: string; amount: number }[] = [{ method, amount }];
+  if (current.direction === "OUT") {
+    const oldOut = await prisma.ledgerEntry.aggregate({
+      where: { refType: "Advance", refId: id, direction: "OUT" },
+      _sum: { amount: true },
+    });
+    const plan = await planSpend(method, amount, true, oldOut._sum.amount ?? 0);
+    if (!plan.ok) {
+      return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
+    }
+    outEntries = plan.entries;
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.advance.update({ where: { id }, data: { amount, method, note, date } });
     await tx.ledgerEntry.deleteMany({ where: { refType: "Advance", refId: id } });
-    await recordLedger(tx, {
-      type: current.direction === "OUT" ? "ADVANCE_OUT" : "ADVANCE_IN",
-      direction: current.direction as "IN" | "OUT",
-      amount,
-      method,
-      description:
-        current.direction === "OUT"
-          ? `المقاول استلف من المكتب — ${trip.contractor.name}`
-          : `سداد سلفة المقاول — ${trip.contractor.name}`,
-      refType: "Advance",
-      refId: id,
-      date,
-    });
+    if (current.direction === "OUT") {
+      for (const e of outEntries) {
+        await recordLedger(tx, {
+          type: "ADVANCE_OUT",
+          direction: "OUT",
+          amount: e.amount,
+          method: e.method,
+          description:
+            `المقاول استلف من المكتب — ${trip.contractor.name}` +
+            (outEntries.length > 1 ? ` (${methodLabel(e.method)})` : ""),
+          refType: "Advance",
+          refId: id,
+          date,
+        });
+      }
+    } else {
+      await recordLedger(tx, {
+        type: "ADVANCE_IN",
+        direction: "IN",
+        amount,
+        method,
+        description: `سداد سلفة المقاول — ${trip.contractor.name}`,
+        refType: "Advance",
+        refId: id,
+        date,
+      });
+    }
   });
 
   await audit("EDIT_TRIP_ADVANCE", "Trip", current.tripId, { advanceId: id, amount, method });

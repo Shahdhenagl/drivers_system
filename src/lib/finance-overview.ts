@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { effectiveAmounts } from "@/lib/finance";
-import { EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
+import { EXTRA_PROFIT_METHOD, TIP_METHOD, PAYMENT_METHOD_KEYS } from "@/lib/constants";
 
 export async function getFinanceOverview() {
   const [
@@ -13,6 +13,7 @@ export async function getFinanceOverview() {
     capitalSetting,
     extraProfitAgg,
     driverTipAgg,
+    cashCollectionAgg,
   ] = await Promise.all([
       prisma.trip.findMany({
         select: {
@@ -52,6 +53,11 @@ export async function getFinanceOverview() {
       prisma.advance
         .aggregate({ where: { method: TIP_METHOD }, _sum: { amount: true } })
         .catch(() => ({ _sum: { amount: 0 } })),
+      // تحصيل نقدي فعلي فقط (يستبعد المقاصّة/عن طريق السواق التي لا تدخل الخزنة)
+      prisma.collection.aggregate({
+        where: { method: { in: PAYMENT_METHOD_KEYS } },
+        _sum: { amount: true },
+      }),
     ]);
 
   const eff = trips.map(effectiveAmounts);
@@ -101,18 +107,18 @@ export async function getFinanceOverview() {
   const totalDriverAdvancesOwed = weOweDrivers;
   const totalContractorAdvances = contractorOwesUs;
 
-  // الربح المحصّل نقدًا (القابل للتوزيع فعليًا) — من عمليات الرحلات فقط،
-  // معزولًا عن رأس المال والسلف: المحصّل − مستحقات السواقين − المصروفات − ما وُزّع على الشركاء.
-  // (السواقون تُحجَز مستحقاتهم كاملةً، فلا يُوزَّع ربح قبل تغطية ما عليهم.)
-  const realizedProfit = Math.max(
+  // الربح المحصّل نقدًا (القابل للتوزيع فعليًا) — نقد فعلي دخل الخزنة فقط،
+  // معزولًا عن رأس المال والسلف والحركات على الحساب:
+  // النقد المحصّل − مستحقات السواقين − المصروفات − ما وُزّع على الشركاء.
+  // (يستبعد تحصيلات المقاصّة/عن طريق السواق والأرباح الإضافية غير المحصّلة نقدًا،
+  //  والسواقون تُحجَز مستحقاتهم كاملةً، فلا يُوزَّع ربح قبل تغطية ما عليهم ودخول النقد فعلًا.)
+  const cashCollected = cashCollectionAgg._sum.amount ?? 0;
+  // الربح المحصّل نقدًا قبل خصم سحوبات الشركاء (أساس حساب نصيب كل شريك)
+  const grossRealizedProfit = Math.max(
     0,
-    totalCollected +
-      totalExtraProfit -
-      totalDriverTips -
-      totalDriverDue -
-      totalExpenses -
-      totalPartnerWithdrawals
+    cashCollected - totalDriverDue - totalExpenses
   );
+  const realizedProfit = Math.max(0, grossRealizedProfit - totalPartnerWithdrawals);
 
   return {
     capital,
@@ -129,6 +135,8 @@ export async function getFinanceOverview() {
     totalPartnerWithdrawals,
     distributableProfit,
     realizedProfit,
+    grossRealizedProfit,
+    cashCollected,
     totalDriverAdvances,
     totalDriverAdvancesOwed,
     totalContractorAdvances,

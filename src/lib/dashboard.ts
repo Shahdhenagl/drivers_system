@@ -1,20 +1,21 @@
 import { prisma } from "@/lib/prisma";
-import { startOfDay, endOfDay, addDays } from "@/lib/format";
+import { cairoDayStr } from "@/lib/format";
 import { effectiveAmounts } from "@/lib/finance";
 
 export async function getDashboardStats() {
-  const now = new Date();
-  const todayStart = startOfDay(now);
-  const todayEnd = endOfDay(now);
-  const tomorrowStart = startOfDay(addDays(now, 1));
-  const tomorrowEnd = endOfDay(addDays(now, 1));
-  const weekStart = startOfDay(addDays(now, -6));
-  const monthStart = startOfDay(addDays(now, -29));
+  // حدود اليوم بتوقيت القاهرة (تواريخ الرحلات مخزَّنة منتصف ليل UTC) — مستقلة عن توقيت السيرفر
+  const DAY = 24 * 60 * 60 * 1000;
+  const todayStart = new Date(`${cairoDayStr()}T00:00:00.000Z`);
+  const todayEnd = new Date(+todayStart + DAY); // نهاية اليوم (حصري)
+  const tomorrowStart = todayEnd;
+  const tomorrowEnd = new Date(+tomorrowStart + DAY);
+  const weekStart = new Date(+todayStart - 6 * DAY);
+  const monthStart = new Date(+todayStart - 29 * DAY);
 
   const [todayCount, tomorrowCount, openCount] = await Promise.all([
-    prisma.trip.count({ where: { date: { gte: todayStart, lte: todayEnd } } }),
+    prisma.trip.count({ where: { date: { gte: todayStart, lt: todayEnd } } }),
     prisma.trip.count({
-      where: { date: { gte: tomorrowStart, lte: tomorrowEnd } },
+      where: { date: { gte: tomorrowStart, lt: tomorrowEnd } },
     }),
     // «مؤكدة» = أي طلب لم يكتمل حسابه بعد
     prisma.trip.count({ where: { status: { not: "COMPLETED" } } }),
@@ -77,7 +78,7 @@ export async function getDashboardStats() {
   for (const t of completed) {
     const eff = effectiveAmounts(t);
     const p = eff.contractor - eff.driver;
-    if (t.date >= todayStart && t.date <= todayEnd) profitToday += p;
+    if (t.date >= todayStart && t.date < todayEnd) profitToday += p;
     if (t.date >= weekStart) profitWeek += p;
     profitMonth += p;
   }
@@ -87,7 +88,7 @@ export async function getDashboardStats() {
     select: { amount: true, date: true },
   });
   for (const e of expenses) {
-    if (e.date >= todayStart && e.date <= todayEnd) profitToday -= e.amount;
+    if (e.date >= todayStart && e.date < todayEnd) profitToday -= e.amount;
     if (e.date >= weekStart) profitWeek -= e.amount;
     profitMonth -= e.amount;
   }

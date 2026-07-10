@@ -35,7 +35,7 @@ import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
 import { contractorReport } from "@/lib/messages";
-import { COMPANY_NAME, methodLabel, TRIP_STATUS, tripStatus, EXTRA_PROFIT_METHOD, TIP_METHOD } from "@/lib/constants";
+import { COMPANY_NAME, methodLabel, TRIP_STATUS, tripStatus, EXTRA_PROFIT_METHOD, TIP_METHOD, isSystemAdvanceMethod } from "@/lib/constants";
 import {
   Phone,
   MessageCircle,
@@ -220,7 +220,8 @@ export default async function ContractorProfile({
   const summaryFor = sOfficeFor + sExternalFor;
   const summaryOn = sDeferred + sOfficeOn + sExternalOn;
 
-  const payments = trips
+  // التحصيلات تُنسب لتاريخ التحصيل نفسه (لا لشهر الرحلة) — متسق مع كشف السواق
+  const payments = c.trips
     .flatMap((t) =>
       t.collections.map((p) => ({
         ...p,
@@ -228,6 +229,7 @@ export default async function ContractorProfile({
         driverName: t.driver?.name ?? "—",
       }))
     )
+    .filter((p) => inBounds(p.date))
     .sort((a, b) => +new Date(b.date) - +new Date(a.date));
 
   const periodLabel = bounds ? monthLabel(selectedMonth) : "كل الفترات";
@@ -251,8 +253,9 @@ export default async function ContractorProfile({
       .map((a) => ({
         id: `advance-${a.id}`,
         date: a.date,
-        description:
-          a.direction === "OUT"
+        description: isSystemAdvanceMethod(a.method)
+          ? methodLabel(a.method)
+          : a.direction === "OUT"
             ? `استلم من المكتب - ${methodLabel(a.method)}`
             : `دفع للمكتب - ${methodLabel(a.method)}`,
         details: a.note,
@@ -354,19 +357,21 @@ export default async function ContractorProfile({
                 : "الحساب متعادل",
           netAmount: Math.abs(netContractor),
         }}
-        rows={statementRows}
+        rows={visibleStatementRows}
         counterpartyLabel="السواق"
-        trips={trips.map((t) => ({
-          id: t.id,
-          date: t.date,
-          startPoint: t.startPoint,
-          endPoint: t.endPoint,
-          vehicleType: t.vehicleType,
-          counterparty: t.driver?.name,
-          contractorPrice: effectiveAmounts(t).contractor,
-          driverDue: effectiveAmounts(t).driver,
-          statusLabel: TRIP_STATUS[tripStatus(t.status)],
-        }))}
+        trips={trips
+          .filter((t) => !clearedAt || +t.date >= +clearedAt)
+          .map((t) => ({
+            id: t.id,
+            date: t.date,
+            startPoint: t.startPoint,
+            endPoint: t.endPoint,
+            vehicleType: t.vehicleType,
+            counterparty: t.driver?.name,
+            contractorPrice: effectiveAmounts(t).contractor,
+            driverDue: effectiveAmounts(t).driver,
+            statusLabel: TRIP_STATUS[tripStatus(t.status)],
+          }))}
       />
       <div className="space-y-4 py-3 print:hidden">
         <Link

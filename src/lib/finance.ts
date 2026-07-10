@@ -84,11 +84,16 @@ const FALLBACK_ORDER = ["cash", "wallet", "instapay", "visa"];
 export async function planSpend(
   primary: string,
   amount: number,
-  allowFallback = false
+  allowFallback = false,
+  // مبلغ يُعاد إضافته لرصيد الوسيلة الأساسية (عند التعديل: قيمة القيد القديم الذي سيُحذف)
+  creditBack = 0
 ): Promise<SpendResult> {
   const treasury = await treasuryByMethod();
   const balances: Record<string, number> = {};
   for (const m of PAYMENT_METHOD_KEYS) balances[m] = treasury[m] ?? 0;
+  if (creditBack > 0 && balances[primary] !== undefined) {
+    balances[primary] += creditBack;
+  }
 
   const primAvail = balances[primary] ?? 0;
 

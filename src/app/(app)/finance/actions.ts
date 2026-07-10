@@ -64,7 +64,7 @@ export async function addExpense(formData: FormData) {
     return;
   }
 
-  // المصروفات تُخصم من الربح فقط — لا تمسّ رأس المال
+  // المصروفات تُخصم من الربح — لا تمسّ رأس المال (planSpend يمنع نزول الخزنة تحت الصفر)
   const ov = await getFinanceOverview();
   const available = Math.max(ov.distributableProfit, 0);
   if (amount > available) {

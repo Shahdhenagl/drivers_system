@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { PrintButton } from "@/components/print-button";
 import { prisma } from "@/lib/prisma";
 import { getFinanceOverview } from "@/lib/finance-overview";
+import { effectiveAmounts } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate, startOfDay, endOfDay } from "@/lib/format";
 import { ArrowRight, Users, Truck, Handshake } from "lucide-react";
@@ -45,6 +46,7 @@ export default async function ReportsPage({
           driverDue: true,
           driverTip: true,
           customerDiscount: true,
+          contractorSurcharge: true,
         },
       }),
       prisma.collection.aggregate({
@@ -61,10 +63,10 @@ export default async function ReportsPage({
       }),
     ]);
     const revenue = trips.reduce(
-      (a, t) => a + t.contractorPrice - t.customerDiscount,
+      (a, t) => a + effectiveAmounts(t).contractor,
       0
     );
-    const driverDue = trips.reduce((a, t) => a + t.driverDue + t.driverTip, 0);
+    const driverDue = trips.reduce((a, t) => a + effectiveAmounts(t).driver, 0);
     const exp = expenses._sum.amount ?? 0;
     const profit = revenue - driverDue;
     custom = {

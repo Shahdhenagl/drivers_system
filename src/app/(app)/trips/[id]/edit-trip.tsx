@@ -63,12 +63,18 @@ export function EditTripForm({
   const [driverId, setDriverId] = useState(trip.driverId ?? "");
   const [tripDate, setTripDate] = useState(() => toDateInput(trip.date));
   const [vehicleType, setVehicleType] = useState(trip.vehicleType ?? "");
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const tripDay = weekdayFromDateInput(tripDate);
 
   async function action(fd: FormData) {
     fd.set("driverId", driverId);
-    await updateTrip(trip.id, fd);
+    setError(null);
+    const res = await updateTrip(trip.id, fd);
+    if (res?.error) {
+      setError(res.error);
+      return;
+    }
     setOpen(false);
     router.refresh();
   }
@@ -198,6 +204,9 @@ export function EditTripForm({
               placeholder="اختر السواق"
             />
           </div>
+          {error && (
+            <p className="text-center text-sm text-destructive">{error}</p>
+          )}
           <SubmitButton size="lg" className="w-full">
             حفظ التعديلات
           </SubmitButton>

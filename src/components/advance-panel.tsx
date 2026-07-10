@@ -20,7 +20,7 @@ import { addAdvance, deleteAdvance, editAdvance } from "@/lib/advance-actions";
 import { playSound } from "@/lib/sounds";
 import { formatMoney, toPiastres, toEgp } from "@/lib/money";
 import { formatShortDate, toDateInput } from "@/lib/format";
-import { methodLabel } from "@/lib/constants";
+import { methodLabel, isSystemAdvanceMethod } from "@/lib/constants";
 import { advanceReminder } from "@/lib/messages";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { Wallet, HandCoins, MessageCircle, FileClock, Pencil, Trash2 } from "lucide-react";
@@ -481,10 +481,16 @@ export function AdvancePanel({
                     {a.note}
                   </div>
                 )}
-                <div className="flex items-center print:hidden">
-                  <EditAdvanceDialog advance={a} />
-                  <DeleteAdvanceButton advance={a} />
-                </div>
+                {isSystemAdvanceMethod(a.method) ? (
+                  <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground print:hidden">
+                    تلقائي
+                  </span>
+                ) : (
+                  <div className="flex items-center print:hidden">
+                    <EditAdvanceDialog advance={a} />
+                    <DeleteAdvanceButton advance={a} />
+                  </div>
+                )}
               </div>
             </div>
           ))}
