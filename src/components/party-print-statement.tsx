@@ -70,9 +70,13 @@ export function PartyPrintStatement({
     <section dir="rtl" className="hidden print:block">
       <div className="print-statement">
         <div className="print-statement__top">
-          <div>
-            <div className="print-statement__brand">{companyName}</div>
-            <div className="print-statement__subtitle">كشف حساب / فاتورة معاملات</div>
+          <div className="print-statement__title">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt={companyName} className="print-statement__logo" />
+            <div>
+              <div className="print-statement__brand">{companyName}</div>
+              <div className="print-statement__subtitle">كشف حساب / فاتورة معاملات</div>
+            </div>
           </div>
           <div className="print-statement__meta">
             <div>تاريخ الإصدار: {formatShortDate(generatedAt)}</div>

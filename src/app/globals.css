@@ -128,6 +128,16 @@
     border-bottom: 2px solid #111827;
     padding-bottom: 10px;
   }
+  .print-statement__title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .print-statement__logo {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+  }
   .print-statement__brand {
     font-size: 22px;
     font-weight: 900;

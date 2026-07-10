@@ -13,6 +13,11 @@ export const metadata: Metadata = {
   title: "مكتب رحلات الأصدقاء",
   description: "مكتب رحلات الأصدقاء لإدارة نقل المقاولين والسواقين",
   manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",

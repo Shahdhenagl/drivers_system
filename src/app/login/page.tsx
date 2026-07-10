@@ -3,7 +3,6 @@ import { isAuthenticated, setSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MicrobusLogo } from "@/components/microbus-logo";
 import { COMPANY_NAME } from "@/lib/constants";
 
 async function login(formData: FormData) {
@@ -32,10 +31,12 @@ export default async function LoginPage({
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
       <div className="w-full max-w-sm space-y-8">
         <div className="flex flex-col items-center gap-3 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-            <MicrobusLogo className="h-9 w-9" />
-          </div>
-          <h1 className="text-2xl font-bold">{COMPANY_NAME}</h1>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo.png"
+            alt={COMPANY_NAME}
+            className="h-40 w-40 object-contain"
+          />
           <p className="text-sm text-muted-foreground">
             لإدارة النقل — تسجيل دخول المدير للمتابعة
           </p>
