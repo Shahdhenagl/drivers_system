@@ -4,26 +4,54 @@ import { ExpenseForm } from "./expense-form";
 import { DeleteExpenseButton } from "./delete-expense-button";
 import { TransferForm } from "./transfer-form";
 import { CashAdjustForm } from "./cash-adjust-form";
+import { LedgerActions } from "./ledger-actions";
+import { MonthFilter } from "./month-filter";
 import { prisma } from "@/lib/prisma";
 import { treasuryByMethod } from "@/lib/finance";
 import { getFinanceOverview } from "@/lib/finance-overview";
 import { formatMoney } from "@/lib/money";
-import { formatShortDate } from "@/lib/format";
-import { PAYMENT_METHODS, LEDGER_TYPE } from "@/lib/constants";
+import { cairoMonthStr, formatShortDate, monthBounds, monthLabel } from "@/lib/format";
+import { methodLabel, PAYMENT_METHODS, LEDGER_TYPE } from "@/lib/constants";
 import { Wallet, ArrowDownLeft, ArrowUpRight, Receipt } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-export default async function FinancePage() {
+export default async function FinancePage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ month?: string }>;
+}) {
+  const params = await searchParams;
+  const monthParam =
+    typeof params?.month === "string" && /^\d{4}-\d{2}$/.test(params.month)
+      ? params.month
+      : "";
+  const currentMonth = monthParam || cairoMonthStr();
+  const monthRange = monthParam ? monthBounds(monthParam) : null;
+  const ledgerWhere = monthRange
+    ? { date: { gte: monthRange[0], lt: monthRange[1] } }
+    : undefined;
+
   const [treasury, ov, expenses, ledger] = await Promise.all([
     treasuryByMethod(),
     getFinanceOverview(),
     prisma.expense.findMany({ orderBy: { date: "desc" }, take: 30 }),
     prisma.ledgerEntry.findMany({
+      where: ledgerWhere,
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
-      take: 50,
+      take: monthParam ? undefined : 50,
     }),
   ]);
+  const ledgerExpenseIds = ledger
+    .filter((l) => l.refType === "Expense" && l.refId)
+    .map((l) => l.refId as string);
+  const ledgerExpenses = ledgerExpenseIds.length
+    ? await prisma.expense.findMany({
+        where: { id: { in: ledgerExpenseIds } },
+        select: { id: true, name: true, category: true, notes: true },
+      })
+    : [];
+  const expenseById = new Map(ledgerExpenses.map((e) => [e.id, e]));
 
   // صافي الثروة = الخزنة + كل ما لنا − كل ما علينا
   // (الإيرادات المحصّلة والمصروفات داخلة أصلًا في الخزنة، والآجل ضمن "ما لنا")
@@ -168,11 +196,19 @@ export default async function FinancePage() {
 
         {/* دفتر الأستاذ */}
         <section>
-          <h2 className="mb-2 text-sm font-bold text-muted-foreground">
-            دفتر الأستاذ (آخر الحركات)
-          </h2>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-bold text-muted-foreground">
+              دفتر الأستاذ ({monthParam ? monthLabel(monthParam) : "آخر الحركات"})
+            </h2>
+            <MonthFilter currentMonth={currentMonth} />
+          </div>
           <Card className="divide-y divide-border">
-            {ledger.map((l) => {
+            {ledger.length === 0 ? (
+              <p className="p-4 text-center text-sm text-muted-foreground">
+                لا توجد حركات في هذا الشهر
+              </p>
+            ) : (
+              ledger.map((l) => {
               const isIn = l.direction === "IN";
               return (
                 <div key={l.id} className="flex items-center justify-between p-3">
@@ -195,21 +231,38 @@ export default async function FinancePage() {
                       <div className="text-xs text-muted-foreground">
                         {formatShortDate(l.date)} •{" "}
                         {LEDGER_TYPE[l.type as keyof typeof LEDGER_TYPE] ?? l.type}{" "}
-                        • {PAYMENT_METHODS[l.method as keyof typeof PAYMENT_METHODS]}
+                        • {methodLabel(l.method)}
                       </div>
                     </div>
                   </div>
-                  <span
-                    className={`shrink-0 text-sm font-bold tabular-nums ${
-                      isIn ? "text-success" : "text-destructive"
-                    }`}
-                  >
-                    {isIn ? "+" : "−"}
-                    {formatMoney(l.amount, false)}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span
+                      className={`text-sm font-bold tabular-nums ${
+                        isIn ? "text-success" : "text-destructive"
+                      }`}
+                    >
+                      {isIn ? "+" : "−"}
+                      {formatMoney(l.amount, false)}
+                    </span>
+                    <LedgerActions
+                      movement={{
+                        id: l.id,
+                        type: l.type,
+                        direction: l.direction,
+                        amount: l.amount,
+                        method: l.method,
+                        description: l.description,
+                        refType: l.refType,
+                        refId: l.refId,
+                        date: l.date,
+                        expense: l.refId ? expenseById.get(l.refId) ?? null : null,
+                      }}
+                    />
+                  </div>
                 </div>
               );
-            })}
+            })
+            )}
           </Card>
         </section>
       </div>
