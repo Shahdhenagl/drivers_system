@@ -3,77 +3,102 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { collectorNameFromMethod } from "@/lib/constants";
+import { COLLECTORS, collectorMethodValue } from "@/lib/constants";
 
-const COL_MARKER = /\[c:col:([^\]]+)\]/;
-const LEGACY_LUMP = "تحصيل مجمّع عن طريق";
+// سلفة "زيادة تحصيل" مربوطة برصيد مقاول (لا تقابلها تحصيلات) — تُستثنى من المطابقة
+const ADV_LEG_MARKER = "[c:adv:";
 
 /**
- * تصحيح سلف المحصّلين المعلّقة: حركات "المحصّل يمسك الفلوس" (سلفة عليه) اتفضلت
- * بعد حذف تحصيلاتها المصدر — فتضخّم "ما لنا" ورأس المال بغير وجه حق.
+ * مطابقة أرصدة المحصّلين مع تحصيلاتهم الفعلية — على مستوى كل محصّل (لا بالتاريخ):
+ * القاعدة: مجموع سلف "المحصّل يمسك الفلوس" لازم يساوي مجموع التحصيلات المسجّلة
+ * بطريقته. أي فرق يضخّم رأس المال أو ينقصه.
  *
- * نوعان:
- * 1) حركات مربوطة بعلامة [c:col:<id>] لتحصيل لم يعد موجودًا → تُحذف.
- * 2) حركات "تحصيل مجمّع عن طريق X" القديمة (بدون علامة) → نطابقها بالتحصيلات
- *    الباقية بنفس الطريقة والتاريخ؛ لو اتحذفت كلها تُحذف الحركة، ولو اتحذف جزء
- *    تُخفَّض قيمتها للباقي فعليًا.
+ * - سلف زيادة عن التحصيلات (تحصيلاتها محذوفة) → تُزال من الأقدم.
+ * - تحصيلات بلا سلفة كافية (السلفة اتحذفت بالغلط) → يُعاد الرصيد الناقص كسلفة واحدة.
+ *
+ * بعد التشغيل يتساوى الطرفان لكل محصّل فيرجع رأس المال صحيحًا. آمن ومتكرر.
  */
 export async function repairOrphanCollectorHoldings(): Promise<{
-  removed: number;
-  reduced: number;
-  freedAmount: number;
+  collectorsFixed: number;
+  removedHoldings: number;
+  addedHoldings: number;
 }> {
-  const advances = await prisma.advance.findMany({
-    where: { direction: "OUT", partyType: "DRIVER" },
-  });
+  let collectorsFixed = 0;
+  let removedHoldings = 0;
+  let addedHoldings = 0;
 
-  let removed = 0;
-  let reduced = 0;
-  let freedAmount = 0;
+  for (const name of COLLECTORS) {
+    const method = collectorMethodValue(name);
+    const driver = await prisma.driver.findFirst({
+      where: { name },
+      select: { id: true },
+    });
+    if (!driver) continue;
 
-  for (const a of advances) {
-    // نتعامل فقط مع سلف المحصّلين ("عن طريق <اسم>")
-    if (!collectorNameFromMethod(a.method)) continue;
+    const outAdvances = await prisma.advance.findMany({
+      where: {
+        partyType: "DRIVER",
+        partyId: driver.id,
+        method,
+        direction: "OUT",
+      },
+      orderBy: { date: "asc" },
+    });
+    // نستثني سلف "زيادة التحصيل" المربوطة برصيد مقاول (لا يقابلها تحصيل)
+    const backing = outAdvances.filter(
+      (a) => !(a.note ?? "").includes(ADV_LEG_MARKER)
+    );
+    const outSum = backing.reduce((s, a) => s + a.amount, 0);
 
-    const markerMatch = a.note?.match(COL_MARKER);
-    if (markerMatch) {
-      const colId = markerMatch[1];
-      const col = await prisma.collection.findUnique({ where: { id: colId } });
-      if (!col) {
-        await prisma.advance.delete({ where: { id: a.id } });
-        removed += 1;
-        freedAmount += a.amount;
+    const cols = await prisma.collection.aggregate({
+      where: { method },
+      _sum: { amount: true },
+    });
+    const colSum = cols._sum.amount ?? 0;
+
+    if (outSum === colSum) continue;
+
+    if (outSum > colSum) {
+      // سلف محصّل زائدة عن تحصيلاتها الفعلية — نزيل الفائض من الأقدم
+      let excess = outSum - colSum;
+      for (const a of backing) {
+        if (excess <= 0) break;
+        if (a.amount <= excess) {
+          await prisma.advance.delete({ where: { id: a.id } });
+          excess -= a.amount;
+        } else {
+          await prisma.advance.update({
+            where: { id: a.id },
+            data: { amount: a.amount - excess },
+          });
+          excess = 0;
+        }
       }
-      continue;
-    }
-
-    // النمط القديم: "تحصيل مجمّع عن طريق X" بدون علامة ربط
-    if (a.note && a.note.includes(LEGACY_LUMP)) {
-      const matched = await prisma.collection.aggregate({
-        where: { method: a.method, date: a.date },
-        _sum: { amount: true },
+      removedHoldings += outSum - colSum;
+    } else {
+      // تحصيلات بلا سلفة كافية — نعيد الرصيد الناقص كسلفة واحدة على المحصّل
+      const missing = colSum - outSum;
+      await prisma.advance.create({
+        data: {
+          partyType: "DRIVER",
+          partyId: driver.id,
+          amount: missing,
+          direction: "OUT",
+          method,
+          note: "تسوية رصيد المحصّل — مطابقة مع التحصيلات",
+          date: new Date(),
+        },
       });
-      const surviving = matched._sum.amount ?? 0;
-      if (surviving <= 0) {
-        await prisma.advance.delete({ where: { id: a.id } });
-        removed += 1;
-        freedAmount += a.amount;
-      } else if (surviving < a.amount) {
-        freedAmount += a.amount - surviving;
-        await prisma.advance.update({
-          where: { id: a.id },
-          data: { amount: surviving },
-        });
-        reduced += 1;
-      }
+      addedHoldings += missing;
     }
+    collectorsFixed += 1;
   }
 
-  if (removed > 0 || reduced > 0) {
+  if (collectorsFixed > 0) {
     await audit("REPAIR", "Advance", "collector-holdings", {
-      removed,
-      reduced,
-      freedAmount,
+      collectorsFixed,
+      removedHoldings,
+      addedHoldings,
     });
     revalidatePath("/finance");
     revalidatePath("/drivers");
@@ -81,5 +106,5 @@ export async function repairOrphanCollectorHoldings(): Promise<{
     revalidatePath("/");
   }
 
-  return { removed, reduced, freedAmount };
+  return { collectorsFixed, removedHoldings, addedHoldings };
 }

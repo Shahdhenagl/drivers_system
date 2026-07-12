@@ -9,8 +9,8 @@ import { formatMoney } from "@/lib/money";
 import { Wrench, Loader2 } from "lucide-react";
 
 /**
- * زر صيانة: يمسح سلف المحصّلين المعلّقة (تحصيلات محذوفة فضلت سلفتها على المحصّل)
- * فيصحّح "ما لنا" ورأس المال. آمن — لا يمسّ إلا الحركات التي فقدت مصدرها.
+ * زر صيانة: يطابق أرصدة المحصّلين مع تحصيلاتهم الفعلية — يزيل السلف الزائدة
+ * ويعيد الناقصة، فيصحّح "ما لنا" ورأس المال. آمن ومتكرر.
  */
 export function RepairCollectorButton() {
   const [loading, setLoading] = useState(false);
@@ -19,22 +19,22 @@ export function RepairCollectorButton() {
   async function onRun() {
     if (
       !confirm(
-        "تصحيح سلف المحصّلين المعلّقة (الناتجة عن تحصيلات محذوفة)؟ لن تُمسّ إلا الحركات التي لم يعد لها تحصيل."
+        "مطابقة أرصدة المحصّلين مع تحصيلاتهم الفعلية؟ يزيل السلف الزائدة ويعيد الناقصة حتى يتطابق الطرفان."
       )
     )
       return;
     setLoading(true);
     try {
       const res = await repairOrphanCollectorHoldings();
-      if (res.removed === 0 && res.reduced === 0) {
+      if (res.collectorsFixed === 0) {
         playSound("cancel");
-        alert("لا توجد حركات معلّقة — كله سليم.");
+        alert("أرصدة المحصّلين مطابقة للتحصيلات — كله سليم.");
       } else {
         playSound("success");
         alert(
-          `تم التصحيح: حذف ${res.removed} حركة، تخفيض ${res.reduced}، وتحرير ${formatMoney(
-            res.freedAmount
-          )} من رأس المال.`
+          `تمت مطابقة ${res.collectorsFixed} محصّل.\n` +
+            `أُزيل سلف زائدة: ${formatMoney(res.removedHoldings)}\n` +
+            `أُعيد سلف ناقصة: ${formatMoney(res.addedHoldings)}`
         );
       }
       router.refresh();
@@ -59,7 +59,7 @@ export function RepairCollectorButton() {
       ) : (
         <Wrench className="h-4 w-4" />
       )}
-      تصحيح سلف المحصّلين المعلّقة
+      مطابقة أرصدة المحصّلين
     </Button>
   );
 }
