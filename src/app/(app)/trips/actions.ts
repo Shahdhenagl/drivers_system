@@ -12,7 +12,12 @@ import {
   effectiveAmounts,
   syncTripStatus,
 } from "@/lib/finance";
-import { VIA_DRIVER, methodLabel, COLLECTOR_METHOD_PREFIX } from "@/lib/constants";
+import {
+  VIA_DRIVER,
+  methodLabel,
+  COLLECTOR_METHOD_PREFIX,
+  collectorNameFromMethod,
+} from "@/lib/constants";
 import { resolveCollector, collectorAdvanceMarker } from "@/lib/collectors";
 import { sendTelegram } from "@/lib/telegram";
 import {
@@ -1085,6 +1090,52 @@ export async function deleteTripCollection(id: string) {
 
   await audit("DELETE_COLLECTION", "Trip", current.tripId, { collectionId: id });
   await revalidateTripMoney(current.tripId, current.trip.contractorId);
+}
+
+/**
+ * حذف سلفة "محصّل يمسك الفلوس" مباشرةً من كشف الحساب، مع عكس تأثيرها الكامل:
+ * تُحذف معها التحصيلات المرتبطة على المقاول (نصفها المقابل) فيتّسق الحسابان.
+ * - الحركات الحديثة مربوطة بعلامة [c:col:<id>] → نحذف تحصيلها بدقّة.
+ * - الحركات القديمة (تحصيل مجمّع) بلا علامة → نحذف التحصيلات المطابقة بنفس
+ *   الطريقة والتاريخ (نفس عملية التحصيل الأصلية).
+ */
+export async function deleteCollectorHolding(advanceId: string) {
+  const adv = await prisma.advance.findUnique({ where: { id: advanceId } });
+  if (!adv) return { error: "الحركة غير موجودة" };
+  if (!collectorNameFromMethod(adv.method)) {
+    return { error: "هذه ليست حركة محصّل" };
+  }
+
+  const markerMatch = adv.note?.match(/\[c:col:([^\]]+)\]/);
+  const tripIds = new Set<string>();
+
+  await prisma.$transaction(async (tx) => {
+    const cols = markerMatch
+      ? await tx.collection.findMany({ where: { id: markerMatch[1] } })
+      : await tx.collection.findMany({
+          where: { method: adv.method, date: adv.date },
+        });
+    for (const col of cols) {
+      tripIds.add(col.tripId);
+      await tx.ledgerEntry.deleteMany({
+        where: { refType: "Collection", refId: col.id },
+      });
+      await tx.collection.delete({ where: { id: col.id } });
+    }
+    await tx.advance.delete({ where: { id: advanceId } });
+    for (const tid of tripIds) await syncTripStatus(tx, tid);
+  });
+
+  await audit("DELETE", "Advance", advanceId, {
+    amount: adv.amount,
+    method: adv.method,
+    reversedCollections: tripIds.size,
+  });
+  revalidatePath("/finance");
+  revalidatePath("/drivers");
+  revalidatePath("/contractors");
+  revalidatePath("/");
+  for (const tid of tripIds) revalidatePath(`/trips/${tid}`);
 }
 
 export async function updateTripDriverPayment(id: string, formData: FormData) {

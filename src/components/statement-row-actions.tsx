@@ -25,6 +25,7 @@ import {
   deleteTripCollection,
   updateTripDriverPayment,
   deleteTripDriverPayment,
+  deleteCollectorHolding,
 } from "@/app/(app)/trips/actions";
 import { editAdvance, deleteAdvance } from "@/lib/advance-actions";
 import {
@@ -113,6 +114,16 @@ export function StatementRowActions({ action }: { action?: StatementRowAction })
           <DeleteButton
             confirmText="حذف السلفة الخارجية نهائيًا؟"
             run={() => deleteExternalAdvance(action.id)}
+          />
+        </div>
+      );
+
+    case "collectorHolding":
+      return (
+        <div className="flex items-center gap-1 print:hidden">
+          <DeleteButton
+            confirmText="حذف حركة المحصّل ده؟ سيتم حذف التحصيل المرتبط بها على المقاول أيضًا (عكس العملية بالكامل)."
+            run={() => deleteCollectorHolding(action.id)}
           />
         </div>
       );

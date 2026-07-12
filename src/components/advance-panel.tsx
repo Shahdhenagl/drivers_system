@@ -17,10 +17,11 @@ import { Card } from "@/components/ui/card";
 import { SubmitButton } from "@/components/submit-button";
 import { MethodSelect } from "@/components/method-select";
 import { addAdvance, deleteAdvance, editAdvance } from "@/lib/advance-actions";
+import { deleteCollectorHolding } from "@/app/(app)/trips/actions";
 import { playSound } from "@/lib/sounds";
 import { formatMoney, toPiastres, toEgp } from "@/lib/money";
 import { formatShortDate, toDateInput } from "@/lib/format";
-import { methodLabel, isSystemAdvanceMethod } from "@/lib/constants";
+import { methodLabel, isSystemAdvanceMethod, collectorNameFromMethod } from "@/lib/constants";
 import { advanceReminder } from "@/lib/messages";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { Wallet, HandCoins, MessageCircle, FileClock, Pencil, Trash2 } from "lucide-react";
@@ -339,6 +340,49 @@ function EditAdvanceDialog({ advance }: { advance: AdvanceRow }) {
   );
 }
 
+/** حذف سلفة "محصّل يمسك الفلوس" — يعكس التحصيل المرتبط على المقاول أيضًا */
+function CollectorHoldingDeleteButton({ id }: { id: string }) {
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  async function onDelete() {
+    if (
+      !confirm(
+        "حذف حركة المحصّل ده؟ سيتم حذف التحصيل المرتبط بها على المقاول أيضًا (عكس العملية بالكامل)."
+      )
+    )
+      return;
+    setLoading(true);
+    try {
+      const res = await deleteCollectorHolding(id);
+      if (res?.error) {
+        playSound("error");
+        alert(res.error);
+        return;
+      }
+      playSound("success");
+      router.refresh();
+    } catch {
+      playSound("error");
+      alert("تعذّر الحذف");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onDelete}
+      disabled={loading}
+      className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+      aria-label="حذف حركة المحصّل"
+    >
+      <Trash2 className="h-4 w-4" />
+    </button>
+  );
+}
+
 /** لوحة السلف/الأرصدة لطرف (سواق أو مقاول) */
 function DeleteAdvanceButton({ advance }: { advance: AdvanceRow }) {
   const [loading, setLoading] = useState(false);
@@ -481,7 +525,11 @@ export function AdvancePanel({
                     {a.note}
                   </div>
                 )}
-                {isSystemAdvanceMethod(a.method) ? (
+                {collectorNameFromMethod(a.method) ? (
+                  <div className="flex items-center print:hidden">
+                    <CollectorHoldingDeleteButton id={a.id} />
+                  </div>
+                ) : isSystemAdvanceMethod(a.method) ? (
                   <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground print:hidden">
                     تلقائي
                   </span>

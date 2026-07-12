@@ -22,6 +22,7 @@ export type StatementRowAction =
     }
   | { kind: "adjustment"; id: string; amount: number; isProfit: boolean; note: string | null }
   | { kind: "external"; id: string }
+  | { kind: "collectorHolding"; id: string }
   | { kind: "locked"; reason: string };
 
 export type StatementRow = {

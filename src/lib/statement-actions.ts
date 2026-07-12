@@ -1,5 +1,10 @@
 import type { StatementRowAction } from "@/components/party-print-statement";
-import { EXTRA_PROFIT_METHOD, TIP_METHOD, isSystemAdvanceMethod } from "@/lib/constants";
+import {
+  EXTRA_PROFIT_METHOD,
+  TIP_METHOD,
+  isSystemAdvanceMethod,
+  collectorNameFromMethod,
+} from "@/lib/constants";
 
 type AdvanceLike = {
   id: string;
@@ -26,11 +31,14 @@ export function advanceRowAction(a: AdvanceLike): StatementRowAction {
       note: a.note,
     };
   }
+  // سلفة "محصّل يمسك الفلوس" — قابلة للحذف مع عكس التحصيل المرتبط على المقاول
+  if (collectorNameFromMethod(a.method)) {
+    return { kind: "collectorHolding", id: a.id };
+  }
   if (isSystemAdvanceMethod(a.method)) {
     return {
       kind: "locked",
-      reason:
-        "حركة مرتبطة بعملية أخرى (مقاصّة/تحصيل عن طريق طرف) — تُعدَّل أو تُحذف من مصدرها",
+      reason: "حركة مرتبطة بعملية أخرى (مقاصّة/عن طريق السواق) — تُعدَّل أو تُحذف من مصدرها",
     };
   }
   return {
