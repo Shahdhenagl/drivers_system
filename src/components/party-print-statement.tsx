@@ -1,6 +1,29 @@
 import { formatShortDate } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 
+/**
+ * إجراء التعديل/الحذف المرتبط بصف كشف الحساب — يُبنى في الخادم ويُمرَّر لمكوّن
+ * الأزرار في الواجهة، فيوجّه كل حركة لأكشن مصدرها (الذي يصحّح الخزنة والأرباح تلقائيًا).
+ * الحركات المولّدة تلقائيًا (مقاصّة/عن طريق السواق/ربح شريك) تكون "locked" وتُدار من مصدرها.
+ */
+export type StatementRowAction =
+  | { kind: "trip"; id: string }
+  | { kind: "collection"; id: string; amount: number; method: string; note: string | null; date: Date }
+  | { kind: "driverPayment"; id: string; amount: number; method: string; note: string | null; date: Date }
+  | {
+      kind: "advance";
+      id: string;
+      amount: number;
+      direction: "OUT" | "IN";
+      method: string;
+      note: string | null;
+      date: Date;
+      isOpening: boolean;
+    }
+  | { kind: "adjustment"; id: string; amount: number; isProfit: boolean; note: string | null }
+  | { kind: "external"; id: string }
+  | { kind: "locked"; reason: string };
+
 export type StatementRow = {
   id: string;
   date: Date;
@@ -10,6 +33,7 @@ export type StatementRow = {
   onParty?: number;
   paid?: number;
   received?: number;
+  action?: StatementRowAction;
 };
 
 /** رحلة في جدول تفاصيل الرحلات بكشف الحساب المطبوع */

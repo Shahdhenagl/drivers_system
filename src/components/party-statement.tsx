@@ -2,6 +2,7 @@ import { Card } from "@/components/ui/card";
 import { formatMoney } from "@/lib/money";
 import { formatShortDate } from "@/lib/format";
 import type { StatementRow } from "@/components/party-print-statement";
+import { StatementRowActions } from "@/components/statement-row-actions";
 
 /**
  * كشف حساب مختصر على الشاشة: جدول (تاريخ • بيان • له • عليه • الرصيد الجاري)
@@ -53,12 +54,13 @@ export function PartyStatement({
                 <th className="p-2 font-medium text-success">له</th>
                 <th className="p-2 font-medium text-destructive">عليه</th>
                 <th className="p-2 font-medium">الرصيد</th>
+                <th className="p-2 font-medium print:hidden">إجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {computed.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-4 text-center text-muted-foreground">
+                  <td colSpan={6} className="p-4 text-center text-muted-foreground">
                     لا توجد حركات في الحساب الحالي
                   </td>
                 </tr>
@@ -93,6 +95,9 @@ export function PartyStatement({
                           ? `${formatMoney(r.running, false)} له`
                           : `${formatMoney(-r.running, false)} عليه`}
                     </td>
+                    <td className="p-2 align-top print:hidden">
+                      <StatementRowActions action={r.action} />
+                    </td>
                   </tr>
                 ))
               )}
@@ -120,6 +125,7 @@ export function PartyStatement({
                         ? `له ${formatMoney(net, false)}`
                         : `عليه ${formatMoney(-net, false)}`}
                   </td>
+                  <td className="print:hidden" />
                 </tr>
               </tfoot>
             )}

@@ -34,6 +34,7 @@ import {
 import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
+import { advanceRowAction } from "@/lib/statement-actions";
 import { driverReport } from "@/lib/messages";
 import {
   COMPANY_NAME,
@@ -241,6 +242,7 @@ export default async function DriverProfile({
       description: `رحلة ${t.startPoint} ← ${t.endPoint}`,
       details: `المقاول: ${t.contractor.name} • ${TRIP_STATUS[tripStatus(t.status)]}`,
       forParty: effectiveAmounts(t).driver,
+      action: { kind: "trip" as const, id: t.id },
     })),
     ...monthPayments.map((p) => ({
       id: `payment-${p.id}`,
@@ -252,6 +254,14 @@ export default async function DriverProfile({
           ? `${p.trip.startPoint} ← ${p.trip.endPoint}`
           : null,
       received: p.amount,
+      action: {
+        kind: "driverPayment" as const,
+        id: p.id,
+        amount: p.amount,
+        method: p.method,
+        note: p.note ?? null,
+        date: p.date,
+      },
     })),
     ...advances
       .filter((a) => inBounds(a.date) && driverIdFromAccountMethod(a.method))
@@ -261,6 +271,10 @@ export default async function DriverProfile({
         description: "ربح شريك على حساب السواق",
         details: a.note,
         forParty: a.amount,
+        action: {
+          kind: "locked" as const,
+          reason: "ربح شريك على حساب السواق — يُدار من صفحة الشركاء",
+        },
       })),
     ...advances
       .filter((a) => inBounds(a.date) && !driverIdFromAccountMethod(a.method))
@@ -276,6 +290,7 @@ export default async function DriverProfile({
         onParty: a.direction === "OUT" ? a.amount : undefined,
         paid: a.direction === "IN" ? a.amount : undefined,
         received: a.direction === "OUT" ? a.amount : undefined,
+        action: advanceRowAction(a),
       })),
     ...externalAdvances
       .filter((a) => inBounds(a.date))
@@ -292,6 +307,7 @@ export default async function DriverProfile({
           onParty: isBorrower ? a.amount : undefined,
           paid: isBorrower ? undefined : a.amount,
           received: isBorrower ? a.amount : undefined,
+          action: { kind: "external" as const, id: a.id },
         };
       }),
   ];

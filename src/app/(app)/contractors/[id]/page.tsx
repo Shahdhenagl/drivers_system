@@ -34,6 +34,7 @@ import {
 import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
+import { advanceRowAction } from "@/lib/statement-actions";
 import { contractorReport } from "@/lib/messages";
 import { COMPANY_NAME, methodLabel, TRIP_STATUS, tripStatus, EXTRA_PROFIT_METHOD, TIP_METHOD, isSystemAdvanceMethod } from "@/lib/constants";
 import {
@@ -240,6 +241,7 @@ export default async function ContractorProfile({
       description: `رحلة ${t.startPoint} ← ${t.endPoint}`,
       details: `${t.driver ? `السواق: ${t.driver.name} • ` : ""}${TRIP_STATUS[tripStatus(t.status)]}`,
       onParty: effectiveAmounts(t).contractor,
+      action: { kind: "trip" as const, id: t.id },
     })),
     ...payments.map((p) => ({
       id: `collection-${p.id}`,
@@ -247,6 +249,14 @@ export default async function ContractorProfile({
       description: `تحصيل من المقاول - ${methodLabel(p.method)}`,
       details: `${p.route}${p.note ? ` • ${p.note}` : ""}`,
       paid: p.amount,
+      action: {
+        kind: "collection" as const,
+        id: p.id,
+        amount: p.amount,
+        method: p.method,
+        note: p.note ?? null,
+        date: p.date,
+      },
     })),
     ...advances
       .filter((a) => inBounds(a.date))
@@ -262,6 +272,7 @@ export default async function ContractorProfile({
         onParty: a.direction === "OUT" ? a.amount : undefined,
         paid: a.direction === "IN" ? a.amount : undefined,
         received: a.direction === "OUT" ? a.amount : undefined,
+        action: advanceRowAction(a),
       })),
     ...externalAdvances
       .filter((a) => inBounds(a.date))
@@ -278,6 +289,7 @@ export default async function ContractorProfile({
           onParty: isBorrower ? a.amount : undefined,
           paid: isBorrower ? undefined : a.amount,
           received: isBorrower ? a.amount : undefined,
+          action: { kind: "external" as const, id: a.id },
         };
       }),
   ];
