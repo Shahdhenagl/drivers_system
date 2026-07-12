@@ -9,7 +9,7 @@ import { formatMoney } from "@/lib/money";
 import { Wrench, Loader2 } from "lucide-react";
 
 /**
- * زر صيانة: يمسح سلف المحصّلين اليتيمة (تحصيلات محذوفة فضلت سلفتها على المحصّل)
+ * زر صيانة: يمسح سلف المحصّلين المعلّقة (تحصيلات محذوفة فضلت سلفتها على المحصّل)
  * فيصحّح "ما لنا" ورأس المال. آمن — لا يمسّ إلا الحركات التي فقدت مصدرها.
  */
 export function RepairCollectorButton() {
@@ -19,7 +19,7 @@ export function RepairCollectorButton() {
   async function onRun() {
     if (
       !confirm(
-        "تصحيح سلف المحصّلين اليتيمة (الناتجة عن تحصيلات محذوفة)؟ لن تُمسّ إلا الحركات التي لم يعد لها تحصيل."
+        "تصحيح سلف المحصّلين المعلّقة (الناتجة عن تحصيلات محذوفة)؟ لن تُمسّ إلا الحركات التي لم يعد لها تحصيل."
       )
     )
       return;
@@ -28,7 +28,7 @@ export function RepairCollectorButton() {
       const res = await repairOrphanCollectorHoldings();
       if (res.removed === 0 && res.reduced === 0) {
         playSound("cancel");
-        alert("لا توجد حركات يتيمة — كله سليم.");
+        alert("لا توجد حركات معلّقة — كله سليم.");
       } else {
         playSound("success");
         alert(
@@ -59,7 +59,7 @@ export function RepairCollectorButton() {
       ) : (
         <Wrench className="h-4 w-4" />
       )}
-      تصحيح سلف المحصّلين اليتيمة
+      تصحيح سلف المحصّلين المعلّقة
     </Button>
   );
 }
