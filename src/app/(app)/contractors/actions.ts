@@ -9,7 +9,7 @@ import {
   effectiveAmounts,
   deriveCollectionStatus,
 } from "@/lib/finance";
-import { resolveCollector } from "@/lib/collectors";
+import { resolveCollector, collectorAdvanceMarker } from "@/lib/collectors";
 import { toPiastres } from "@/lib/money";
 
 export async function createContractor(formData: FormData) {
@@ -103,7 +103,22 @@ export async function collectAllFromContractor(
       const col = await tx.collection.create({
         data: { tripId: it.trip.id, amount: pay, method, date, note },
       });
-      if (!collector) {
+      if (collector) {
+        // المحصّل يمسك حصّة هذه الرحلة — سلفة عليه مربوطة بالتحصيل (بدون قيد خزنة).
+        // الربط بعلامة col يضمن حذفها تلقائيًا مع حذف/تعديل التحصيل من أي مكان.
+        await tx.advance.create({
+          data: {
+            partyType: "DRIVER",
+            partyId: collector.id,
+            amount: pay,
+            direction: "OUT",
+            method,
+            note: `تحصيل عن طريق ${collector.name} ${collectorAdvanceMarker("col", col.id)}`,
+            tripId: it.trip.id,
+            date,
+          },
+        });
+      } else {
         await recordLedger(tx, {
           type: "COLLECTION",
           direction: "IN",
@@ -136,7 +151,20 @@ export async function collectAllFromContractor(
           date,
         },
       });
-      if (!collector) {
+      if (collector) {
+        // المحصّل يمسك الزيادة أيضًا — سلفة عليه مربوطة برصيد المقاول (بدون قيد خزنة)
+        await tx.advance.create({
+          data: {
+            partyType: "DRIVER",
+            partyId: collector.id,
+            amount: left,
+            direction: "OUT",
+            method,
+            note: `زيادة تحصيل عن طريق ${collector.name} ${collectorAdvanceMarker("adv", adv.id)}`,
+            date,
+          },
+        });
+      } else {
         await recordLedger(tx, {
           type: "ADVANCE_IN",
           direction: "IN",
@@ -148,21 +176,6 @@ export async function collectAllFromContractor(
           date,
         });
       }
-    }
-
-    // المحصّل يمسك كل المبلغ نيابةً عن المكتب — سلفة عليه (بدون قيد خزنة)
-    if (collector) {
-      await tx.advance.create({
-        data: {
-          partyType: "DRIVER",
-          partyId: collector.id,
-          amount,
-          direction: "OUT",
-          method,
-          note: `تحصيل مجمّع عن طريق ${collector.name}`,
-          date,
-        },
-      });
     }
   });
 

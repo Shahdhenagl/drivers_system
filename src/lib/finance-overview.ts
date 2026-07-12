@@ -93,7 +93,8 @@ export async function getFinanceOverview() {
   // نجمع الموجب (عليهم لنا) والسالب (علينا لهم) كلٌّ على حدة لكل نوع طرف
   let driverOwesUs = 0; // سلف السواقين (عليهم لنا)
   let weOweDrivers = 0; // سلف من السواقين (علينا لهم)
-  let contractorOwesUs = 0;
+  let contractorOwesUs = 0; // على المقاولين لنا
+  let weOweContractors = 0; // أرصدة دائنة للمقاولين (علينا لهم) — تُحسب التزامًا
   for (const [key, net] of partyNet) {
     const pt = key.split("|")[0];
     if (pt === "DRIVER") {
@@ -101,11 +102,13 @@ export async function getFinanceOverview() {
       else weOweDrivers += -net;
     } else if (pt === "CONTRACTOR") {
       if (net > 0) contractorOwesUs += net;
+      else weOweContractors += -net;
     }
   }
   const totalDriverAdvances = driverOwesUs;
   const totalDriverAdvancesOwed = weOweDrivers;
   const totalContractorAdvances = contractorOwesUs;
+  const totalContractorAdvancesOwed = weOweContractors;
 
   // الربح المحصّل نقدًا (القابل للتوزيع فعليًا) — نقد فعلي دخل الخزنة فقط،
   // معزولًا عن رأس المال والسلف والحركات على الحساب:
@@ -140,5 +143,6 @@ export async function getFinanceOverview() {
     totalDriverAdvances,
     totalDriverAdvancesOwed,
     totalContractorAdvances,
+    totalContractorAdvancesOwed,
   };
 }

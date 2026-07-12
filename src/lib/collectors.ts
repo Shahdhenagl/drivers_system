@@ -3,8 +3,11 @@ import { collectorNameFromMethod } from "@/lib/constants";
 
 export type Collector = { id: string; name: string };
 
-/** علامة تربط سلفة المحصّل بحركتها المصدر (تحصيل/سداد) للتعديل/الحذف لاحقًا */
-export function collectorAdvanceMarker(kind: "col" | "dp", refId: string) {
+/**
+ * علامة تربط سلفة المحصّل بحركتها المصدر للتعديل/الحذف لاحقًا:
+ * col = تحصيل، dp = سداد، adv = رصيد/زيادة تحصيل مرتبطة بحركة سلفة.
+ */
+export function collectorAdvanceMarker(kind: "col" | "dp" | "adv", refId: string) {
   return `[c:${kind}:${refId}]`;
 }
 

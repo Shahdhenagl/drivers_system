@@ -6,6 +6,7 @@ import { TransferForm } from "./transfer-form";
 import { CashAdjustForm } from "./cash-adjust-form";
 import { LedgerActions } from "./ledger-actions";
 import { MonthFilter } from "./month-filter";
+import { RepairCollectorButton } from "./repair-collector-button";
 import { prisma } from "@/lib/prisma";
 import { treasuryByMethod } from "@/lib/finance";
 import { getFinanceOverview } from "@/lib/finance-overview";
@@ -57,7 +58,10 @@ export default async function FinancePage({
   // (الإيرادات المحصّلة والمصروفات داخلة أصلًا في الخزنة، والآجل ضمن "ما لنا")
   const receivables =
     ov.totalDeferred + ov.totalDriverAdvances + ov.totalContractorAdvances;
-  const payables = ov.totalRemainingDrivers + ov.totalDriverAdvancesOwed;
+  const payables =
+    ov.totalRemainingDrivers +
+    ov.totalDriverAdvancesOwed +
+    ov.totalContractorAdvancesOwed;
   const netWorth = treasury.total + receivables - payables;
   // رأس المال الثابت = الثروة − الربح غير الموزّع (فالربح لا يزيد رأس المال)
   const baseCapital = netWorth - ov.distributableProfit;
@@ -115,6 +119,9 @@ export default async function FinancePage({
             <p className="text-[11px] text-muted-foreground">
               رأس المال الثابت لا يزيد بالربح — الربح يظهر منفصلاً ويتوزّع على الشركاء.
             </p>
+            <div className="pt-1">
+              <RepairCollectorButton />
+            </div>
           </Card>
         </section>
 
