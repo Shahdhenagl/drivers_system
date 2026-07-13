@@ -1,8 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { effectiveAmounts } from "@/lib/finance";
 import { EXTRA_PROFIT_METHOD, TIP_METHOD, PAYMENT_METHOD_KEYS } from "@/lib/constants";
+import { purgeOrphanFinance } from "@/lib/purge-orphans";
 
 export async function getFinanceOverview() {
+  // تنظيف تلقائي: أي حركة طرفها اتحذف تُمسح قبل حساب الإجماليات فلا تظهر أبدًا
+  await purgeOrphanFinance();
+
   const [
     trips,
     expenseAgg,
