@@ -78,14 +78,12 @@ export async function purgeOrphanFinance(): Promise<number> {
     )
     .map((t) => t.id);
 
-  if (
-    !orphanAdvanceIds.length &&
-    !orphanExternalIds.length &&
-    !orphanTripIds.length
-  ) {
-    return 0;
-  }
+  const hasPartyOrphans =
+    orphanAdvanceIds.length ||
+    orphanExternalIds.length ||
+    orphanTripIds.length;
 
+  if (hasPartyOrphans)
   await prisma.$transaction(async (tx) => {
     const advIdsToWipe = [...orphanAdvanceIds];
 
@@ -144,7 +142,51 @@ export async function purgeOrphanFinance(): Promise<number> {
     }
   });
 
+  // خطوة أخيرة: قيود دفتر معلّقة مصدرها اتمسح خالص (مش متلقطة أعلاه لأن السجل
+  // نفسه راح). نمسحها فترجع الخزنة صح. تُشغَّل دائمًا حتى لو مفيش يتامى بأطراف.
+  const removedDangling = await purgeDanglingLedger();
+
   return (
-    orphanAdvanceIds.length + orphanExternalIds.length + orphanTripIds.length
+    orphanAdvanceIds.length +
+    orphanExternalIds.length +
+    orphanTripIds.length +
+    removedDangling
   );
+}
+
+/**
+ * يمسح قيود دفتر الأستاذ التي refId فيها يشير لسجل غير موجود (Advance/Collection/
+ * DriverPayment/Trip اتمسح). المصروفات وسحوبات الشركاء لا تُمَس (مصدرها مستقل).
+ */
+async function purgeDanglingLedger(): Promise<number> {
+  const REF_TABLES = ["Advance", "Collection", "DriverPayment", "Trip"];
+  const entries = await prisma.ledgerEntry.findMany({
+    where: { refType: { in: REF_TABLES }, refId: { not: null } },
+    select: { id: true, refType: true, refId: true },
+  });
+  if (!entries.length) return 0;
+
+  const [advances, collections, payments, trips] = await Promise.all([
+    prisma.advance.findMany({ select: { id: true } }),
+    prisma.collection.findMany({ select: { id: true } }),
+    prisma.driverPayment.findMany({ select: { id: true } }),
+    prisma.trip.findMany({ select: { id: true } }),
+  ]);
+  const sets: Record<string, Set<string>> = {
+    Advance: new Set(advances.map((a) => a.id)),
+    Collection: new Set(collections.map((c) => c.id)),
+    DriverPayment: new Set(payments.map((p) => p.id)),
+    Trip: new Set(trips.map((t) => t.id)),
+  };
+
+  const danglingIds = entries
+    .filter((e) => {
+      const set = e.refType ? sets[e.refType] : undefined;
+      return set && e.refId != null && !set.has(e.refId);
+    })
+    .map((e) => e.id);
+
+  if (!danglingIds.length) return 0;
+  await prisma.ledgerEntry.deleteMany({ where: { id: { in: danglingIds } } });
+  return danglingIds.length;
 }
