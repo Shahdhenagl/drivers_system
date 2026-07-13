@@ -10,15 +10,15 @@ export function DeleteContractorButton({ id }: { id: string }) {
   const [loading, setLoading] = useState(false);
 
   async function handle() {
-    if (!confirm("هل تريد حذف هذا المقاول نهائيًا؟")) return;
+    if (
+      !confirm(
+        "حذف المقاول سيمسح نهائيًا كل معاملاته المالية (رحلاته وتحصيلاتها وسداداتها وسلفه وسلفه الخارجية)، وتتعدّل الخزنة والأرباح تلقائيًا. لا يمكن التراجع. متأكد؟"
+      )
+    )
+      return;
     setLoading(true);
     try {
-      const res = await deleteContractor(id);
-      if (res?.error) {
-        playSound("error");
-        alert(res.error);
-        setLoading(false);
-      }
+      await deleteContractor(id);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       if (!msg.includes("NEXT_REDIRECT")) {

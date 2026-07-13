@@ -10,6 +10,7 @@ import {
   deriveCollectionStatus,
 } from "@/lib/finance";
 import { resolveCollector, collectorAdvanceMarker } from "@/lib/collectors";
+import { wipeParty } from "@/lib/party-wipe";
 import { toPiastres } from "@/lib/money";
 
 export async function createContractor(formData: FormData) {
@@ -195,29 +196,19 @@ export async function setContractorReviewed(id: string, reviewed: boolean) {
   revalidatePath(`/contractors/${id}`);
 }
 
+/**
+ * حذف المقاول = مسح كل أثره المالي تلقائيًا (رحلاته وتحصيلاتها وسداداتها وسلفه
+ * وسلفه الخارجية وقيود الدفتر)، وتُعكَس الخزنة والأرباح كأنه لم يوجد.
+ */
 export async function deleteContractor(id: string) {
-  const trips = await prisma.trip.findMany({
-    where: { contractorId: id },
-    select: {
-      _count: { select: { collections: true, driverPayments: true } },
-    },
-  });
-  const hasMoney = trips.some(
-    (t) => t._count.collections > 0 || t._count.driverPayments > 0
-  );
-  if (hasMoney) {
-    return {
-      error:
-        "لا يمكن حذف هذا المقاول لوجود تحصيل أو سداد مسجّل على رحلاته. احذف الطلبات المعنية أولًا.",
-    };
-  }
-
-  // حذف رحلاته الفارغة ثم حذفه
   await prisma.$transaction(async (tx) => {
-    await tx.trip.deleteMany({ where: { contractorId: id } });
+    await wipeParty(tx, "CONTRACTOR", id);
     await tx.contractor.delete({ where: { id } });
   });
   await audit("DELETE", "Contractor", id);
   revalidatePath("/contractors");
+  revalidatePath("/drivers");
+  revalidatePath("/finance");
+  revalidatePath("/");
   redirect("/contractors");
 }

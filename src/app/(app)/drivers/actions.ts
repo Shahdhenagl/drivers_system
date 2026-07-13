@@ -7,6 +7,7 @@ import { audit } from "@/lib/audit";
 import { recordLedger, planSpend, effectiveAmounts } from "@/lib/finance";
 import { advanceBalance } from "@/lib/advance-actions";
 import { resolveCollector } from "@/lib/collectors";
+import { wipeParty } from "@/lib/party-wipe";
 import { toPiastres } from "@/lib/money";
 import { OFFSET } from "@/lib/constants";
 
@@ -63,21 +64,20 @@ export async function setDriverReviewed(id: string, reviewed: boolean) {
   revalidatePath(`/drivers/${id}`);
 }
 
+/**
+ * حذف السواق = مسح كل أثره المالي تلقائيًا (رحلاته وتحصيلاتها وسداداتها وسلفه
+ * وسلفه الخارجية وقيود الدفتر)، وتُعكَس الخزنة والأرباح كأنه لم يوجد.
+ */
 export async function deleteDriver(id: string) {
-  const payCount = await prisma.driverPayment.count({ where: { driverId: id } });
-  if (payCount > 0) {
-    return {
-      error:
-        "لا يمكن حذف هذا السواق لوجود سداد مسجّل له. تظل سجلاته محفوظة.",
-    };
-  }
-  // فك ارتباطه عن أي رحلات ثم حذفه (تبقى الرحلات بدون سواق)
   await prisma.$transaction(async (tx) => {
-    await tx.trip.updateMany({ where: { driverId: id }, data: { driverId: null } });
+    await wipeParty(tx, "DRIVER", id);
     await tx.driver.delete({ where: { id } });
   });
   await audit("DELETE", "Driver", id);
   revalidatePath("/drivers");
+  revalidatePath("/contractors");
+  revalidatePath("/finance");
+  revalidatePath("/");
   redirect("/drivers");
 }
 
