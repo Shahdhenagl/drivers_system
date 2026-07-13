@@ -62,6 +62,7 @@ export function PartyPrintStatement({
   rows,
   trips,
   counterpartyLabel,
+  priceColumn,
 }: {
   companyName: string;
   partyType: string;
@@ -80,7 +81,15 @@ export function PartyPrintStatement({
   rows: StatementRow[];
   trips?: PrintTrip[];
   counterpartyLabel?: string;
+  /**
+   * أي سعر يُعرض في جدول الرحلات — حفاظًا على خصوصية المكتب:
+   * كشف السواق يعرض مستحقه فقط، وكشف المقاول يعرض سعره فقط.
+   */
+  priceColumn: "driver" | "contractor";
 }) {
+  const priceLabel = priceColumn === "driver" ? "مستحق السواق" : "سعر المقاول";
+  const priceOf = (t: { contractorPrice: number; driverDue: number }) =>
+    priceColumn === "driver" ? t.driverDue : t.contractorPrice;
   const sortedRows = [...rows].sort((a, b) => +a.date - +b.date);
   const sortedTrips = [...(trips ?? [])].sort((a, b) => +a.date - +b.date);
   const tripTotals = sortedTrips.reduce(
@@ -146,14 +155,13 @@ export function PartyPrintStatement({
                   <th>الرحلة</th>
                   <th>نوع العربية</th>
                   {counterpartyLabel ? <th>{counterpartyLabel}</th> : null}
-                  <th>سعر المقاول</th>
-                  <th>مستحق السواق</th>
+                  <th>{priceLabel}</th>
                 </tr>
               </thead>
               <tbody>
                 {sortedTrips.length === 0 ? (
                   <tr>
-                    <td colSpan={counterpartyLabel ? 6 : 5} className="print-statement__empty">
+                    <td colSpan={counterpartyLabel ? 5 : 4} className="print-statement__empty">
                       لا توجد رحلات في الفترة المحددة
                     </td>
                   </tr>
@@ -171,8 +179,7 @@ export function PartyPrintStatement({
                       </td>
                       <td>{t.vehicleType || "-"}</td>
                       {counterpartyLabel ? <td>{t.counterparty || "-"}</td> : null}
-                      <MoneyCell value={t.contractorPrice} />
-                      <MoneyCell value={t.driverDue} />
+                      <MoneyCell value={priceOf(t)} />
                     </tr>
                   ))
                 )}
@@ -183,8 +190,13 @@ export function PartyPrintStatement({
                     <td colSpan={counterpartyLabel ? 4 : 3}>
                       <strong>الإجمالي</strong>
                     </td>
-                    <MoneyCell value={tripTotals.contractorPrice} />
-                    <MoneyCell value={tripTotals.driverDue} />
+                    <MoneyCell
+                      value={
+                        priceColumn === "driver"
+                          ? tripTotals.driverDue
+                          : tripTotals.contractorPrice
+                      }
+                    />
                   </tr>
                 </tfoot>
               )}

@@ -371,6 +371,7 @@ export default async function ContractorProfile({
         }}
         rows={visibleStatementRows}
         counterpartyLabel="السواق"
+        priceColumn="contractor"
         trips={trips
           .filter((t) => !clearedAt || +t.date >= +clearedAt)
           .map((t) => ({

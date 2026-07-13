@@ -9,6 +9,7 @@
     "lint": "next lint",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "test": "tsx --tsconfig tsconfig.test.json test/messages-privacy.test.tsx",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate"
   },

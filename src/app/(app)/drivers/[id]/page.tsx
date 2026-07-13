@@ -389,6 +389,7 @@ export default async function DriverProfile({
         }}
         rows={visibleStatementRows}
         counterpartyLabel="المقاول"
+        priceColumn="driver"
         trips={trips
           .filter((t) => !clearedAt || +t.date >= +clearedAt)
           .map((t) => ({
