@@ -170,8 +170,8 @@ export async function editAdvance(id: string, formData: FormData) {
     };
   }
 
-  const name = await partyName(adv.partyType, adv.partyId);
-  if (!name) return { error: "الطرف غير موجود" };
+  // الطرف قد يكون محذوفًا وهذه حركة يتيمة — لا نمنع التعديل، نكمل باسم بديل
+  const name = (await partyName(adv.partyType, adv.partyId)) ?? "طرف محذوف";
 
   const label = adv.isOpening ? "رصيد افتتاحي" : "سلفة";
   const pLabel = adv.partyType === "DRIVER" ? "سواق" : "مقاول";
@@ -261,8 +261,8 @@ export async function deleteAdvance(id: string) {
     };
   }
 
-  const name = await partyName(adv.partyType, adv.partyId);
-  if (!name) return { error: "الطرف غير موجود" };
+  // الطرف قد يكون محذوفًا وهذه حركة يتيمة — لا نمنع الحذف، ننظّفها فورًا باسم بديل
+  const name = (await partyName(adv.partyType, adv.partyId)) ?? "طرف محذوف";
   const pLabel = adv.partyType === "DRIVER" ? "سواق" : "مقاول";
 
   await prisma.$transaction(async (tx) => {
