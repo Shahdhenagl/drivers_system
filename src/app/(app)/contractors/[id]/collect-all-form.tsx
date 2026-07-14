@@ -67,7 +67,7 @@ export function CollectAllForm({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="lg" className="w-full" disabled={remaining <= 0}>
+        <Button size="lg" className="w-full">
           <Banknote className="h-5 w-5" />
           تحصيل الكل
         </Button>

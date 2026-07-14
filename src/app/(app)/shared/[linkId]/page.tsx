@@ -388,16 +388,14 @@ export default async function SharedProfile({
           <SummaryBox label="الآجل" value={cDeferred} tone="destructive" />
         </div>
 
-        {cDeferred > 0 && (
-          <div className="print:hidden">
-            <CollectAllForm
-              contractorId={contractor.id}
-              remaining={cDeferred}
-              advanceBalance={cAdvBalance}
-              externalCredit={cExternalFor + dExternalFor}
-            />
-          </div>
-        )}
+        <div className="print:hidden">
+          <CollectAllForm
+            contractorId={contractor.id}
+            remaining={cDeferred}
+            advanceBalance={cAdvBalance}
+            externalCredit={cExternalFor + dExternalFor}
+          />
+        </div>
 
         {cDeferred > 0 && (cExternalFor > 0 || cAdvBalance < 0) && (
           <div className="print:hidden">

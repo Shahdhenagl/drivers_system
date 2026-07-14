@@ -93,7 +93,7 @@ export function PayDriverForm({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="lg" className="w-full" disabled={payable <= 0 && advanceBalance <= 0}>
+        <Button size="lg" className="w-full">
           <HandCoins className="h-5 w-5" />
           سداد / حساب السواق
         </Button>

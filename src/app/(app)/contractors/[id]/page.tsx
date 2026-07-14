@@ -500,16 +500,14 @@ export default async function ContractorProfile({
         />
 
         {/* تحصيل الكل */}
-        {deferredAll > 0 && (
-          <div className="print:hidden">
-            <CollectAllForm
-              contractorId={c.id}
-              remaining={deferredAll}
-              advanceBalance={advanceBalance}
-              externalCredit={externalFor}
-            />
-          </div>
-        )}
+        <div className="print:hidden">
+          <CollectAllForm
+            contractorId={c.id}
+            remaining={deferredAll}
+            advanceBalance={advanceBalance}
+            externalCredit={externalFor}
+          />
+        </div>
 
         {/* مقاصّة / تصفية الحساب */}
         {deferredAll > 0 && (externalFor > 0 || advanceBalance < 0) && (
