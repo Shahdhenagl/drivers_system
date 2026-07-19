@@ -35,7 +35,8 @@ export default async function PartnerProfile({
   if (!p) notFound();
 
   const pct = p.sharePercent / 100;
-  const entitlement = Math.round(ov.netProfit * pct);
+  // نفس أساس سقف السحب في addWithdrawal: الربح المحصّل نقدًا لا الاستحقاق
+  const entitlement = Math.round(ov.grossRealizedProfit * pct);
   const withdrawn = p.withdrawals.reduce((a, w) => a + w.amount, 0);
   const balance = entitlement - withdrawn;
   const weekShare = Math.round(stats.profitWeek * pct);
@@ -87,19 +88,23 @@ export default async function PartnerProfile({
         </Card>
 
         <div className="grid grid-cols-3 gap-3">
-          <Box label="إجمالي نصيبه" value={entitlement} />
+          <Box label="نصيبه من المحصّل" value={entitlement} />
           <Box label="السحوبات" value={withdrawn} tone="destructive" />
           <Box
-            label="الرصيد"
+            label="المتاح للسحب"
             value={balance}
             tone={balance >= 0 ? "success" : "destructive"}
           />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Box label="نصيب الأسبوع" value={weekShare} tone="primary" />
-          <Box label="نصيب الشهر" value={monthShare} tone="primary" />
+          <Box label="نصيب الأسبوع (استحقاق)" value={weekShare} tone="primary" />
+          <Box label="نصيب الشهر (استحقاق)" value={monthShare} tone="primary" />
         </div>
+        <p className="text-xs text-muted-foreground">
+          «المتاح للسحب» محسوب من الربح المحصّل نقدًا بعد خصم مستحقات السواقين
+          والمصروفات. أنصبة الأسبوع/الشهر بالاستحقاق وتشمل رحلات لم تُحصَّل بعد.
+        </p>
 
         <div className="print:hidden">
           <WithdrawForm partnerId={p.id} />
