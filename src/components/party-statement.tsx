@@ -3,6 +3,8 @@ import { formatMoney } from "@/lib/money";
 import { formatShortDate } from "@/lib/format";
 import type { StatementRow } from "@/components/party-print-statement";
 import { StatementRowActions } from "@/components/statement-row-actions";
+import { StatementGroupRow } from "@/components/statement-group-row";
+import { groupStatementRows } from "@/lib/statement-group";
 
 /**
  * كشف حساب مختصر على الشاشة: جدول (تاريخ • بيان • له • عليه • الرصيد الجاري)
@@ -18,7 +20,8 @@ export function PartyStatement({
   rows: StatementRow[];
   clearedAt?: Date | null;
 }) {
-  const sorted = [...rows].sort((a, b) => +a.date - +b.date);
+  // الدفعة الواحدة المقسّمة داخليًا على رحلات تُعرض كحركة واحدة قابلة للفتح
+  const sorted = groupStatementRows(rows).sort((a, b) => +a.date - +b.date);
   let running = 0;
   let totalFor = 0;
   let totalOn = 0;
@@ -65,7 +68,16 @@ export function PartyStatement({
                   </td>
                 </tr>
               ) : (
-                computed.map((r) => (
+                computed.map((r) =>
+                  r.members && r.members.length > 1 ? (
+                    <StatementGroupRow
+                      key={r.id}
+                      row={r}
+                      members={r.members}
+                      delta={r.delta}
+                      running={r.running}
+                    />
+                  ) : (
                   <tr key={r.id}>
                     <td className="whitespace-nowrap p-2 align-top text-muted-foreground">
                       {formatShortDate(r.date)}
@@ -99,7 +111,8 @@ export function PartyStatement({
                       <StatementRowActions action={r.action} />
                     </td>
                   </tr>
-                ))
+                  )
+                )
               )}
             </tbody>
             {computed.length > 0 && (

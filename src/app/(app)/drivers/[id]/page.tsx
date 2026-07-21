@@ -35,6 +35,7 @@ import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
 import { advanceRowAction } from "@/lib/statement-actions";
+import { stripMarkers } from "@/lib/statement-group";
 import { driverReport } from "@/lib/messages";
 import {
   COMPANY_NAME,
@@ -136,6 +137,7 @@ export default async function DriverProfile({
           note: string | null;
           isOpening: boolean;
           date: Date;
+          createdAt: Date;
         }[]
     );
   // فصل الأرباح الإضافية/الإكراميات عن سلف المكتب العادية
@@ -248,12 +250,13 @@ export default async function DriverProfile({
       id: `payment-${p.id}`,
       date: p.date,
       description: `سداد للسواق - ${methodLabel(p.method)}`,
-      details: p.note
-        ? p.note
-        : p.trip
-          ? `${p.trip.startPoint} ← ${p.trip.endPoint}`
-          : null,
+      details: p.trip
+        ? `${p.trip.startPoint} ← ${p.trip.endPoint}${p.note ? ` • ${p.note}` : ""}`
+        : p.note,
       received: p.amount,
+      // السداد المجمّع يتقسّم على الرحلات — كل دفعة تظهر كحركة واحدة
+      groupKey: `dp|${p.method}|${+p.date}|${p.note ?? ""}`,
+      createdAt: p.createdAt,
       action: {
         kind: "driverPayment" as const,
         id: p.id,
@@ -269,8 +272,10 @@ export default async function DriverProfile({
         id: `partner-settlement-${a.id}`,
         date: a.date,
         description: "ربح شريك على حساب السواق",
-        details: a.note,
+        details: stripMarkers(a.note),
         forParty: a.amount,
+        groupKey: `psettle|${a.method}|${+a.date}|${stripMarkers(a.note) ?? ""}`,
+        createdAt: a.createdAt,
         action: {
           kind: "locked" as const,
           reason: "ربح شريك على حساب السواق — يُدار من صفحة الشركاء",
@@ -286,10 +291,13 @@ export default async function DriverProfile({
           : a.direction === "OUT"
             ? `استلم من المكتب - ${methodLabel(a.method)}`
             : `دفع للمكتب - ${methodLabel(a.method)}`,
-        details: a.note,
+        details: stripMarkers(a.note),
         onParty: a.direction === "OUT" ? a.amount : undefined,
         paid: a.direction === "IN" ? a.amount : undefined,
         received: a.direction === "OUT" ? a.amount : undefined,
+        // تحصيل/سداد المحصّل يتقسّم على الرحلات — الدفعة الواحدة حركة واحدة
+        groupKey: `adv|${a.direction}|${a.method}|${+a.date}|${stripMarkers(a.note) ?? ""}`,
+        createdAt: a.createdAt,
         action: advanceRowAction(a),
       })),
     ...externalAdvances

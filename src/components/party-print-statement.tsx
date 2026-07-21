@@ -1,5 +1,6 @@
 import { formatShortDate } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
+import { groupStatementRows } from "@/lib/statement-group";
 
 /**
  * إجراء التعديل/الحذف المرتبط بصف كشف الحساب — يُبنى في الخادم ويُمرَّر لمكوّن
@@ -35,6 +36,13 @@ export type StatementRow = {
   paid?: number;
   received?: number;
   action?: StatementRowAction;
+  /**
+   * مفتاح تجميع: الصفوف الناتجة عن عملية واحدة (دفعة اتقسمت على رحلات) تحمل
+   * نفس المفتاح فتُعرض كصف واحد. اتركه فارغًا للحركات المستقلة (الرحلات مثلًا).
+   */
+  groupKey?: string | null;
+  /** وقت الإنشاء — يفصل بين عمليتين بنفس المفتاح في تاريخين/وقتين مختلفين */
+  createdAt?: Date | null;
 };
 
 /** رحلة في جدول تفاصيل الرحلات بكشف الحساب المطبوع */
@@ -90,7 +98,8 @@ export function PartyPrintStatement({
   const priceLabel = priceColumn === "driver" ? "مستحق السواق" : "سعر المقاول";
   const priceOf = (t: { contractorPrice: number; driverDue: number }) =>
     priceColumn === "driver" ? t.driverDue : t.contractorPrice;
-  const sortedRows = [...rows].sort((a, b) => +a.date - +b.date);
+  // الدفعة الواحدة المقسّمة على رحلات تُطبع كسطر واحد بقيمتها الكاملة
+  const sortedRows = groupStatementRows(rows).sort((a, b) => +a.date - +b.date);
   const sortedTrips = [...(trips ?? [])].sort((a, b) => +a.date - +b.date);
   const tripTotals = sortedTrips.reduce(
     (acc, t) => ({

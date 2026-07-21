@@ -35,6 +35,7 @@ import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
 import { advanceRowAction } from "@/lib/statement-actions";
+import { stripMarkers } from "@/lib/statement-group";
 import { contractorReport } from "@/lib/messages";
 import { COMPANY_NAME, methodLabel, TRIP_STATUS, tripStatus, EXTRA_PROFIT_METHOD, TIP_METHOD, isSystemAdvanceMethod } from "@/lib/constants";
 import {
@@ -114,6 +115,7 @@ export default async function ContractorProfile({
           note: string | null;
           isOpening: boolean;
           date: Date;
+          createdAt: Date;
         }[]
     );
   // فصل الأرباح الإضافية/الإكراميات عن سلف المكتب العادية
@@ -249,6 +251,9 @@ export default async function ContractorProfile({
       description: `تحصيل من المقاول - ${methodLabel(p.method)}`,
       details: `${p.route}${p.note ? ` • ${p.note}` : ""}`,
       paid: p.amount,
+      // التحصيل المجمّع يتقسّم على الرحلات — كل دفعة تظهر كحركة واحدة
+      groupKey: `col|${p.method}|${+p.date}|${p.note ?? ""}`,
+      createdAt: p.createdAt,
       action: {
         kind: "collection" as const,
         id: p.id,
@@ -268,10 +273,12 @@ export default async function ContractorProfile({
           : a.direction === "OUT"
             ? `استلم من المكتب - ${methodLabel(a.method)}`
             : `دفع للمكتب - ${methodLabel(a.method)}`,
-        details: a.note,
+        details: stripMarkers(a.note),
         onParty: a.direction === "OUT" ? a.amount : undefined,
         paid: a.direction === "IN" ? a.amount : undefined,
         received: a.direction === "OUT" ? a.amount : undefined,
+        groupKey: `adv|${a.direction}|${a.method}|${+a.date}|${stripMarkers(a.note) ?? ""}`,
+        createdAt: a.createdAt,
         action: advanceRowAction(a),
       })),
     ...externalAdvances

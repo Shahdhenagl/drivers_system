@@ -13,6 +13,7 @@ import { PayDriverForm } from "../../drivers/pay-driver-form";
 import { PartyStatement } from "@/components/party-statement";
 import { StartNewStatementButton } from "@/components/start-new-statement-button";
 import type { StatementRow } from "@/components/party-print-statement";
+import { stripMarkers } from "@/lib/statement-group";
 import { SharedForm } from "../shared-form";
 import { DeleteSharedButton } from "../delete-shared-button";
 import { setSharedReviewed } from "../actions";
@@ -180,6 +181,8 @@ export default async function SharedProfile({
       description: `تحصيل من المقاول - ${methodLabel(p.method)}`,
       details: p.route,
       paid: p.amount,
+      groupKey: `col|${p.method}|${+p.date}|${p.note ?? ""}`,
+      createdAt: p.createdAt,
     })),
     ...contractorAdvances.map((a) => ({
       id: `cadvance-${a.id}`,
@@ -188,10 +191,12 @@ export default async function SharedProfile({
         a.direction === "OUT"
           ? `استلم من المكتب - ${methodLabel(a.method)}`
           : `دفع للمكتب - ${methodLabel(a.method)}`,
-      details: a.note,
+      details: stripMarkers(a.note),
       onParty: a.direction === "OUT" ? a.amount : undefined,
       paid: a.direction === "IN" ? a.amount : undefined,
       received: a.direction === "OUT" ? a.amount : undefined,
+      groupKey: `adv|${a.direction}|${a.method}|${+a.date}|${stripMarkers(a.note) ?? ""}`,
+      createdAt: a.createdAt,
     })),
     ...contractorExternals.map((a) => {
       const isBorrower = a.borrowerType === "CONTRACTOR" && a.borrowerId === contractor.id;
@@ -221,12 +226,12 @@ export default async function SharedProfile({
       id: `payment-${p.id}`,
       date: p.date,
       description: `سداد للسواق - ${methodLabel(p.method)}`,
-      details: p.note
-        ? p.note
-        : p.trip
-          ? `${p.trip.startPoint} ← ${p.trip.endPoint}`
-          : null,
+      details: p.trip
+        ? `${p.trip.startPoint} ← ${p.trip.endPoint}${p.note ? ` • ${p.note}` : ""}`
+        : p.note,
       received: p.amount,
+      groupKey: `dp|${p.method}|${+p.date}|${p.note ?? ""}`,
+      createdAt: p.createdAt,
     })),
     ...driverAdvances.map((a) => ({
       id: `dadvance-${a.id}`,
@@ -235,10 +240,12 @@ export default async function SharedProfile({
         a.direction === "OUT"
           ? `استلم من المكتب - ${methodLabel(a.method)}`
           : `دفع للمكتب - ${methodLabel(a.method)}`,
-      details: a.note,
+      details: stripMarkers(a.note),
       onParty: a.direction === "OUT" ? a.amount : undefined,
       paid: a.direction === "IN" ? a.amount : undefined,
       received: a.direction === "OUT" ? a.amount : undefined,
+      groupKey: `adv|${a.direction}|${a.method}|${+a.date}|${stripMarkers(a.note) ?? ""}`,
+      createdAt: a.createdAt,
     })),
     ...driverExternals.map((a) => {
       const isBorrower = a.borrowerType === "DRIVER" && a.borrowerId === driver.id;
