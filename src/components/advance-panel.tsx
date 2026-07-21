@@ -23,8 +23,17 @@ import { formatMoney, toPiastres, toEgp } from "@/lib/money";
 import { formatShortDate, toDateInput } from "@/lib/format";
 import { methodLabel, isSystemAdvanceMethod, collectorNameFromMethod } from "@/lib/constants";
 import { advanceReminder } from "@/lib/messages";
+import { groupByBatch, stripMarkers } from "@/lib/statement-group";
 import { WhatsAppButton } from "@/components/whatsapp-button";
-import { Wallet, HandCoins, MessageCircle, FileClock, Pencil, Trash2 } from "lucide-react";
+import {
+  Wallet,
+  HandCoins,
+  MessageCircle,
+  FileClock,
+  Pencil,
+  Trash2,
+  ChevronDown,
+} from "lucide-react";
 
 type AdvanceRow = {
   id: string;
@@ -34,6 +43,7 @@ type AdvanceRow = {
   note: string | null;
   isOpening: boolean;
   date: Date;
+  createdAt?: Date;
 };
 
 type Mode = "give" | "receive" | "opening";
@@ -383,7 +393,6 @@ function CollectorHoldingDeleteButton({ id }: { id: string }) {
   );
 }
 
-/** لوحة السلف/الأرصدة لطرف (سواق أو مقاول) */
 function DeleteAdvanceButton({ advance }: { advance: AdvanceRow }) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -421,6 +430,102 @@ function DeleteAdvanceButton({ advance }: { advance: AdvanceRow }) {
   );
 }
 
+/** سطر سلفة واحدة بأزرار مصدره */
+function AdvanceLine({ advance: a, nested }: { advance: AdvanceRow; nested?: boolean }) {
+  const note = stripMarkers(a.note);
+  return (
+    <div
+      className={`flex items-center justify-between p-2.5 text-sm ${
+        nested ? "bg-muted/40 pr-6 text-xs" : ""
+      }`}
+    >
+      <div>
+        <div
+          className={`font-medium ${
+            a.direction === "OUT" ? "text-warning" : "text-success"
+          }`}
+        >
+          {a.isOpening ? "رصيد افتتاحي" : a.direction === "OUT" ? "صرف" : "استلام"} —{" "}
+          {formatMoney(a.amount)}
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {formatShortDate(a.date)} • {methodLabel(a.method)}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {note && (
+          <div className="max-w-[40%] truncate text-xs text-muted-foreground">{note}</div>
+        )}
+        {collectorNameFromMethod(a.method) ? (
+          <div className="flex items-center print:hidden">
+            <CollectorHoldingDeleteButton id={a.id} />
+          </div>
+        ) : isSystemAdvanceMethod(a.method) ? (
+          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground print:hidden">
+            تلقائي
+          </span>
+        ) : (
+          <div className="flex items-center print:hidden">
+            <EditAdvanceDialog advance={a} />
+            <DeleteAdvanceButton advance={a} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * دفعة واحدة اتقسّمت داخليًا على رحلات: تُعرض بقيمتها الكاملة في سطر واحد،
+ * وزر «تفاصيل» يفتح السجلات الأصلية بأزرارها.
+ */
+function AdvanceBatch({ items }: { items: AdvanceRow[] }) {
+  const [open, setOpen] = useState(false);
+  const first = items[0];
+  const total = items.reduce((s, a) => s + a.amount, 0);
+  const note = stripMarkers(first.note);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between p-2.5 text-sm">
+        <div>
+          <div
+            className={`font-medium ${
+              first.direction === "OUT" ? "text-warning" : "text-success"
+            }`}
+          >
+            {first.direction === "OUT" ? "صرف" : "استلام"} — {formatMoney(total)}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {formatShortDate(first.date)} • {methodLabel(first.method)}
+          </div>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground print:hidden"
+            aria-expanded={open}
+          >
+            <ChevronDown
+              className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`}
+            />
+            {open ? "إخفاء التفاصيل" : `تفاصيل (${items.length} رحلة)`}
+          </button>
+        </div>
+        {note && (
+          <div className="max-w-[40%] truncate text-xs text-muted-foreground">{note}</div>
+        )}
+      </div>
+      {open && (
+        <div className="divide-y divide-border border-t border-border">
+          {items.map((a) => (
+            <AdvanceLine key={a.id} advance={a} nested />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AdvancePanel({
   partyType,
   partyId,
@@ -438,6 +543,19 @@ export function AdvancePanel({
   balance: number; // + = عليه لنا، − = لنا عليه
   advances: AdvanceRow[];
 }) {
+  // التحصيل/السداد عن طريق محصّل يتقسّم على الرحلات — كل دفعة تظهر كحركة واحدة
+  const batches = groupByBatch(
+    advances,
+    // الحركات اليدوية (غير المولّدة تلقائيًا) تفضل كما هي — التقسيم يخص المولّدة فقط.
+    // الملاحظة مستبعدة من المفتاح عمدًا: «تحصيل» و«زيادة تحصيل» من نفس العملية
+    // مبلغ واحد استلمه المحصّل، فيظهران في سطر واحد.
+    (a) =>
+      isSystemAdvanceMethod(a.method)
+        ? `${a.direction}|${a.method}|${+new Date(a.date)}`
+        : null,
+    (a) => +new Date(a.createdAt ?? a.date)
+  ).sort((x, y) => +new Date(y[0].date) - +new Date(x[0].date));
+
   return (
     <Card className="space-y-3 p-4">
       <div className="flex items-center justify-between">
@@ -502,46 +620,15 @@ export function AdvancePanel({
         </WhatsAppButton>
       )}
 
-      {advances.length > 0 && (
+      {batches.length > 0 && (
         <div className="divide-y divide-border rounded-lg border border-border">
-          {advances.map((a) => (
-            <div key={a.id} className="flex items-center justify-between p-2.5 text-sm">
-              <div>
-                <div
-                  className={`font-medium ${
-                    a.direction === "OUT" ? "text-warning" : "text-success"
-                  }`}
-                >
-                  {a.isOpening ? "رصيد افتتاحي" : a.direction === "OUT" ? "صرف" : "استلام"} —{" "}
-                  {formatMoney(a.amount)}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {formatShortDate(a.date)} • {methodLabel(a.method)}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {a.note && (
-                  <div className="max-w-[40%] truncate text-xs text-muted-foreground">
-                    {a.note}
-                  </div>
-                )}
-                {collectorNameFromMethod(a.method) ? (
-                  <div className="flex items-center print:hidden">
-                    <CollectorHoldingDeleteButton id={a.id} />
-                  </div>
-                ) : isSystemAdvanceMethod(a.method) ? (
-                  <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground print:hidden">
-                    تلقائي
-                  </span>
-                ) : (
-                  <div className="flex items-center print:hidden">
-                    <EditAdvanceDialog advance={a} />
-                    <DeleteAdvanceButton advance={a} />
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+          {batches.map((items) =>
+            items.length > 1 ? (
+              <AdvanceBatch key={items[0].id} items={items} />
+            ) : (
+              <AdvanceLine key={items[0].id} advance={items[0]} />
+            )
+          )}
         </div>
       )}
     </Card>

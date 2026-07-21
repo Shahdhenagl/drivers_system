@@ -277,7 +277,9 @@ export default async function ContractorProfile({
         onParty: a.direction === "OUT" ? a.amount : undefined,
         paid: a.direction === "IN" ? a.amount : undefined,
         received: a.direction === "OUT" ? a.amount : undefined,
-        groupKey: `adv|${a.direction}|${a.method}|${+a.date}|${stripMarkers(a.note) ?? ""}`,
+        groupKey: isSystemAdvanceMethod(a.method)
+          ? `adv|${a.direction}|${a.method}|${+a.date}`
+          : null,
         createdAt: a.createdAt,
         action: advanceRowAction(a),
       })),

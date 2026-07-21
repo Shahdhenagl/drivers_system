@@ -16,50 +16,67 @@ export function stripMarkers(note?: string | null): string | null {
   return note.replace(MARKER_RE, "").trim() || null;
 }
 
-export type GroupedStatementRow = StatementRow & { members?: StatementRow[] };
-
-/** سجلات الدفعة الواحدة تُنشأ في نفس المعاملة خلال ثوانٍ — نافذة أمان 3 دقائق */
-const BATCH_WINDOW_MS = 3 * 60 * 1000;
-
-function stamp(r: StatementRow) {
-  return +(r.createdAt ?? r.date);
-}
+/**
+ * سجلات العملية الواحدة تُنشأ داخل معاملة واحدة، فتحمل نفس طابع الوقت تقريبًا.
+ * 30 ثانية تكفي لأبطأ معاملة، وأقل بكثير من زمن ملء أي فورم مرتين — فعمليتان
+ * منفصلتان لا تلتصقان ببعضهما.
+ */
+const BATCH_WINDOW_MS = 30 * 1000;
 
 /**
- * يجمع الصفوف التي تحمل نفس groupKey وأُنشئت في نفس النافذة الزمنية في صف واحد،
- * ويحتفظ بالسجلات الأصلية في members لعرضها عند طلب التفاصيل.
+ * يقسّم العناصر إلى دفعات: نفس المفتاح + متقاربة زمنيًا = دفعة واحدة.
+ * العنصر بمفتاح فارغ يرجع في دفعة مستقلة (حركة قائمة بذاتها).
  */
-export function groupStatementRows(rows: StatementRow[]): GroupedStatementRow[] {
-  const out: GroupedStatementRow[] = [];
-  const buckets = new Map<string, StatementRow[]>();
+export function groupByBatch<T>(
+  items: T[],
+  keyOf: (x: T) => string | null,
+  stampOf: (x: T) => number
+): T[][] {
+  const out: T[][] = [];
+  const buckets = new Map<string, T[]>();
 
-  for (const r of rows) {
-    if (!r.groupKey) {
-      out.push(r);
+  for (const it of items) {
+    const key = keyOf(it);
+    if (!key) {
+      out.push([it]);
       continue;
     }
-    const b = buckets.get(r.groupKey);
-    if (b) b.push(r);
-    else buckets.set(r.groupKey, [r]);
+    const b = buckets.get(key);
+    if (b) b.push(it);
+    else buckets.set(key, [it]);
   }
 
   for (const bucket of buckets.values()) {
-    const sorted = [...bucket].sort((a, b) => stamp(a) - stamp(b));
-    let run: StatementRow[] = [];
+    const sorted = [...bucket].sort((a, b) => stampOf(a) - stampOf(b));
+    let run: T[] = [];
     const flush = () => {
-      if (run.length) out.push(mergeRun(run));
+      if (run.length) out.push(run);
       run = [];
     };
-    for (const r of sorted) {
-      if (run.length && stamp(r) - stamp(run[run.length - 1]) > BATCH_WINDOW_MS) {
+    for (const it of sorted) {
+      if (run.length && stampOf(it) - stampOf(run[run.length - 1]) > BATCH_WINDOW_MS) {
         flush();
       }
-      run.push(r);
+      run.push(it);
     }
     flush();
   }
 
   return out;
+}
+
+export type GroupedStatementRow = StatementRow & { members?: StatementRow[] };
+
+/**
+ * يجمع صفوف كشف الحساب الناتجة عن عملية واحدة في صف واحد،
+ * ويحتفظ بالسجلات الأصلية في members لعرضها عند طلب التفاصيل.
+ */
+export function groupStatementRows(rows: StatementRow[]): GroupedStatementRow[] {
+  return groupByBatch(
+    rows,
+    (r) => r.groupKey ?? null,
+    (r) => +(r.createdAt ?? r.date)
+  ).map(mergeRun);
 }
 
 function mergeRun(run: StatementRow[]): GroupedStatementRow {

@@ -295,8 +295,11 @@ export default async function DriverProfile({
         onParty: a.direction === "OUT" ? a.amount : undefined,
         paid: a.direction === "IN" ? a.amount : undefined,
         received: a.direction === "OUT" ? a.amount : undefined,
-        // تحصيل/سداد المحصّل يتقسّم على الرحلات — الدفعة الواحدة حركة واحدة
-        groupKey: `adv|${a.direction}|${a.method}|${+a.date}|${stripMarkers(a.note) ?? ""}`,
+        // تحصيل/سداد المحصّل يتقسّم على الرحلات — الدفعة الواحدة حركة واحدة.
+        // الحركات اليدوية تفضل كما هي (بدون مفتاح تجميع).
+        groupKey: isSystemAdvanceMethod(a.method)
+          ? `adv|${a.direction}|${a.method}|${+a.date}`
+          : null,
         createdAt: a.createdAt,
         action: advanceRowAction(a),
       })),

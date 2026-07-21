@@ -22,7 +22,14 @@ import { sameCairoDay } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
-import { EXTRA_PROFIT_METHOD, TIP_METHOD, methodLabel, TRIP_STATUS, tripStatus } from "@/lib/constants";
+import {
+  EXTRA_PROFIT_METHOD,
+  TIP_METHOD,
+  methodLabel,
+  TRIP_STATUS,
+  tripStatus,
+  isSystemAdvanceMethod,
+} from "@/lib/constants";
 import { ExtraProfitForm } from "@/components/extra-profit-form";
 import { TipForm } from "@/components/driver-tip-form";
 import { PartyAdjustments } from "@/components/party-adjustments";
@@ -195,7 +202,9 @@ export default async function SharedProfile({
       onParty: a.direction === "OUT" ? a.amount : undefined,
       paid: a.direction === "IN" ? a.amount : undefined,
       received: a.direction === "OUT" ? a.amount : undefined,
-      groupKey: `adv|${a.direction}|${a.method}|${+a.date}|${stripMarkers(a.note) ?? ""}`,
+      groupKey: isSystemAdvanceMethod(a.method)
+        ? `adv|${a.direction}|${a.method}|${+a.date}`
+        : null,
       createdAt: a.createdAt,
     })),
     ...contractorExternals.map((a) => {
@@ -244,7 +253,9 @@ export default async function SharedProfile({
       onParty: a.direction === "OUT" ? a.amount : undefined,
       paid: a.direction === "IN" ? a.amount : undefined,
       received: a.direction === "OUT" ? a.amount : undefined,
-      groupKey: `adv|${a.direction}|${a.method}|${+a.date}|${stripMarkers(a.note) ?? ""}`,
+      groupKey: isSystemAdvanceMethod(a.method)
+        ? `adv|${a.direction}|${a.method}|${+a.date}`
+        : null,
       createdAt: a.createdAt,
     })),
     ...driverExternals.map((a) => {
