@@ -29,9 +29,12 @@ type PartnerOption = { id: string; name: string };
 
 export function DistributeForm({
   distributableProfit,
+  undistributedProfit,
   partners,
 }: {
   distributableProfit: number;
+  // الربح غير الموزّع كله — لو أكبر من المتاح يبقى الفرق مستنّي تحصيل
+  undistributedProfit: number;
   partners: PartnerOption[];
 }) {
   const [open, setOpen] = useState(false);
@@ -72,6 +75,13 @@ export function DistributeForm({
           الربح المتاح للتوزيع:{" "}
           <span className="font-bold text-primary">{formatMoney(available)}</span>
         </p>
+        {undistributedProfit > available && (
+          <p className="mb-3 rounded-lg bg-warning/15 p-2 text-center text-[11px] leading-relaxed text-warning">
+            في {formatMoney(undistributedProfit)} ربح غير موزّع، بس الكاش
+            الموجود في الخزنة {formatMoney(available)} — الباقي يتوزّع أول ما
+            تحصّل.
+          </p>
+        )}
         <form action={action} className="space-y-3">
           <div className="space-y-1.5">
             <Label htmlFor="amount">المبلغ الموزع (ج.م) *</Label>

@@ -35,8 +35,8 @@ export default async function PartnerProfile({
   if (!p) notFound();
 
   const pct = p.sharePercent / 100;
-  // نفس أساس سقف السحب في addWithdrawal: الربح المحصّل نقدًا لا الاستحقاق
-  const entitlement = Math.round(ov.grossRealizedProfit * pct);
+  // نفس أساس سقف السحب في addWithdrawal: صافي ربح كل الطلبات بعد المصروفات
+  const entitlement = Math.round(ov.partnerProfitBase * pct);
   const withdrawn = p.withdrawals.reduce((a, w) => a + w.amount, 0);
   const balance = entitlement - withdrawn;
   const weekShare = Math.round(stats.profitWeek * pct);

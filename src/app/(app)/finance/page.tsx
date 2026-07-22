@@ -161,8 +161,8 @@ export default async function FinancePage({
           <Indicator label="إجمالي الربح" value={ov.grossProfit} tone="primary" />
           <Indicator label="سحوبات الشركاء" value={ov.totalPartnerWithdrawals} />
           <Indicator
-            label="الربح القابل للتوزيع (رحلات مقفولة)"
-            value={ov.realizedProfit}
+            label="الربح القابل للتوزيع (بحد الخزنة)"
+            value={ov.partnerPool}
             tone="success"
           />
           <div className="col-span-2">

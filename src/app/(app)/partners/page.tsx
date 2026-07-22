@@ -48,17 +48,17 @@ export default async function PartnersPage() {
 
         <Card className="p-3.5">
           <div className="text-xs text-muted-foreground">
-            ربح الرحلات المقفولة (أساس أنصبة الشركاء)
+            صافي الربح (أساس أنصبة الشركاء)
           </div>
           <div className="mt-1 text-lg font-bold tabular-nums text-success">
-            {formatMoney(ov.grossRealizedProfit)}
+            {formatMoney(ov.partnerProfitBase)}
           </div>
           <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-            من {ov.closedTripsCount} رحلة مقفولة (اتحصّلت بالكامل واتسدّد سواقها)
-            بربح {formatMoney(ov.closedTripsProfit, false)}
+            ربح كل الطلبات {formatMoney(ov.grossProfit, false)}
             {ov.totalExpenses > 0 && ` − مصروفات ${formatMoney(ov.totalExpenses, false)}`}
-            {ov.totalDriverTips > 0 && ` − إكراميات ${formatMoney(ov.totalDriverTips, false)}`}
-            . الرحلات الآجلة أو اللي سواقها لسه ما اتسدّدش مش داخلة.
+            . الآجل ومستحقات السواقين داخلة في الحساب — اللي يحكم السحب هو الكاش
+            الموجود في الخزنة: المتاح دلوقتي{" "}
+            <span className="font-bold text-foreground">{formatMoney(ov.partnerPool)}</span>.
           </p>
         </Card>
 
@@ -71,7 +71,7 @@ export default async function PartnersPage() {
           <div className="space-y-2.5">
             {partners.map((p) => {
               const entitlement = Math.round(
-                (ov.grossRealizedProfit * p.sharePercent) / 100
+                (ov.partnerProfitBase * p.sharePercent) / 100
               );
               const withdrawn = p.withdrawals.reduce((a, w) => a + w.amount, 0);
               const balance = entitlement - withdrawn;
@@ -109,7 +109,11 @@ export default async function PartnersPage() {
 
         {partners.length > 0 && (
           <DistributeForm
-            distributableProfit={ov.realizedProfit}
+            distributableProfit={ov.partnerPool}
+            undistributedProfit={Math.max(
+              ov.partnerProfitBase - ov.totalPartnerWithdrawals,
+              0
+            )}
             partners={partners.map((p) => ({ id: p.id, name: p.name }))}
           />
         )}

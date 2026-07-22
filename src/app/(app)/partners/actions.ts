@@ -97,7 +97,7 @@ export async function addWithdrawal(partnerId: string, formData: FormData) {
   });
   if (!partnerRow) return { error: "الشريك غير موجود" };
   const ov = await getFinanceOverview();
-  const entitlement = Math.round((ov.grossRealizedProfit * partnerRow.sharePercent) / 100);
+  const entitlement = Math.round((ov.partnerProfitBase * partnerRow.sharePercent) / 100);
   const alreadyWithdrawn = partnerRow.withdrawals.reduce((a, w) => a + w.amount, 0);
   const partnerAvailable = Math.max(entitlement - alreadyWithdrawn, 0);
   if (amount > partnerAvailable) {
@@ -195,9 +195,17 @@ export async function distributeProfits(formData: FormData) {
   }
 
   const ov = await getFinanceOverview();
-  // التوزيع من الربح المحصّل نقدًا فقط — لا يُوزَّع ربح لم يدخل الخزنة فعلًا (حماية رأس المال)
-  const pool = Math.max(ov.realizedProfit, 0);
-  if (pool <= 0) return { error: "لا يوجد ربح محصّل نقدًا متاح للتوزيع" };
+  // الربح غير الموزّع من كل الطلبات، بسقف الكاش الموجود في الخزنة فعلًا
+  const pool = Math.max(ov.partnerPool, 0);
+  if (pool <= 0) {
+    const undistributed = ov.partnerProfitBase - ov.totalPartnerWithdrawals;
+    return {
+      error:
+        undistributed > 0
+          ? `الربح غير الموزّع ${formatMoney(undistributed)} لكن الخزنة مفيهاش كاش متاح — حصّل الأول`
+          : "لا يوجد ربح متاح للتوزيع",
+    };
+  }
 
   const raw = toPiastres(String(formData.get("amount") ?? "0"));
   const amount = raw > 0 ? raw : pool;

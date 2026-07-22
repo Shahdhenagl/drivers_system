@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { effectiveAmounts } from "@/lib/finance";
+import { effectiveAmounts, treasuryByMethod } from "@/lib/finance";
 import { EXTRA_PROFIT_METHOD, TIP_METHOD, PAYMENT_METHOD_KEYS } from "@/lib/constants";
 import { purgeOrphanFinance } from "@/lib/purge-orphans";
 
@@ -19,6 +19,7 @@ export async function getFinanceOverview() {
     driverTipAgg,
     cashCollectionAgg,
     externalHoldAgg,
+    treasury,
   ] = await Promise.all([
       prisma.trip.findMany({
         select: {
@@ -27,8 +28,6 @@ export async function getFinanceOverview() {
           driverTip: true,
           customerDiscount: true,
           contractorSurcharge: true,
-          collections: { select: { amount: true } },
-          driverPayments: { select: { amount: true } },
         },
       }),
       prisma.expense.aggregate({ _sum: { amount: true } }),
@@ -69,6 +68,8 @@ export async function getFinanceOverview() {
       prisma.externalAdvance
         .aggregate({ _sum: { collectedAmount: true, paidAmount: true } })
         .catch(() => ({ _sum: { collectedAmount: 0, paidAmount: 0 } })),
+      // رصيد الخزنة الفعلي — هو سقف ما يقدر الشركاء يسحبوه
+      treasuryByMethod(),
     ]);
 
   const eff = trips.map(effectiveAmounts);
@@ -129,31 +130,23 @@ export async function getFinanceOverview() {
     0
   );
 
-  // ===== الربح القابل للتوزيع = ربح الرحلات المقفولة =====
-  // الرحلة «مقفولة» لما يتم تحصيل سعر المقاول بالكامل ويُسدَّد مستحق سواقها بالكامل،
-  // وساعتها ربحها (سعر المقاول − مستحق السواق) بقى محقَّقًا فعلًا ويدخل التوزيع.
-  // الرحلات الآجلة أو اللي سواقها لسه ما اتسدّدش لا تؤثّر على ربح غيرها.
-  // يُخصم منه: المصروفات، والإكراميات المستحقة للأطراف، وما سحبه الشركاء.
-  // (الأرباح الإضافية على الحساب لا تدخل حتى تتحوّل إلى تحصيل فعلي.)
-  let closedTripsProfit = 0;
-  let closedTripsCount = 0;
-  for (const t of trips) {
-    const e = effectiveAmounts(t);
-    const collected = t.collections.reduce((s, x) => s + x.amount, 0);
-    const paid = t.driverPayments.reduce((s, x) => s + x.amount, 0);
-    if (collected >= e.contractor && paid >= e.driver) {
-      closedTripsProfit += e.contractor - e.driver;
-      closedTripsCount += 1;
-    }
-  }
-  // الربح المحقّق قبل خصم سحوبات الشركاء (أساس حساب نصيب كل شريك)
-  const grossRealizedProfit = Math.max(
+  // ===== نصيب الشركاء والمتاح للتوزيع =====
+  // أساس أنصبة الشركاء = صافي ربح كل الطلبات بعد المصروفات، سواء اتحصّل من
+  // المقاول أو لسه آجل، واتسدّد للسواق أو لسه عليه. اللي يحكم السحب هو الكاش
+  // الموجود في الخزنة فعلًا: طالما الفلوس موجودة يتاخد الربح ويتقسّم.
+  const partnerProfitBase = Math.max(netProfit, 0);
+  // كاش الخزنة ناقص الأمانات المحتجزة (سلف خارجية محصَّلة لصالح غيرنا — مش فلوسنا)
+  const treasuryAvailable = Math.max(treasury.total - externalHeld, 0);
+  // المتاح للتوزيع = الربح غير الموزّع، بحد أقصى الكاش المتاح في الخزنة
+  const partnerPool = Math.max(
     0,
-    closedTripsProfit - totalExpenses - totalDriverTips
+    Math.min(partnerProfitBase - totalPartnerWithdrawals, treasuryAvailable)
   );
-  const realizedProfit = Math.max(0, grossRealizedProfit - totalPartnerWithdrawals);
 
   return {
+    partnerProfitBase,
+    partnerPool,
+    treasuryAvailable,
     capital,
     totalRevenue,
     totalCollected,
@@ -167,10 +160,6 @@ export async function getFinanceOverview() {
     netProfit,
     totalPartnerWithdrawals,
     distributableProfit,
-    realizedProfit,
-    grossRealizedProfit,
-    closedTripsProfit,
-    closedTripsCount,
     cashCollected,
     externalHeld,
     totalDriverAdvances,
