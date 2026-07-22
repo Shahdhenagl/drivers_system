@@ -94,6 +94,15 @@ export async function collectAllFromContractor(
   if (collector && "notFound" in collector) {
     return { error: `المحصّل «${collector.notFound}» غير موجود في السواقين` };
   }
+  // اسم المقاول يُحفظ على سلفة المحصّل عشان كشف حسابه يقول حصّل من مين
+  const contractorName = collector
+    ? (
+        await prisma.contractor.findUnique({
+          where: { id: contractorId },
+          select: { name: true },
+        })
+      )?.name ?? null
+    : null;
 
   await prisma.$transaction(async (tx) => {
     let left = amount;
@@ -116,6 +125,9 @@ export async function collectAllFromContractor(
             method,
             note: `تحصيل عن طريق ${collector.name} ${collectorAdvanceMarker("col", col.id)}`,
             tripId: it.trip.id,
+            sourceType: "CONTRACTOR",
+            sourceId: contractorId,
+            sourceName: contractorName,
             date,
           },
         });
@@ -162,6 +174,9 @@ export async function collectAllFromContractor(
             direction: "OUT",
             method,
             note: `زيادة تحصيل عن طريق ${collector.name} ${collectorAdvanceMarker("adv", adv.id)}`,
+            sourceType: "CONTRACTOR",
+            sourceId: contractorId,
+            sourceName: contractorName,
             date,
           },
         });

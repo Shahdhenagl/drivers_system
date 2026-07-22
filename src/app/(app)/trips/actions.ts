@@ -1191,6 +1191,10 @@ export async function updateTripDriverPayment(id: string, formData: FormData) {
           direction: "IN",
           method,
           note: `سداد سواق عن طريق ${collector.name} ${collectorAdvanceMarker("dp", id)}`,
+          tripId: current.tripId,
+          sourceType: "DRIVER",
+          sourceId: current.trip.driverId,
+          sourceName: current.trip.driver?.name ?? null,
           date,
         },
       });

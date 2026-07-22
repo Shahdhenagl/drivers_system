@@ -113,6 +113,15 @@ export async function payDriverDues(driverId: string, formData: FormData) {
   if (collector && "notFound" in collector) {
     return { error: `المحصّل «${collector.notFound}» غير موجود في السواقين` };
   }
+  // اسم السواق يُحفظ على سلفة المحصّل عشان كشف حسابه يقول سلّم لمين
+  const driverName = collector
+    ? (
+        await prisma.driver.findUnique({
+          where: { id: driverId },
+          select: { name: true },
+        })
+      )?.name ?? null
+    : null;
 
   // منع النزول تحت الصفر (كامل المبلغ يخرج كاش) — لا يلزم لو عن طريق محصّل
   if (!collector) {
@@ -181,6 +190,9 @@ export async function payDriverDues(driverId: string, formData: FormData) {
           direction: "IN",
           method,
           note: `سداد سواق عن طريق ${collector.name}`,
+          sourceType: "DRIVER",
+          sourceId: driverId,
+          sourceName: driverName,
           date,
         },
       });

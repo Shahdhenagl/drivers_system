@@ -39,6 +39,7 @@ import { stripMarkers } from "@/lib/statement-group";
 import { driverReport } from "@/lib/messages";
 import {
   COMPANY_NAME,
+  collectorNameFromMethod,
   driverIdFromAccountMethod,
   methodLabel,
   TRIP_STATUS,
@@ -138,8 +139,48 @@ export default async function DriverProfile({
           isOpening: boolean;
           date: Date;
           createdAt: Date;
+          tripId: string | null;
+          sourceName: string | null;
         }[]
     );
+  // حركات المحصّل ("عن طريق فلان") ناتجة عن تحصيل من مقاول أو سداد لسواق.
+  // نجيب اسم الطرف المقابل من الرحلة المرتبطة عشان كشف الحساب يوضّح الفلوس
+  // جت من مين وراحت لمين بدل ما يكتفي باسم المحصّل.
+  const collectorTripIds = [
+    ...new Set(
+      advances
+        .filter((a) => collectorNameFromMethod(a.method) && a.tripId)
+        .map((a) => a.tripId as string)
+    ),
+  ];
+  const collectorTrips = collectorTripIds.length
+    ? await prisma.trip
+        .findMany({
+          where: { id: { in: collectorTripIds } },
+          select: {
+            id: true,
+            startPoint: true,
+            endPoint: true,
+            contractor: { select: { name: true } },
+            driver: { select: { name: true } },
+          },
+        })
+        .catch(() => [])
+    : [];
+  const tripPartiesById = new Map(collectorTrips.map((t) => [t.id, t]));
+
+  /** الطرف المقابل لحركة محصّل: المقاول اللي دفع (OUT) أو السواق اللي استلم (IN) */
+  const collectorCounterparty = (a: {
+    direction: string;
+    tripId?: string | null;
+    sourceName?: string | null;
+  }) => {
+    if (a.sourceName) return a.sourceName;
+    const t = a.tripId ? tripPartiesById.get(a.tripId) : undefined;
+    if (!t) return null;
+    return a.direction === "OUT" ? t.contractor.name : (t.driver?.name ?? null);
+  };
+
   // فصل الأرباح الإضافية/الإكراميات عن سلف المكتب العادية
   const adjustments = advances.filter(
     (a) => a.method === EXTRA_PROFIT_METHOD || a.method === TIP_METHOD
@@ -283,26 +324,39 @@ export default async function DriverProfile({
       })),
     ...advances
       .filter((a) => inBounds(a.date) && !driverIdFromAccountMethod(a.method))
-      .map((a) => ({
-        id: `advance-${a.id}`,
-        date: a.date,
-        description: isSystemAdvanceMethod(a.method)
-          ? methodLabel(a.method)
-          : a.direction === "OUT"
-            ? `استلم من المكتب - ${methodLabel(a.method)}`
-            : `دفع للمكتب - ${methodLabel(a.method)}`,
-        details: stripMarkers(a.note),
-        onParty: a.direction === "OUT" ? a.amount : undefined,
-        paid: a.direction === "IN" ? a.amount : undefined,
-        received: a.direction === "OUT" ? a.amount : undefined,
-        // تحصيل/سداد المحصّل يتقسّم على الرحلات — الدفعة الواحدة حركة واحدة.
-        // الحركات اليدوية تفضل كما هي (بدون مفتاح تجميع).
-        groupKey: isSystemAdvanceMethod(a.method)
-          ? `adv|${a.direction}|${a.method}|${+a.date}`
-          : null,
-        createdAt: a.createdAt,
-        action: advanceRowAction(a),
-      })),
+      .map((a) => {
+        const isCollector = collectorNameFromMethod(a.method) !== null;
+        const other = isCollector ? collectorCounterparty(a) : null;
+        // داخل الدفعة المجمّعة الملاحظة واحدة ومكرّرة — الرحلة أنفع للتمييز
+        const trip = isCollector && a.tripId ? tripPartiesById.get(a.tripId) : undefined;
+        return {
+          id: `advance-${a.id}`,
+          date: a.date,
+          description: other
+            ? a.direction === "OUT"
+              ? `حصّل من ${other}`
+              : `سلّم لـ ${other}`
+            : isSystemAdvanceMethod(a.method)
+              ? methodLabel(a.method)
+              : a.direction === "OUT"
+                ? `استلم من المكتب - ${methodLabel(a.method)}`
+                : `دفع للمكتب - ${methodLabel(a.method)}`,
+          details: trip
+            ? `رحلة ${trip.startPoint} ← ${trip.endPoint}`
+            : stripMarkers(a.note),
+          onParty: a.direction === "OUT" ? a.amount : undefined,
+          paid: a.direction === "IN" ? a.amount : undefined,
+          received: a.direction === "OUT" ? a.amount : undefined,
+          // تحصيل/سداد المحصّل يتقسّم على الرحلات — الدفعة الواحدة حركة واحدة.
+          // اسم الطرف المقابل جزء من المفتاح حتى لا تختلط دفعتان لطرفين مختلفين
+          // في صف واحد بعنوان طرف واحد. الحركات اليدوية بلا مفتاح تجميع.
+          groupKey: isSystemAdvanceMethod(a.method)
+            ? `adv|${a.direction}|${a.method}|${other ?? ""}|${+a.date}`
+            : null,
+          createdAt: a.createdAt,
+          action: advanceRowAction(a),
+        };
+      }),
     ...externalAdvances
       .filter((a) => inBounds(a.date))
       .map((a) => {
