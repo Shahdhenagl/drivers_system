@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { recordLedger, planSpend } from "@/lib/finance";
+import { recordLedger, planSpend, planSpendMany } from "@/lib/finance";
 import { getFinanceOverview } from "@/lib/finance-overview";
 import { toPiastres, formatMoney } from "@/lib/money";
 import { sendTelegram } from "@/lib/telegram";
@@ -106,9 +106,10 @@ export async function addWithdrawal(partnerId: string, formData: FormData) {
     };
   }
 
-  const plan = await planSpend(method, amount, false);
+  // الوسيلة المختارة أولًا، والباقي من باقي الوسائل لو رصيدها ما يكفي
+  const plan = await planSpend(method, amount, true);
   if (!plan.ok) {
-    return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
+    return { error: plan.error, balances: plan.balances, canFallback: false };
   }
 
   await prisma.$transaction(async (tx) => {
@@ -116,15 +117,20 @@ export async function addWithdrawal(partnerId: string, formData: FormData) {
       data: { partnerId, amount, method, note },
     });
     const partner = await tx.partner.findUnique({ where: { id: partnerId } });
-    await recordLedger(tx, {
-      type: "PARTNER_WITHDRAWAL",
-      direction: "OUT",
-      amount,
-      method,
-      description: `سحب شريك - ${partner?.name ?? ""}`,
-      refType: "PartnerWithdrawal",
-      refId: w.id,
-    });
+    for (const e of plan.entries) {
+      await recordLedger(tx, {
+        type: "PARTNER_WITHDRAWAL",
+        direction: "OUT",
+        amount: e.amount,
+        method: e.method,
+        description:
+          plan.entries.length > 1
+            ? `سحب شريك - ${partner?.name ?? ""} (${methodLabel(e.method)})`
+            : `سحب شريك - ${partner?.name ?? ""}`,
+        refType: "PartnerWithdrawal",
+        refId: w.id,
+      });
+    }
   });
 
   await audit("WITHDRAW", "Partner", partnerId, { amount, method });
@@ -235,17 +241,14 @@ export async function distributeProfits(formData: FormData) {
     }
   }
 
-  const methodTotals = new Map<string, number>();
-  for (const s of shares) {
-    if (collectorByMethod.has(s.method)) continue;
-    methodTotals.set(s.method, (methodTotals.get(s.method) ?? 0) + s.amount);
-  }
-  for (const [m, total] of methodTotals) {
-    const plan = await planSpend(m, total, false);
-    if (!plan.ok) {
-      return { error: plan.error, balances: plan.balances, canFallback: plan.canFallback };
-    }
-  }
+  // الوسيلة اللي يختارها الشريك هي الأولوية، ولو رصيدها ما يكفي يتغطّى الباقي
+  // من باقي الوسائل تلقائيًا — طالما الربح موجود في الخزنة يتوزّع عادي
+  const spendPlan = await planSpendMany(
+    shares
+      .filter((s) => !collectorByMethod.has(s.method))
+      .map((s) => ({ key: s.id, method: s.method, amount: s.amount }))
+  );
+  if (!spendPlan.ok) return { error: spendPlan.error, balances: spendPlan.balances };
 
   const reportShares: { name: string; percent: number; amount: number }[] = [];
   await prisma.$transaction(async (tx) => {
@@ -279,15 +282,18 @@ export async function distributeProfits(formData: FormData) {
         });
         continue;
       }
-      await recordLedger(tx, {
-        type: "PARTNER_WITHDRAWAL",
-        direction: "OUT",
-        amount: s.amount,
-        method: s.method,
-        description: `توزيع أرباح - ${s.name} (${s.percent}%) - ${methodLabel(s.method)}`,
-        refType: "PartnerWithdrawal",
-        refId: w.id,
-      });
+      // نصيب الشريك قد يتغطّى من أكثر من وسيلة — قيد لكل وسيلة بقيمتها الفعلية
+      for (const e of spendPlan.plans.get(s.id) ?? []) {
+        await recordLedger(tx, {
+          type: "PARTNER_WITHDRAWAL",
+          direction: "OUT",
+          amount: e.amount,
+          method: e.method,
+          description: `توزيع أرباح - ${s.name} (${s.percent}%) - ${methodLabel(e.method)}`,
+          refType: "PartnerWithdrawal",
+          refId: w.id,
+        });
+      }
     }
   });
 

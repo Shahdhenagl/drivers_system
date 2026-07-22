@@ -128,6 +128,53 @@ export async function planSpend(
   };
 }
 
+/**
+ * يخطّط صرف عدة مبالغ معًا من نفس لقطة الأرصدة: كل مبلغ يُصرف من وسيلته
+ * أولًا ثم يُغطّى باقيه من باقي الوسائل بالترتيب. طالما إجمالي الخزنة يكفي
+ * فالصرف يمرّ — الوسيلة تفصيلة عرض، والفلوس فلوس.
+ * لا يصلح تكرار planSpend هنا لأنها تقرأ الخزنة من جديد في كل نداء فتصرف
+ * نفس الرصيد أكثر من مرة.
+ */
+export async function planSpendMany(
+  requests: { key: string; method: string; amount: number }[]
+): Promise<
+  | { ok: true; plans: Map<string, SpendEntry[]> }
+  | { ok: false; error: string; balances: Record<string, number> }
+> {
+  const treasury = await treasuryByMethod();
+  const balances: Record<string, number> = {};
+  for (const m of PAYMENT_METHOD_KEYS) balances[m] = treasury[m] ?? 0;
+  const totalAvail = PAYMENT_METHOD_KEYS.reduce(
+    (a, m) => a + Math.max(balances[m], 0),
+    0
+  );
+
+  const plans = new Map<string, SpendEntry[]>();
+  for (const req of requests) {
+    const order = [req.method, ...FALLBACK_ORDER.filter((m) => m !== req.method)];
+    const entries: SpendEntry[] = [];
+    let remaining = req.amount;
+    for (const m of order) {
+      if (remaining <= 0) break;
+      const avail = balances[m] ?? 0;
+      if (avail <= 0) continue;
+      const take = Math.min(avail, remaining);
+      balances[m] = avail - take;
+      entries.push({ method: m, amount: take });
+      remaining -= take;
+    }
+    if (remaining > 0) {
+      return {
+        ok: false,
+        error: `رصيد الخزنة كله لا يكفي — المتاح ${formatMoney(totalAvail)}`,
+        balances,
+      };
+    }
+    plans.set(req.key, entries);
+  }
+  return { ok: true, plans };
+}
+
 /** صافي رصيد سلف المكتب لكل طرف من نوع معيّن: OUT − IN (موجب = عليه لنا) */
 export async function advanceBalancesByParty(
   partyType: "CONTRACTOR" | "DRIVER"
