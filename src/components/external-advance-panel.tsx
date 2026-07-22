@@ -21,7 +21,6 @@ import {
   addExternalAdvance,
   deleteExternalAdvance,
   editExternalAdvance,
-  reopenExternalAdvance,
 } from "@/lib/external-advance-actions";
 import { playSound } from "@/lib/sounds";
 import {
@@ -32,7 +31,6 @@ import {
   History,
   Pencil,
   Plus,
-  RotateCcw,
   Search,
   Trash2,
 } from "lucide-react";
@@ -293,25 +291,22 @@ function ExternalAdvanceDialog({
   );
 }
 
+/** السلفة محسوبة من ساعة تسجيلها ولحد ما تتحذف — مفيش تسوية ولا حالات */
 function RowActions({ row }: { row: ExternalAdvanceRow }) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const settled = row.status === "SETTLED";
 
-  async function run(kind: "reopen" | "delete") {
-    if (kind === "delete" && !confirm("حذف السلفة الخارجية نهائيًا؟")) return;
+  async function onDelete() {
+    if (!confirm("حذف السلفة الخارجية نهائيًا؟")) return;
     setLoading(true);
     try {
-      const res =
-        kind === "reopen"
-          ? await reopenExternalAdvance(row.id)
-          : await deleteExternalAdvance(row.id);
+      const res = await deleteExternalAdvance(row.id);
       if (res?.error) {
         playSound("error");
         alert(res.error);
         return;
       }
-      playSound(kind === "delete" ? "success" : "money");
+      playSound("success");
       router.refresh();
     } catch {
       playSound("error");
@@ -322,32 +317,16 @@ function RowActions({ row }: { row: ExternalAdvanceRow }) {
   }
 
   return (
-    <>
-      {/* السلفة محسوبة من ساعة تسجيلها — مفيش زر «تمّت». الزر ده بيرجّع السجلات
-          القديمة اللي اتعلّمت «تمّت» قبل كده للحساب تاني. */}
-      {settled && (
-        <button
-          type="button"
-          disabled={loading}
-          className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50"
-          onClick={() => run("reopen")}
-          aria-label="رجّعها للحساب"
-          title="رجّعها للحساب"
-        >
-          <RotateCcw className="h-4 w-4" />
-        </button>
-      )}
-      <button
-        type="button"
-        disabled={loading}
-        className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-        onClick={() => run("delete")}
-        aria-label="حذف"
-        title="حذف"
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
-    </>
+    <button
+      type="button"
+      disabled={loading}
+      className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+      onClick={onDelete}
+      aria-label="حذف"
+      title="حذف"
+    >
+      <Trash2 className="h-4 w-4" />
+    </button>
   );
 }
 
@@ -363,9 +342,9 @@ export function ExternalAdvancePanel({
   // التفاصيل مقفولة افتراضيًا — الإجماليات فوق كفاية، والقايمة تتفتح عند الحاجة
   const [showRows, setShowRows] = useState(false);
 
+  // كل سلفة مسجّلة محسوبة — مفيش حالة «مسددة» تخرجها من الحساب، الحذف بس
   const totals = useMemo(() => {
     return advances
-      .filter((a) => a.status !== "SETTLED")
       .reduce(
         (acc, a) => {
           if (
@@ -385,9 +364,6 @@ export function ExternalAdvancePanel({
         { forHim: 0, onHim: 0 }
       );
   }, [advances, currentParty.id, currentParty.type]);
-
-  const activeRows = advances.filter((a) => a.status !== "SETTLED");
-  const settledRows = advances.filter((a) => a.status === "SETTLED");
 
   return (
     <Card className="space-y-3 p-4">
@@ -437,18 +413,10 @@ export function ExternalAdvancePanel({
               نهائيًا.
             </div>
             <ExternalRows
-              rows={activeRows}
+              rows={advances}
               currentParty={currentParty}
               parties={parties}
             />
-            {settledRows.length > 0 && (
-              <ExternalRows
-                title="مسددة قديمة (خارج الحساب — ↺ ترجّعها)"
-                rows={settledRows}
-                currentParty={currentParty}
-                parties={parties}
-              />
-            )}
           </div>
         </div>
       )}
@@ -482,13 +450,10 @@ function ExternalRows({
           row.borrowerId === currentParty.id;
         const otherName = isBorrower ? row.lenderName : row.borrowerName;
         const otherType = isBorrower ? row.lenderType : row.borrowerType;
-        const isSettled = row.status === "SETTLED";
         return (
           <div
             key={row.id}
-            className={`flex items-center justify-between p-2.5 text-sm ${
-              isSettled ? "opacity-60" : ""
-            }`}
+            className="flex items-center justify-between p-2.5 text-sm"
           >
             <div className="min-w-0">
               <div
@@ -506,9 +471,6 @@ function ExternalRows({
               <div className="text-xs text-muted-foreground">
                 {isBorrower ? "استلف من" : "أعطى سلفة لـ"} {otherName} (
                 {partyTypeLabel(otherType)}) • {formatShortDate(row.date)}
-                {isSettled && row.settledAt
-                  ? ` • تمّت ${formatShortDate(row.settledAt)}`
-                  : ""}
               </div>
               {row.note && (
                 <div className="max-w-[220px] truncate text-xs text-muted-foreground">

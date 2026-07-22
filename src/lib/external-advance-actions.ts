@@ -148,44 +148,8 @@ export async function editExternalAdvance(id: string, formData: FormData) {
   ]);
 }
 
-export async function settleExternalAdvance(id: string) {
-  const current = await prisma.externalAdvance.findUnique({ where: { id } });
-  if (!current) return { error: "السلفة الخارجية غير موجودة" };
-
-  const row = await prisma.externalAdvance.update({
-    where: { id },
-    data: {
-      status: "SETTLED",
-      settledAt: new Date(),
-      collectedAmount: current.amount,
-      paidAmount: current.amount,
-    },
-  });
-
-  await audit("SETTLE", "ExternalAdvance", id);
-  await notifyExternalAdvance("SETTLE", row);
-  await revalidateParties([
-    { type: current.borrowerType, id: current.borrowerId },
-    { type: current.lenderType, id: current.lenderId },
-  ]);
-}
-
-export async function reopenExternalAdvance(id: string) {
-  const current = await prisma.externalAdvance.findUnique({ where: { id } });
-  if (!current) return { error: "السلفة الخارجية غير موجودة" };
-
-  const row = await prisma.externalAdvance.update({
-    where: { id },
-    data: { status: "OPEN", settledAt: null, collectedAmount: 0, paidAmount: 0 },
-  });
-
-  await audit("REOPEN", "ExternalAdvance", id);
-  await notifyExternalAdvance("REOPEN", row);
-  await revalidateParties([
-    { type: current.borrowerType, id: current.borrowerId },
-    { type: current.lenderType, id: current.lenderId },
-  ]);
-}
+// مفيش تسوية للسلفة الخارجية: هي محسوبة في حساب الطرفين من ساعة تسجيلها
+// ولحد ما تتحذف. حقل status في الداتابيز بقى بلا أثر على الحسابات.
 
 export async function deleteExternalAdvance(id: string) {
   const current = await prisma.externalAdvance.findUnique({ where: { id } });
@@ -201,7 +165,7 @@ export async function deleteExternalAdvance(id: string) {
 }
 
 async function notifyExternalAdvance(
-  action: "CREATE" | "EDIT" | "SETTLE" | "REOPEN" | "DELETE",
+  action: "CREATE" | "EDIT" | "DELETE",
   row: {
     borrowerName: string;
     borrowerType: string;

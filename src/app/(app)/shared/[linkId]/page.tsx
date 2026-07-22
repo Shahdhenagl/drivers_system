@@ -215,7 +215,7 @@ export default async function SharedProfile({
         description: isBorrower
           ? `استلم سلفة خارجية من ${a.lenderName}`
           : `دفع سلفة خارجية إلى ${a.borrowerName}`,
-        details: `${a.status === "SETTLED" ? "مسددة" : "مفتوحة"}${a.note ? ` • ${a.note}` : ""}`,
+        details: a.note ?? undefined,
         forParty: isBorrower ? undefined : a.amount,
         onParty: isBorrower ? a.amount : undefined,
         paid: isBorrower ? undefined : a.amount,
@@ -266,7 +266,7 @@ export default async function SharedProfile({
         description: isBorrower
           ? `استلم سلفة خارجية من ${a.lenderName}`
           : `دفع سلفة خارجية إلى ${a.borrowerName}`,
-        details: `${a.status === "SETTLED" ? "مسددة" : "مفتوحة"}${a.note ? ` • ${a.note}` : ""}`,
+        details: a.note ?? undefined,
         forParty: isBorrower ? undefined : a.amount,
         onParty: isBorrower ? a.amount : undefined,
         paid: isBorrower ? undefined : a.amount,
@@ -542,10 +542,9 @@ function extSum(
 ) {
   return rows
     .filter((a) =>
-      a.status !== "SETTLED" &&
-      (role === "lender"
+      role === "lender"
         ? a.lenderType === type && a.lenderId === id
-        : a.borrowerType === type && a.borrowerId === id)
+        : a.borrowerType === type && a.borrowerId === id
     )
     .reduce((s, a) => s + a.amount, 0);
 }

@@ -156,7 +156,6 @@ export async function externalRemainingByParty(
   const rows = await prisma.externalAdvance
     .findMany({
       where: {
-        status: { not: "SETTLED" },
         OR: [{ borrowerType: partyType }, { lenderType: partyType }],
       },
       select: {
