@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SubmitButton } from "@/components/submit-button";
 import { formatShortDate, toDateInput } from "@/lib/format";
+import { owedByBorrower, owedToLender } from "@/lib/external-legs";
 import { formatMoney, toEgp } from "@/lib/money";
 import {
   addExternalAdvance,
@@ -342,27 +343,26 @@ export function ExternalAdvancePanel({
   // التفاصيل مقفولة افتراضيًا — الإجماليات فوق كفاية، والقايمة تتفتح عند الحاجة
   const [showRows, setShowRows] = useState(false);
 
-  // كل سلفة مسجّلة محسوبة — مفيش حالة «مسددة» تخرجها من الحساب، الحذف بس
+  // الإجماليات بالباقي: تقلّ لما يدفع اللي عليه أو يستلم اللي له، وتتصفّر بالكامل
   const totals = useMemo(() => {
-    return advances
-      .reduce(
-        (acc, a) => {
-          if (
-            a.borrowerType === currentParty.type &&
-            a.borrowerId === currentParty.id
-          ) {
-            acc.onHim += a.amount;
-          }
-          if (
-            a.lenderType === currentParty.type &&
-            a.lenderId === currentParty.id
-          ) {
-            acc.forHim += a.amount;
-          }
-          return acc;
-        },
-        { forHim: 0, onHim: 0 }
-      );
+    return advances.reduce(
+      (acc, a) => {
+        if (
+          a.borrowerType === currentParty.type &&
+          a.borrowerId === currentParty.id
+        ) {
+          acc.onHim += owedByBorrower(a);
+        }
+        if (
+          a.lenderType === currentParty.type &&
+          a.lenderId === currentParty.id
+        ) {
+          acc.forHim += owedToLender(a);
+        }
+        return acc;
+      },
+      { forHim: 0, onHim: 0 }
+    );
   }, [advances, currentParty.id, currentParty.type]);
 
   return (
@@ -409,7 +409,8 @@ export function ExternalAdvancePanel({
           </button>
           <div className={showRows ? "space-y-2" : "hidden space-y-2 print:block"}>
             <div className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">
-              تُحسب في حساب كل طرف فور تسجيلها ولحد ما تتحذف. الحذف يمسحها
+              تُحسب في حساب كل طرف فور تسجيلها، وتقلّ لما المستلِف يدفع للمكتب أو
+              المكتب يسلّم المُقرِض — من «تحصيل الكل» و«سداد الكل». الحذف يمسحها
               نهائيًا.
             </div>
             <ExternalRows
@@ -450,6 +451,13 @@ function ExternalRows({
           row.borrowerId === currentParty.id;
         const otherName = isBorrower ? row.lenderName : row.borrowerName;
         const otherType = isBorrower ? row.lenderType : row.borrowerType;
+        // اللي اتسدّد من ساق هذا الطرف (دفع للمكتب أو استلم منه)
+        const settledPart = isBorrower
+          ? row.collectedAmount ?? 0
+          : row.paidAmount ?? 0;
+        const legRemaining = isBorrower
+          ? owedByBorrower(row)
+          : owedToLender(row);
         return (
           <div
             key={row.id}
@@ -466,12 +474,24 @@ function ExternalRows({
                 ) : (
                   <ArrowDownLeft className="h-4 w-4" />
                 )}
-                {isBorrower ? "عليه" : "له"} {formatMoney(row.amount)}
+                {isBorrower ? "عليه" : "له"} {formatMoney(legRemaining)}
+                {settledPart > 0 && (
+                  <span className="text-[11px] font-normal text-muted-foreground">
+                    من {formatMoney(row.amount, false)}
+                  </span>
+                )}
               </div>
               <div className="text-xs text-muted-foreground">
                 {isBorrower ? "استلف من" : "أعطى سلفة لـ"} {otherName} (
                 {partyTypeLabel(otherType)}) • {formatShortDate(row.date)}
               </div>
+              {settledPart > 0 && (
+                <div className="text-xs text-success">
+                  {isBorrower ? "سدّد للمكتب" : "استلم من المكتب"}{" "}
+                  {formatMoney(settledPart, false)}
+                  {legRemaining === 0 && " • مقفولة"}
+                </div>
+              )}
               {row.note && (
                 <div className="max-w-[220px] truncate text-xs text-muted-foreground">
                   {row.note}

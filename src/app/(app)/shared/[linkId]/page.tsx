@@ -8,6 +8,7 @@ import { AdvancePanel } from "@/components/advance-panel";
 import { ExternalAdvancePanel } from "@/components/external-advance-panel";
 import { AccountTotalSummary } from "@/components/account-total-summary";
 import { DailyReviewToggle } from "@/components/daily-review-toggle";
+import { WeekFilter } from "@/components/week-filter";
 import { CollectAllForm } from "../../contractors/[id]/collect-all-form";
 import { PayDriverForm } from "../../drivers/pay-driver-form";
 import { PartyStatement } from "@/components/party-statement";
@@ -18,10 +19,17 @@ import { SharedForm } from "../shared-form";
 import { DeleteSharedButton } from "../delete-shared-button";
 import { setSharedReviewed } from "../actions";
 import { formatMoney } from "@/lib/money";
-import { sameCairoDay } from "@/lib/format";
+import {
+  sameCairoDay,
+  cairoWeekStr,
+  weekBounds,
+  weekLabel,
+  weekOptionLabel,
+} from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
+import { owedByBorrower, owedToLender } from "@/lib/external-legs";
 import {
   EXTRA_PROFIT_METHOD,
   TIP_METHOD,
@@ -49,8 +57,8 @@ export const dynamic = "force-dynamic";
 
 type ExtRow = {
   amount: number;
-  collectedAmount?: number;
-  paidAmount?: number;
+  collectedAmount?: number | null;
+  paidAmount?: number | null;
   status: string;
   lenderType: string;
   lenderId: string;
@@ -60,10 +68,13 @@ type ExtRow = {
 
 export default async function SharedProfile({
   params,
+  searchParams,
 }: {
   params: Promise<{ linkId: string }>;
+  searchParams: Promise<{ w?: string }>;
 }) {
   const { linkId } = await params;
+  const { w } = await searchParams;
 
   const [contractor, driver] = await Promise.all([
     prisma.contractor.findFirst({
@@ -129,14 +140,52 @@ export default async function SharedProfile({
     prisma.driver.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
 
+  // ===== فلتر الأسبوع (السبت → الجمعة) — الافتراضي الأسبوع الحالي، و"all" لكل الفترات =====
+  const currentWeek = cairoWeekStr();
+  const weekSet = new Set<string>([currentWeek]);
+  for (const t of contractor.trips) {
+    weekSet.add(cairoWeekStr(t.date));
+    for (const col of t.collections) weekSet.add(cairoWeekStr(col.date));
+  }
+  for (const t of driver.trips) weekSet.add(cairoWeekStr(t.date));
+  for (const p of driver.payments) weekSet.add(cairoWeekStr(p.date));
+  for (const a of [...contractorAdvances, ...driverAdvances])
+    weekSet.add(cairoWeekStr(a.date));
+  for (const a of [...contractorExternals, ...driverExternals])
+    weekSet.add(cairoWeekStr(a.date));
+  const weeks = [
+    { value: "all", label: "كل الفترات" },
+    ...[...weekSet]
+      .sort()
+      .reverse()
+      .map((v) => ({ value: v, label: weekOptionLabel(v, currentWeek) })),
+  ];
+  const selectedWeek =
+    w === "all" ? "all" : w && weeks.some((x) => x.value === w) ? w : currentWeek;
+  const bounds = selectedWeek === "all" ? null : weekBounds(selectedWeek);
+  const inWeek = (dt: Date) => !bounds || (dt >= bounds[0] && dt < bounds[1]);
+  const periodLabel = bounds ? `أسبوع ${weekLabel(selectedWeek)}` : "كل الفترات";
+
+  // الحركات ضمن الفترة المختارة (الملخصات وكشوف الحساب تتبع الفلتر)
+  const cTrips = contractor.trips.filter((t) => inWeek(t.date));
+  const dTrips = driver.trips.filter((t) => inWeek(t.date));
+  const dPayments = driver.payments.filter((p) => inWeek(p.date));
+  const cAdvancesW = contractorAdvances.filter((a) => inWeek(a.date));
+  const dAdvancesW = driverAdvances.filter((a) => inWeek(a.date));
+
   const externalParties = [
     ...allContractors.map((p) => ({ type: "CONTRACTOR" as const, id: p.id, name: p.name, label: `مقاول - ${p.name}` })),
     ...allDrivers.map((p) => ({ type: "DRIVER" as const, id: p.id, name: p.name, label: `سواق - ${p.name}` })),
   ];
 
   // ===== جانب المقاول =====
-  const cRequired = contractor.trips.reduce((a, t) => a + effectiveAmounts(t).contractor, 0);
-  const cCollected = contractor.trips.reduce((a, t) => a + t.collections.reduce((s, x) => s + x.amount, 0), 0);
+  const cRequired = cTrips.reduce((a, t) => a + effectiveAmounts(t).contractor, 0);
+  const cCollected = cTrips.reduce((a, t) => a + t.collections.reduce((s, x) => s + x.amount, 0), 0);
+  const cDeferredWeek = cTrips.reduce((a, t) => {
+    const collected = t.collections.reduce((s, x) => s + x.amount, 0);
+    return a + Math.max(effectiveAmounts(t).contractor - collected, 0);
+  }, 0);
+  // الآجل الكامل (كل الفترات) — يدخل في الحساب الموحّد وأزرار التحصيل
   const cDeferred = contractor.trips.reduce((a, t) => {
     const collected = t.collections.reduce((s, x) => s + x.amount, 0);
     return a + Math.max(effectiveAmounts(t).contractor - collected, 0);
@@ -153,12 +202,19 @@ export default async function SharedProfile({
     .flatMap((t) =>
       t.collections.map((p) => ({ ...p, route: `${t.startPoint} ← ${t.endPoint}` }))
     )
+    .filter((p) => inWeek(p.date))
     .sort((a, b) => +new Date(b.date) - +new Date(a.date));
 
   // ===== جانب السواق =====
-  const dDue = driver.trips.reduce((a, t) => a + effectiveAmounts(t).driver, 0);
-  const dPaid = driver.payments.reduce((a, p) => a + p.amount, 0);
-  const dRemaining = Math.max(dDue - dPaid, 0);
+  const dDue = dTrips.reduce((a, t) => a + effectiveAmounts(t).driver, 0);
+  const dPaid = dPayments.reduce((a, p) => a + p.amount, 0);
+  const dRemainingWeek = Math.max(dDue - dPaid, 0);
+  // المتبقي الكامل (كل الفترات) — يدخل في الحساب الموحّد وزر السداد
+  const dRemaining = Math.max(
+    driver.trips.reduce((a, t) => a + effectiveAmounts(t).driver, 0) -
+      driver.payments.reduce((a, p) => a + p.amount, 0),
+    0
+  );
   const dAdvBalance = advNet(driverAdvances);
   const dExternalFor = extSum(driverExternals, "lender", "DRIVER", driver.id);
   const dExternalOn = extSum(driverExternals, "borrower", "DRIVER", driver.id);
@@ -175,7 +231,7 @@ export default async function SharedProfile({
 
   // ===== كشف الحساب المختصر لكل جانب =====
   const cStatementRows: StatementRow[] = [
-    ...contractor.trips.map((t) => ({
+    ...cTrips.map((t) => ({
       id: `ctrip-${t.id}`,
       date: t.date,
       description: `رحلة ${t.startPoint} ← ${t.endPoint}`,
@@ -191,7 +247,7 @@ export default async function SharedProfile({
       groupKey: `col|${p.method}|${+p.date}|${p.note ?? ""}`,
       createdAt: p.createdAt,
     })),
-    ...contractorAdvances.map((a) => ({
+    ...cAdvancesW.map((a) => ({
       id: `cadvance-${a.id}`,
       date: a.date,
       description:
@@ -207,31 +263,23 @@ export default async function SharedProfile({
         : null,
       createdAt: a.createdAt,
     })),
-    ...contractorExternals.map((a) => {
-      const isBorrower = a.borrowerType === "CONTRACTOR" && a.borrowerId === contractor.id;
-      return {
-        id: `cexternal-${a.id}`,
-        date: a.date,
-        description: isBorrower
-          ? `استلم سلفة خارجية من ${a.lenderName}`
-          : `دفع سلفة خارجية إلى ${a.borrowerName}`,
-        details: a.note ?? undefined,
-        forParty: isBorrower ? undefined : a.amount,
-        onParty: isBorrower ? a.amount : undefined,
-        paid: isBorrower ? undefined : a.amount,
-        received: isBorrower ? a.amount : undefined,
-      };
-    }),
+    ...externalStatementRows(
+      contractorExternals,
+      "CONTRACTOR",
+      contractor.id,
+      "c",
+      inWeek
+    ),
   ];
   const dStatementRows: StatementRow[] = [
-    ...driver.trips.map((t) => ({
+    ...dTrips.map((t) => ({
       id: `dtrip-${t.id}`,
       date: t.date,
       description: `رحلة ${t.startPoint} ← ${t.endPoint}`,
       details: `المقاول: ${t.contractor.name} • ${TRIP_STATUS[tripStatus(t.status)]}`,
       forParty: effectiveAmounts(t).driver,
     })),
-    ...driver.payments.map((p) => ({
+    ...dPayments.map((p) => ({
       id: `payment-${p.id}`,
       date: p.date,
       description: `سداد للسواق - ${methodLabel(p.method)}`,
@@ -242,7 +290,7 @@ export default async function SharedProfile({
       groupKey: `dp|${p.method}|${+p.date}|${p.note ?? ""}`,
       createdAt: p.createdAt,
     })),
-    ...driverAdvances.map((a) => ({
+    ...dAdvancesW.map((a) => ({
       id: `dadvance-${a.id}`,
       date: a.date,
       description:
@@ -258,21 +306,7 @@ export default async function SharedProfile({
         : null,
       createdAt: a.createdAt,
     })),
-    ...driverExternals.map((a) => {
-      const isBorrower = a.borrowerType === "DRIVER" && a.borrowerId === driver.id;
-      return {
-        id: `dexternal-${a.id}`,
-        date: a.date,
-        description: isBorrower
-          ? `استلم سلفة خارجية من ${a.lenderName}`
-          : `دفع سلفة خارجية إلى ${a.borrowerName}`,
-        details: a.note ?? undefined,
-        forParty: isBorrower ? undefined : a.amount,
-        onParty: isBorrower ? a.amount : undefined,
-        paid: isBorrower ? undefined : a.amount,
-        received: isBorrower ? a.amount : undefined,
-      };
-    }),
+    ...externalStatementRows(driverExternals, "DRIVER", driver.id, "d", inWeek),
   ];
   const cClearedAt =
     (contractor as { statementClearedAt?: Date | null }).statementClearedAt ?? null;
@@ -381,8 +415,12 @@ export default async function SharedProfile({
           <DailyReviewToggle reviewedToday={reviewedToday} action={setSharedReviewed.bind(null, linkId)} />
         </div>
 
-        {/* الحساب الموحّد */}
+        {/* فلتر الأسبوع (السبت → الجمعة) */}
+        <WeekFilter weeks={weeks} selected={selectedWeek} />
+
+        {/* الحساب الموحّد — رصيد كامل لا يتأثر بالفلتر */}
         <AccountTotalSummary
+          title="الحساب الموحّد (كل الفترات)"
           forParty={forParty}
           onParty={onParty}
           rows={[
@@ -403,7 +441,7 @@ export default async function SharedProfile({
         <div className="grid grid-cols-3 gap-3">
           <SummaryBox label="المطلوب" value={cRequired} />
           <SummaryBox label="المحصّل" value={cCollected} tone="success" />
-          <SummaryBox label="الآجل" value={cDeferred} tone="destructive" />
+          <SummaryBox label="الآجل" value={cDeferredWeek} tone="destructive" />
         </div>
 
         <div className="print:hidden">
@@ -411,7 +449,8 @@ export default async function SharedProfile({
             contractorId={contractor.id}
             remaining={cDeferred}
             advanceBalance={cAdvBalance}
-            externalCredit={cExternalFor + dExternalFor}
+            externalCredit={cExternalFor}
+            externalDebt={cExternalOn}
           />
         </div>
 
@@ -450,7 +489,7 @@ export default async function SharedProfile({
         )}
 
         <PartyStatement
-          title="كشف الحساب (كمقاول)"
+          title={`كشف الحساب (كمقاول) — ${periodLabel}`}
           rows={cVisibleRows}
           clearedAt={cClearedAt}
         />
@@ -463,7 +502,7 @@ export default async function SharedProfile({
         <div className="grid grid-cols-3 gap-3">
           <SummaryBox label="المستحق" value={dDue} />
           <SummaryBox label="المدفوع" value={dPaid} tone="success" />
-          <SummaryBox label="المتبقي" value={dRemaining} tone="warning" />
+          <SummaryBox label="المتبقي" value={dRemainingWeek} tone="warning" />
         </div>
 
         <div className="print:hidden">
@@ -471,6 +510,8 @@ export default async function SharedProfile({
             driverId={driver.id}
             remaining={dRemaining}
             advanceBalance={dAdvBalance}
+            externalCredit={dExternalFor}
+            externalDebt={dExternalOn}
           />
         </div>
 
@@ -509,13 +550,72 @@ export default async function SharedProfile({
         )}
 
         <PartyStatement
-          title="كشف الحساب (كسواق)"
+          title={`كشف الحساب (كسواق) — ${periodLabel}`}
           rows={dVisibleRows}
           clearedAt={dClearedAt}
         />
       </div>
     </>
   );
+}
+
+/**
+ * صفوف السلف الخارجية في كشف الحساب: سطر التسجيل + سطر التسوية (لو اتحصّلت/اتسلّمت)
+ * فيتصفّر السطر لما الطرف يدفع اللي عليه أو يستلم اللي له.
+ */
+function externalStatementRows(
+  rows: {
+    id: string;
+    amount: number;
+    collectedAmount?: number | null;
+    paidAmount?: number | null;
+    borrowerType: string;
+    borrowerId: string;
+    borrowerName: string;
+    lenderType: string;
+    lenderId: string;
+    lenderName: string;
+    date: Date;
+    updatedAt: Date;
+    note: string | null;
+  }[],
+  partyType: "CONTRACTOR" | "DRIVER",
+  partyId: string,
+  prefix: string,
+  inWeek: (d: Date) => boolean
+): StatementRow[] {
+  const out: StatementRow[] = [];
+  for (const a of rows) {
+    const isBorrower = a.borrowerType === partyType && a.borrowerId === partyId;
+    if (inWeek(a.date)) {
+      out.push({
+        id: `${prefix}external-${a.id}`,
+        date: a.date,
+        description: isBorrower
+          ? `استلم سلفة خارجية من ${a.lenderName}`
+          : `دفع سلفة خارجية إلى ${a.borrowerName}`,
+        details: a.note ?? undefined,
+        forParty: isBorrower ? undefined : a.amount,
+        onParty: isBorrower ? a.amount : undefined,
+        paid: isBorrower ? undefined : a.amount,
+        received: isBorrower ? a.amount : undefined,
+      });
+    }
+    const settled = isBorrower ? a.collectedAmount ?? 0 : a.paidAmount ?? 0;
+    if (settled > 0 && inWeek(a.updatedAt)) {
+      out.push({
+        id: `${prefix}external-leg-${a.id}`,
+        date: a.updatedAt,
+        description: isBorrower
+          ? "سدّد سلفة خارجية للمكتب"
+          : "استلم سلفة خارجية من المكتب",
+        details: isBorrower ? `لصالح ${a.lenderName}` : `من ${a.borrowerName}`,
+        paid: isBorrower ? settled : undefined,
+        received: isBorrower ? undefined : settled,
+      });
+    }
+  }
+  return out;
 }
 
 /** صافي كشف الحساب من الصفوف: + = له، − = عليه (نفس حساب مكوّن الكشف) */
@@ -533,7 +633,7 @@ function advNet(rows: { direction: string; amount: number }[]) {
   return out - inn;
 }
 
-/** مجموع السلف الخارجية لطرف بدور معيّن — بقيمتها الكاملة (تُحسب فور تسجيلها) */
+/** مجموع الباقي من السلف الخارجية لطرف بدور معيّن (يتصفّر بالتحصيل/التسليم) */
 function extSum(
   rows: ExtRow[],
   role: "lender" | "borrower",
@@ -546,7 +646,7 @@ function extSum(
         ? a.lenderType === type && a.lenderId === id
         : a.borrowerType === type && a.borrowerId === id
     )
-    .reduce((s, a) => s + a.amount, 0);
+    .reduce((s, a) => s + (role === "lender" ? owedToLender(a) : owedByBorrower(a)), 0);
 }
 
 function SummaryBox({

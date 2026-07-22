@@ -83,14 +83,30 @@ export async function wipeParty(
   }
 
   // 5) سلف خارجية يكون الطرف فيها مستلِفًا أو مُقرِضًا، + المربوطة بتحصيلات محذوفة
-  await tx.externalAdvance.deleteMany({
+  //    (مع قيود الخزنة الخاصة بساقيها: الأمانة الداخلة/الخارجة)
+  const partyExternals = await tx.externalAdvance.findMany({
     where: {
       OR: [
         { borrowerType: partyType, borrowerId: partyId },
         { lenderType: partyType, lenderId: partyId },
       ],
     },
+    select: { id: true },
   });
+  if (partyExternals.length) {
+    const extIds = partyExternals.map((e) => e.id);
+    await tx.ledgerEntry.deleteMany({
+      where: { refType: "ExternalAdvance", refId: { in: extIds } },
+    });
+    await tx.advance.deleteMany({
+      where: {
+        OR: extIds.map((eid) => ({
+          note: { contains: collectorAdvanceMarker("ext", eid) },
+        })),
+      },
+    });
+    await tx.externalAdvance.deleteMany({ where: { id: { in: extIds } } });
+  }
   if (collectionIds.length) {
     await tx.externalAdvance.deleteMany({
       where: {

@@ -18,6 +18,7 @@ export async function getFinanceOverview() {
     extraProfitAgg,
     driverTipAgg,
     cashCollectionAgg,
+    externalHoldAgg,
   ] = await Promise.all([
       prisma.trip.findMany({
         select: {
@@ -26,6 +27,8 @@ export async function getFinanceOverview() {
           driverTip: true,
           customerDiscount: true,
           contractorSurcharge: true,
+          collections: { select: { amount: true } },
+          driverPayments: { select: { amount: true } },
         },
       }),
       prisma.expense.aggregate({ _sum: { amount: true } }),
@@ -62,6 +65,10 @@ export async function getFinanceOverview() {
         where: { method: { in: PAYMENT_METHOD_KEYS } },
         _sum: { amount: true },
       }),
+      // أمانة السلف الخارجية: اتحصّلت من المستلِف ولسه ما اتسلّمتش للمُقرِض
+      prisma.externalAdvance
+        .aggregate({ _sum: { collectedAmount: true, paidAmount: true } })
+        .catch(() => ({ _sum: { collectedAmount: 0, paidAmount: 0 } })),
     ]);
 
   const eff = trips.map(effectiveAmounts);
@@ -114,16 +121,35 @@ export async function getFinanceOverview() {
   const totalContractorAdvances = contractorOwesUs;
   const totalContractorAdvancesOwed = weOweContractors;
 
-  // الربح المحصّل نقدًا (القابل للتوزيع فعليًا) — نقد فعلي دخل الخزنة فقط،
-  // معزولًا عن رأس المال والسلف والحركات على الحساب:
-  // النقد المحصّل − مستحقات السواقين − المصروفات − ما وُزّع على الشركاء.
-  // (يستبعد تحصيلات المقاصّة/عن طريق السواق والأرباح الإضافية غير المحصّلة نقدًا،
-  //  والسواقون تُحجَز مستحقاتهم كاملةً، فلا يُوزَّع ربح قبل تغطية ما عليهم ودخول النقد فعلًا.)
   const cashCollected = cashCollectionAgg._sum.amount ?? 0;
-  // الربح المحصّل نقدًا قبل خصم سحوبات الشركاء (أساس حساب نصيب كل شريك)
+  // أمانة محتجزة في الخزنة لصالح مُقرِضي السلف الخارجية — التزام لا يخصّ المكتب
+  const externalHeld = Math.max(
+    (externalHoldAgg._sum.collectedAmount ?? 0) -
+      (externalHoldAgg._sum.paidAmount ?? 0),
+    0
+  );
+
+  // ===== الربح القابل للتوزيع = ربح الرحلات المقفولة =====
+  // الرحلة «مقفولة» لما يتم تحصيل سعر المقاول بالكامل ويُسدَّد مستحق سواقها بالكامل،
+  // وساعتها ربحها (سعر المقاول − مستحق السواق) بقى محقَّقًا فعلًا ويدخل التوزيع.
+  // الرحلات الآجلة أو اللي سواقها لسه ما اتسدّدش لا تؤثّر على ربح غيرها.
+  // يُخصم منه: المصروفات، والإكراميات المستحقة للأطراف، وما سحبه الشركاء.
+  // (الأرباح الإضافية على الحساب لا تدخل حتى تتحوّل إلى تحصيل فعلي.)
+  let closedTripsProfit = 0;
+  let closedTripsCount = 0;
+  for (const t of trips) {
+    const e = effectiveAmounts(t);
+    const collected = t.collections.reduce((s, x) => s + x.amount, 0);
+    const paid = t.driverPayments.reduce((s, x) => s + x.amount, 0);
+    if (collected >= e.contractor && paid >= e.driver) {
+      closedTripsProfit += e.contractor - e.driver;
+      closedTripsCount += 1;
+    }
+  }
+  // الربح المحقّق قبل خصم سحوبات الشركاء (أساس حساب نصيب كل شريك)
   const grossRealizedProfit = Math.max(
     0,
-    cashCollected - totalDriverDue - totalExpenses
+    closedTripsProfit - totalExpenses - totalDriverTips
   );
   const realizedProfit = Math.max(0, grossRealizedProfit - totalPartnerWithdrawals);
 
@@ -143,7 +169,10 @@ export async function getFinanceOverview() {
     distributableProfit,
     realizedProfit,
     grossRealizedProfit,
+    closedTripsProfit,
+    closedTripsCount,
     cashCollected,
+    externalHeld,
     totalDriverAdvances,
     totalDriverAdvancesOwed,
     totalContractorAdvances,

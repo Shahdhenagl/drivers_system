@@ -26,11 +26,13 @@ export function CollectAllForm({
   remaining,
   advanceBalance = 0,
   externalCredit = 0,
+  externalDebt = 0,
 }: {
   contractorId: string;
   remaining: number;
   advanceBalance?: number;
-  externalCredit?: number; // سلف خارجية له تُخصم من المطلوب للتحصيل
+  externalCredit?: number; // باقي سلف خارجية له (نحن ندين له)
+  externalDebt?: number; // باقي سلف خارجية عليه (يدفعها للمكتب)
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
@@ -38,9 +40,12 @@ export function CollectAllForm({
   const router = useRouter();
   const advanceDebt = Math.max(advanceBalance, 0);
   const advanceCredit = Math.max(-advanceBalance, 0);
-  // المطلوب للتحصيل افتراضيًا = متبقي الرحلات ناقص ما له عندنا (رصيد مكتب + سلف خارجية له)
-  const collectable = Math.max(remaining - advanceCredit - externalCredit, 0);
-  const net = remaining + advanceDebt - advanceCredit - externalCredit;
+  // صافي الحساب = كل اللي عليه (رحلات + سلف مكتب + سلف خارجية عليه)
+  //               ناقص كل اللي له (رصيد مكتب + سلف خارجية له)
+  const net =
+    remaining + advanceDebt + externalDebt - advanceCredit - externalCredit;
+  // المطلوب للتحصيل = الصافي (الزرار يقاصّ الباقي بدون كاش ويقفل الحساب على صفر)
+  const collectable = Math.max(net, 0);
 
   async function action(formData: FormData) {
     if (submitting.current) return; // منع الضغط المزدوج
@@ -99,6 +104,14 @@ export function CollectAllForm({
               </span>
             </div>
           )}
+          {externalDebt > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span>سلف خارجية عليه</span>
+              <span className="font-bold text-destructive">
+                {formatMoney(externalDebt)}
+              </span>
+            </div>
+          )}
           {externalCredit > 0 && (
             <div className="flex items-center justify-between text-xs">
               <span>سلف خارجية له (تُخصم)</span>
@@ -123,8 +136,9 @@ export function CollectAllForm({
           </div>
         </div>
         <p className="mb-3 text-center text-xs text-muted-foreground">
-          القيمة الافتراضية = المطلوب بعد خصم ما له عندنا، وتقدر تعدّلها وتحصّل
-          أكتر. يتوزّع بالأقدم أولًا، وأي زيادة تتسجّل رصيدًا للمقاول (له عندنا).
+          القيمة الافتراضية = صافي الحساب. الزرار يقاصّ اللي له مع اللي عليه بدون
+          كاش، وبعدين يوزّع المبلغ بالأقدم أولًا على آجل الرحلات ثم السلف الخارجية
+          عليه، وأي زيادة تتسجّل رصيدًا له عندنا.
         </p>
         <form action={action} className="space-y-3">
           <div className="space-y-1.5">

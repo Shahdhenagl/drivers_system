@@ -12,7 +12,7 @@ import { AdvancePanel } from "@/components/advance-panel";
 import { ExternalAdvancePanel } from "@/components/external-advance-panel";
 import { AccountTotalSummary } from "@/components/account-total-summary";
 import { DailyReviewToggle } from "@/components/daily-review-toggle";
-import { MonthFilter } from "@/components/month-filter";
+import { WeekFilter } from "@/components/week-filter";
 import { ExtraProfitForm } from "@/components/extra-profit-form";
 import { TipForm } from "@/components/driver-tip-form";
 import { PartyAdjustments } from "@/components/party-adjustments";
@@ -26,14 +26,16 @@ import {
   startOfDay,
   endOfDay,
   addDays,
-  cairoMonthStr,
-  monthLabel,
-  monthBounds,
+  cairoWeekStr,
+  weekLabel,
+  weekOptionLabel,
+  weekBounds,
   sameCairoDay,
 } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
+import { owedByBorrower, owedToLender } from "@/lib/external-legs";
 import { advanceRowAction } from "@/lib/statement-actions";
 import { stripMarkers } from "@/lib/statement-group";
 import { contractorReport } from "@/lib/messages";
@@ -53,10 +55,10 @@ export default async function ContractorProfile({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ m?: string }>;
+  searchParams: Promise<{ w?: string }>;
 }) {
   const { id } = await params;
-  const { m } = await searchParams;
+  const { w } = await searchParams;
   const c = await prisma.contractor.findUnique({
     where: { id },
     include: {
@@ -71,25 +73,28 @@ export default async function ContractorProfile({
   });
   if (!c) notFound();
 
-  // ===== فلتر الشهر — الافتراضي الشهر الحالي (يُخفي الأقدم تلقائيًا)، و"all" لكل الشهور =====
+  // ===== فلتر الأسبوع (السبت → الجمعة) — الافتراضي الأسبوع الحالي، و"all" لكل الفترات =====
   const now = new Date();
-  const currentMonth = cairoMonthStr(now);
-  const monthSet = new Set<string>([currentMonth]);
+  const currentWeek = cairoWeekStr(now);
+  const weekSet = new Set<string>([currentWeek]);
   for (const t of c.trips) {
-    monthSet.add(cairoMonthStr(t.date));
-    for (const col of t.collections) monthSet.add(cairoMonthStr(col.date));
+    weekSet.add(cairoWeekStr(t.date));
+    for (const col of t.collections) weekSet.add(cairoWeekStr(col.date));
   }
-  const months = [...monthSet]
-    .sort()
-    .reverse()
-    .map((v) => ({ value: v, label: monthLabel(v) }));
-  const selectedMonth =
-    m === "all"
+  const weeks = [
+    { value: "all", label: "كل الفترات" },
+    ...[...weekSet]
+      .sort()
+      .reverse()
+      .map((v) => ({ value: v, label: weekOptionLabel(v, currentWeek) })),
+  ];
+  const selectedWeek =
+    w === "all"
       ? "all"
-      : m && months.some((x) => x.value === m)
-        ? m
-        : currentMonth;
-  const bounds = selectedMonth === "all" ? null : monthBounds(selectedMonth);
+      : w && weeks.some((x) => x.value === w)
+        ? w
+        : currentWeek;
+  const bounds = selectedWeek === "all" ? null : weekBounds(selectedWeek);
   const trips = bounds
     ? c.trips.filter((t) => t.date >= bounds[0] && t.date < bounds[1])
     : c.trips;
@@ -167,13 +172,13 @@ export default async function ContractorProfile({
     .filter((a) => a.direction === "IN")
     .reduce((s, a) => s + a.amount, 0);
   const advanceBalance = advOut - advIn;
-  // السلف الخارجية تُحسب بقيمتها الكاملة ما لم تُعلَّم "مسددة" (تبقى كسجل)
+  // السلف الخارجية بالباقي منها: عليه = amount − المحصَّل، له = amount − المسلَّم
   const externalFor = externalAdvances
     .filter((a) => a.lenderType === "CONTRACTOR" && a.lenderId === id)
-    .reduce((s, a) => s + a.amount, 0);
+    .reduce((s, a) => s + owedToLender(a), 0);
   const externalOn = externalAdvances
     .filter((a) => a.borrowerType === "CONTRACTOR" && a.borrowerId === id)
-    .reduce((s, a) => s + a.amount, 0);
+    .reduce((s, a) => s + owedByBorrower(a), 0);
   const officeFor = Math.max(-advanceBalance, 0);
   const officeOn = Math.max(advanceBalance, 0);
 
@@ -200,7 +205,7 @@ export default async function ContractorProfile({
   const totalForContractor = officeFor + externalFor;
   const totalOnContractor = deferredAll + officeOn + externalOn;
 
-  // الحساب الشامل يحترم فلتر الشهر: عند اختيار شهر يعرض صافي حركة الشهر فقط
+  // الحساب الشامل يحترم فلتر الأسبوع: عند اختيار أسبوع يعرض صافي حركة الأسبوع فقط
   const inBounds = (d: Date) => !bounds || (d >= bounds[0] && d < bounds[1]);
   const mAdvBal =
     advances
@@ -211,10 +216,10 @@ export default async function ContractorProfile({
       .reduce((s, a) => s + a.amount, 0);
   const mExternalFor = externalAdvances
     .filter((a) => a.lenderType === "CONTRACTOR" && a.lenderId === id && inBounds(a.date))
-    .reduce((s, a) => s + a.amount, 0);
+    .reduce((s, a) => s + owedToLender(a), 0);
   const mExternalOn = externalAdvances
     .filter((a) => a.borrowerType === "CONTRACTOR" && a.borrowerId === id && inBounds(a.date))
-    .reduce((s, a) => s + a.amount, 0);
+    .reduce((s, a) => s + owedByBorrower(a), 0);
   const sOfficeFor = bounds ? Math.max(-mAdvBal, 0) : officeFor;
   const sOfficeOn = bounds ? Math.max(mAdvBal, 0) : officeOn;
   const sExternalFor = bounds ? mExternalFor : externalFor;
@@ -223,7 +228,7 @@ export default async function ContractorProfile({
   const summaryFor = sOfficeFor + sExternalFor;
   const summaryOn = sDeferred + sOfficeOn + sExternalOn;
 
-  // التحصيلات تُنسب لتاريخ التحصيل نفسه (لا لشهر الرحلة) — متسق مع كشف السواق
+  // التحصيلات تُنسب لتاريخ التحصيل نفسه (لا لأسبوع الرحلة) — متسق مع كشف السواق
   const payments = c.trips
     .flatMap((t) =>
       t.collections.map((p) => ({
@@ -235,7 +240,7 @@ export default async function ContractorProfile({
     .filter((p) => inBounds(p.date))
     .sort((a, b) => +new Date(b.date) - +new Date(a.date));
 
-  const periodLabel = bounds ? monthLabel(selectedMonth) : "كل الفترات";
+  const periodLabel = bounds ? `أسبوع ${weekLabel(selectedWeek)}` : "كل الفترات";
   const statementRows: StatementRow[] = [
     ...trips.map((t) => ({
       id: `trip-${t.id}`,
@@ -283,11 +288,11 @@ export default async function ContractorProfile({
         createdAt: a.createdAt,
         action: advanceRowAction(a),
       })),
-    ...externalAdvances
-      .filter((a) => inBounds(a.date))
-      .map((a) => {
-        const isBorrower = a.borrowerType === "CONTRACTOR" && a.borrowerId === id;
-        return {
+    ...externalAdvances.flatMap((a) => {
+      const isBorrower = a.borrowerType === "CONTRACTOR" && a.borrowerId === id;
+      const rows: StatementRow[] = [];
+      if (inBounds(a.date)) {
+        rows.push({
           id: `external-${a.id}`,
           date: a.date,
           description: isBorrower
@@ -299,8 +304,24 @@ export default async function ContractorProfile({
           paid: isBorrower ? undefined : a.amount,
           received: isBorrower ? a.amount : undefined,
           action: { kind: "external" as const, id: a.id },
-        };
-      }),
+        });
+      }
+      // ساق التسوية: سدّد للمكتب (كمستلِف) أو استلم من المكتب (كمُقرِض) — تصفّر السطر
+      const settled = isBorrower ? a.collectedAmount ?? 0 : a.paidAmount ?? 0;
+      if (settled > 0 && inBounds(a.updatedAt)) {
+        rows.push({
+          id: `external-leg-${a.id}`,
+          date: a.updatedAt,
+          description: isBorrower
+            ? "سدّد سلفة خارجية للمكتب"
+            : "استلم سلفة خارجية من المكتب",
+          details: isBorrower ? `لصالح ${a.lenderName}` : `من ${a.borrowerName}`,
+          paid: isBorrower ? settled : undefined,
+          received: isBorrower ? undefined : settled,
+        });
+      }
+      return rows;
+    }),
   ];
   const statementTotals = statementRows.reduce(
     (acc, row) => ({
@@ -482,8 +503,8 @@ export default async function ContractorProfile({
           />
         </div>
 
-        {/* فلتر الشهر */}
-        <MonthFilter months={months} selected={selectedMonth} />
+        {/* فلتر الأسبوع (السبت → الجمعة) */}
+        <WeekFilter weeks={weeks} selected={selectedWeek} />
 
         {/* الملخص المالي */}
         <div className="grid grid-cols-2 gap-3">
@@ -495,7 +516,7 @@ export default async function ContractorProfile({
 
         <AccountTotalSummary
           title={
-            bounds ? `الحساب الشامل — ${monthLabel(selectedMonth)}` : "الحساب الشامل"
+            bounds ? `الحساب الشامل — أسبوع ${weekLabel(selectedWeek)}` : "الحساب الشامل"
           }
           forParty={summaryFor}
           onParty={summaryOn}
@@ -515,6 +536,7 @@ export default async function ContractorProfile({
             remaining={deferredAll}
             advanceBalance={advanceBalance}
             externalCredit={externalFor}
+            externalDebt={externalOn}
           />
         </div>
 

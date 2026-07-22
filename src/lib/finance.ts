@@ -6,6 +6,7 @@ import {
   methodLabel,
 } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
+import { owedByBorrower, owedToLender } from "@/lib/external-legs";
 
 type DB = Prisma.TransactionClient | typeof prisma;
 
@@ -147,8 +148,9 @@ export async function advanceBalancesByParty(
 }
 
 /**
- * إجمالي السلف الخارجية لكل طرف بقيمتها الكاملة (تُحسب فور تسجيلها ولا مفهوم للتسديد):
- * forMap = له (مُقرِض)، onMap = عليه (مستلِف). تُزال بالحذف فقط.
+ * باقي السلف الخارجية لكل طرف — لكل سلفة ساقان مستقلتان:
+ * forMap = باقي للمُقرِض (amount − paidAmount)، onMap = باقي على المستلِف
+ * (amount − collectedAmount). تتصفّر بالتحصيل/التسليم أو بالحذف.
  */
 export async function externalRemainingByParty(
   partyType: "CONTRACTOR" | "DRIVER"
@@ -164,6 +166,8 @@ export async function externalRemainingByParty(
         lenderType: true,
         lenderId: true,
         amount: true,
+        collectedAmount: true,
+        paidAmount: true,
       },
     })
     .catch(() => [] as never[]);
@@ -171,10 +175,12 @@ export async function externalRemainingByParty(
   const onMap = new Map<string, number>();
   for (const e of rows) {
     if (e.lenderType === partyType) {
-      forMap.set(e.lenderId, (forMap.get(e.lenderId) ?? 0) + e.amount);
+      const rem = owedToLender(e);
+      if (rem > 0) forMap.set(e.lenderId, (forMap.get(e.lenderId) ?? 0) + rem);
     }
     if (e.borrowerType === partyType) {
-      onMap.set(e.borrowerId, (onMap.get(e.borrowerId) ?? 0) + e.amount);
+      const rem = owedByBorrower(e);
+      if (rem > 0) onMap.set(e.borrowerId, (onMap.get(e.borrowerId) ?? 0) + rem);
     }
   }
   return { forMap, onMap };

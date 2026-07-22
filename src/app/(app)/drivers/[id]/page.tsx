@@ -13,7 +13,7 @@ import { AdvancePanel } from "@/components/advance-panel";
 import { ExternalAdvancePanel } from "@/components/external-advance-panel";
 import { AccountTotalSummary } from "@/components/account-total-summary";
 import { DailyReviewToggle } from "@/components/daily-review-toggle";
-import { MonthFilter } from "@/components/month-filter";
+import { WeekFilter } from "@/components/week-filter";
 import { ExtraProfitForm } from "@/components/extra-profit-form";
 import { TipForm } from "@/components/driver-tip-form";
 import { PartyAdjustments } from "@/components/party-adjustments";
@@ -26,14 +26,16 @@ import {
   startOfDay,
   endOfDay,
   addDays,
-  cairoMonthStr,
-  monthLabel,
-  monthBounds,
+  cairoWeekStr,
+  weekLabel,
+  weekOptionLabel,
+  weekBounds,
   sameCairoDay,
 } from "@/lib/format";
 import { displayPhone } from "@/lib/phone";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { effectiveAmounts } from "@/lib/finance";
+import { owedByBorrower, owedToLender } from "@/lib/external-legs";
 import { advanceRowAction } from "@/lib/statement-actions";
 import { stripMarkers } from "@/lib/statement-group";
 import { driverReport } from "@/lib/messages";
@@ -64,10 +66,10 @@ export default async function DriverProfile({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ m?: string }>;
+  searchParams: Promise<{ w?: string }>;
 }) {
   const { id } = await params;
-  const { m } = await searchParams;
+  const { w } = await searchParams;
   const d = await prisma.driver.findUnique({
     where: { id },
     include: {
@@ -94,27 +96,30 @@ export default async function DriverProfile({
   });
   if (!d) notFound();
 
-  // ===== فلتر الشهر — الافتراضي الشهر الحالي (يُخفي الأقدم تلقائيًا)، و"all" لكل الشهور =====
+  // ===== فلتر الأسبوع (السبت → الجمعة) — الافتراضي الأسبوع الحالي، و"all" لكل الفترات =====
   const now = new Date();
-  const currentMonth = cairoMonthStr(now);
-  const monthSet = new Set<string>([currentMonth]);
-  for (const t of d.trips) monthSet.add(cairoMonthStr(t.date));
-  for (const p of d.payments) monthSet.add(cairoMonthStr(p.date));
-  const months = [...monthSet]
-    .sort()
-    .reverse()
-    .map((v) => ({ value: v, label: monthLabel(v) }));
-  const selectedMonth =
-    m === "all"
+  const currentWeek = cairoWeekStr(now);
+  const weekSet = new Set<string>([currentWeek]);
+  for (const t of d.trips) weekSet.add(cairoWeekStr(t.date));
+  for (const p of d.payments) weekSet.add(cairoWeekStr(p.date));
+  const weeks = [
+    { value: "all", label: "كل الفترات" },
+    ...[...weekSet]
+      .sort()
+      .reverse()
+      .map((v) => ({ value: v, label: weekOptionLabel(v, currentWeek) })),
+  ];
+  const selectedWeek =
+    w === "all"
       ? "all"
-      : m && months.some((x) => x.value === m)
-        ? m
-        : currentMonth;
-  const bounds = selectedMonth === "all" ? null : monthBounds(selectedMonth);
-  const inMonth = (dt: Date) => !bounds || (dt >= bounds[0] && dt < bounds[1]);
-  const trips = bounds ? d.trips.filter((t) => inMonth(t.date)) : d.trips;
-  const monthPayments = bounds
-    ? d.payments.filter((p) => inMonth(p.date))
+      : w && weeks.some((x) => x.value === w)
+        ? w
+        : currentWeek;
+  const bounds = selectedWeek === "all" ? null : weekBounds(selectedWeek);
+  const inWeek = (dt: Date) => !bounds || (dt >= bounds[0] && dt < bounds[1]);
+  const trips = bounds ? d.trips.filter((t) => inWeek(t.date)) : d.trips;
+  const weekPayments = bounds
+    ? d.payments.filter((p) => inWeek(p.date))
     : d.payments;
 
   // علامة المراجعة اليومية (تتصفّر تلقائيًا كل يوم)
@@ -344,10 +349,10 @@ export default async function DriverProfile({
   const totalPaid = d.payments.reduce((a, p) => a + p.amount, 0);
   const remaining = Math.max(totalDue - totalPaid, 0);
 
-  // إجماليات الشهر المختار — لصناديق الملخص فقط
-  const dueMonth = trips.reduce((a, t) => a + effectiveAmounts(t).driver, 0);
-  const paidMonth = monthPayments.reduce((a, p) => a + p.amount, 0);
-  const remainingMonth = Math.max(dueMonth - paidMonth, 0);
+  // إجماليات الأسبوع المختار — لصناديق الملخص فقط
+  const dueWeek = trips.reduce((a, t) => a + effectiveAmounts(t).driver, 0);
+  const paidWeek = weekPayments.reduce((a, p) => a + p.amount, 0);
+  const remainingWeek = Math.max(dueWeek - paidWeek, 0);
 
   // رصيد السلف: OUT − IN (موجب = عليه لنا، سالب = لنا عليه)
   const advOut = advances
@@ -357,19 +362,19 @@ export default async function DriverProfile({
     .filter((a) => a.direction === "IN")
     .reduce((s, a) => s + a.amount, 0);
   const advanceBalance = advOut - advIn;
-  // السلف الخارجية تُحسب بقيمتها الكاملة فور تسجيلها، وتُزال بالحذف فقط
+  // السلف الخارجية بالباقي منها: له = amount − المسلَّم، عليه = amount − المحصَّل
   const externalFor = externalAdvances
     .filter((a) => a.lenderType === "DRIVER" && a.lenderId === id)
-    .reduce((s, a) => s + a.amount, 0);
+    .reduce((s, a) => s + owedToLender(a), 0);
   const externalOn = externalAdvances
     .filter((a) => a.borrowerType === "DRIVER" && a.borrowerId === id)
-    .reduce((s, a) => s + a.amount, 0);
+    .reduce((s, a) => s + owedByBorrower(a), 0);
   const officeFor = Math.max(-advanceBalance, 0);
   const officeOn = Math.max(advanceBalance, 0);
   const totalForDriver = remaining + officeFor + externalFor;
   const totalOnDriver = officeOn + externalOn;
 
-  // الحساب الشامل يحترم فلتر الشهر: عند اختيار شهر يعرض صافي حركة الشهر فقط
+  // الحساب الشامل يحترم فلتر الأسبوع: عند اختيار أسبوع يعرض صافي حركة الأسبوع فقط
   const inBounds = (dt: Date) => !bounds || (dt >= bounds[0] && dt < bounds[1]);
   const mAdvBal =
     advances
@@ -380,19 +385,19 @@ export default async function DriverProfile({
       .reduce((s, a) => s + a.amount, 0);
   const mExternalFor = externalAdvances
     .filter((a) => a.lenderType === "DRIVER" && a.lenderId === id && inBounds(a.date))
-    .reduce((s, a) => s + a.amount, 0);
+    .reduce((s, a) => s + owedToLender(a), 0);
   const mExternalOn = externalAdvances
     .filter((a) => a.borrowerType === "DRIVER" && a.borrowerId === id && inBounds(a.date))
-    .reduce((s, a) => s + a.amount, 0);
+    .reduce((s, a) => s + owedByBorrower(a), 0);
   const sOfficeFor = bounds ? Math.max(-mAdvBal, 0) : officeFor;
   const sOfficeOn = bounds ? Math.max(mAdvBal, 0) : officeOn;
   const sExternalFor = bounds ? mExternalFor : externalFor;
   const sExternalOn = bounds ? mExternalOn : externalOn;
-  const sRemaining = bounds ? remainingMonth : remaining;
+  const sRemaining = bounds ? remainingWeek : remaining;
   const summaryFor = sRemaining + sOfficeFor + sExternalFor;
   const summaryOn = sOfficeOn + sExternalOn;
 
-  const periodLabel = bounds ? monthLabel(selectedMonth) : "كل الفترات";
+  const periodLabel = bounds ? `أسبوع ${weekLabel(selectedWeek)}` : "كل الفترات";
   const statementRows: StatementRow[] = [
     ...trips.map((t) => ({
       id: `trip-${t.id}`,
@@ -402,7 +407,7 @@ export default async function DriverProfile({
       forParty: effectiveAmounts(t).driver,
       action: { kind: "trip" as const, id: t.id },
     })),
-    ...monthPayments.map((p) => ({
+    ...weekPayments.map((p) => ({
       id: `payment-${p.id}`,
       date: p.date,
       description: `سداد للسواق - ${methodLabel(p.method)}`,
@@ -487,11 +492,11 @@ export default async function DriverProfile({
           action: advanceRowAction(a),
         };
       }),
-    ...externalAdvances
-      .filter((a) => inBounds(a.date))
-      .map((a) => {
-        const isBorrower = a.borrowerType === "DRIVER" && a.borrowerId === id;
-        return {
+    ...externalAdvances.flatMap((a) => {
+      const isBorrower = a.borrowerType === "DRIVER" && a.borrowerId === id;
+      const rows: StatementRow[] = [];
+      if (inBounds(a.date)) {
+        rows.push({
           id: `external-${a.id}`,
           date: a.date,
           description: isBorrower
@@ -503,8 +508,24 @@ export default async function DriverProfile({
           paid: isBorrower ? undefined : a.amount,
           received: isBorrower ? a.amount : undefined,
           action: { kind: "external" as const, id: a.id },
-        };
-      }),
+        });
+      }
+      // ساق التسوية: سدّد للمكتب (كمستلِف) أو استلم من المكتب (كمُقرِض) — تصفّر السطر
+      const settled = isBorrower ? a.collectedAmount ?? 0 : a.paidAmount ?? 0;
+      if (settled > 0 && inBounds(a.updatedAt)) {
+        rows.push({
+          id: `external-leg-${a.id}`,
+          date: a.updatedAt,
+          description: isBorrower
+            ? "سدّد سلفة خارجية للمكتب"
+            : "استلم سلفة خارجية من المكتب",
+          details: isBorrower ? `لصالح ${a.lenderName}` : `من ${a.borrowerName}`,
+          paid: isBorrower ? settled : undefined,
+          received: isBorrower ? undefined : settled,
+        });
+      }
+      return rows;
+    }),
   ];
   const statementTotals = statementRows.reduce(
     (acc, row) => ({
@@ -684,18 +705,18 @@ export default async function DriverProfile({
           />
         </div>
 
-        {/* فلتر الشهر */}
-        <MonthFilter months={months} selected={selectedMonth} />
+        {/* فلتر الأسبوع (السبت → الجمعة) */}
+        <WeekFilter weeks={weeks} selected={selectedWeek} />
 
         <div className="grid grid-cols-3 gap-3">
-          <SummaryBox label="إجمالي المستحق" value={dueMonth} />
-          <SummaryBox label="المدفوع" value={paidMonth} tone="success" />
-          <SummaryBox label="المتبقي" value={remainingMonth} tone="warning" />
+          <SummaryBox label="إجمالي المستحق" value={dueWeek} />
+          <SummaryBox label="المدفوع" value={paidWeek} tone="success" />
+          <SummaryBox label="المتبقي" value={remainingWeek} tone="warning" />
         </div>
 
         <AccountTotalSummary
           title={
-            bounds ? `الحساب الشامل — ${monthLabel(selectedMonth)}` : "الحساب الشامل"
+            bounds ? `الحساب الشامل — أسبوع ${weekLabel(selectedWeek)}` : "الحساب الشامل"
           }
           forParty={summaryFor}
           onParty={summaryOn}
@@ -713,6 +734,8 @@ export default async function DriverProfile({
             driverId={d.id}
             remaining={remaining}
             advanceBalance={advanceBalance}
+            externalCredit={externalFor}
+            externalDebt={externalOn}
           />
         </div>
 

@@ -52,11 +52,18 @@ export default async function PartnersPage() {
 
         <Card className="p-3.5">
           <div className="text-xs text-muted-foreground">
-            الربح المحصّل نقدًا (أساس أنصبة الشركاء)
+            ربح الرحلات المقفولة (أساس أنصبة الشركاء)
           </div>
           <div className="mt-1 text-lg font-bold tabular-nums text-success">
             {formatMoney(ov.grossRealizedProfit)}
           </div>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+            من {ov.closedTripsCount} رحلة مقفولة (اتحصّلت بالكامل واتسدّد سواقها)
+            بربح {formatMoney(ov.closedTripsProfit, false)}
+            {ov.totalExpenses > 0 && ` − مصروفات ${formatMoney(ov.totalExpenses, false)}`}
+            {ov.totalDriverTips > 0 && ` − إكراميات ${formatMoney(ov.totalDriverTips, false)}`}
+            . الرحلات الآجلة أو اللي سواقها لسه ما اتسدّدش مش داخلة.
+          </p>
         </Card>
 
         {partners.length === 0 ? (

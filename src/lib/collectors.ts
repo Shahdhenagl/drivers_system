@@ -5,9 +5,13 @@ export type Collector = { id: string; name: string };
 
 /**
  * علامة تربط سلفة المحصّل بحركتها المصدر للتعديل/الحذف لاحقًا:
- * col = تحصيل، dp = سداد، adv = رصيد/زيادة تحصيل مرتبطة بحركة سلفة.
+ * col = تحصيل، dp = سداد، adv = رصيد/زيادة تحصيل مرتبطة بحركة سلفة،
+ * ext = ساق من سلفة خارجية (تحصيل من المستلِف أو تسليم للمُقرِض).
  */
-export function collectorAdvanceMarker(kind: "col" | "dp" | "adv", refId: string) {
+export function collectorAdvanceMarker(
+  kind: "col" | "dp" | "adv" | "ext",
+  refId: string
+) {
   return `[c:${kind}:${refId}]`;
 }
 

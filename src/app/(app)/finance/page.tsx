@@ -5,13 +5,20 @@ import { DeleteExpenseButton } from "./delete-expense-button";
 import { TransferForm } from "./transfer-form";
 import { CashAdjustForm } from "./cash-adjust-form";
 import { LedgerActions } from "./ledger-actions";
-import { MonthFilter } from "./month-filter";
+import { WeekFilter } from "@/components/week-filter";
 import { RepairCollectorButton } from "./repair-collector-button";
 import { prisma } from "@/lib/prisma";
 import { treasuryByMethod } from "@/lib/finance";
 import { getFinanceOverview } from "@/lib/finance-overview";
 import { formatMoney } from "@/lib/money";
-import { cairoMonthStr, formatShortDate, monthBounds, monthLabel } from "@/lib/format";
+import {
+  cairoWeekStr,
+  formatShortDate,
+  weekBounds,
+  weekLabel,
+  weekOptionLabel,
+  shiftWeek,
+} from "@/lib/format";
 import { methodLabel, PAYMENT_METHODS, LEDGER_TYPE } from "@/lib/constants";
 import { Wallet, ArrowDownLeft, ArrowUpRight, Receipt } from "lucide-react";
 
@@ -20,17 +27,25 @@ export const dynamic = "force-dynamic";
 export default async function FinancePage({
   searchParams,
 }: {
-  searchParams?: Promise<{ month?: string }>;
+  searchParams?: Promise<{ w?: string }>;
 }) {
   const params = await searchParams;
-  const monthParam =
-    typeof params?.month === "string" && /^\d{4}-\d{2}$/.test(params.month)
-      ? params.month
+  const weekParam =
+    typeof params?.w === "string" && /^\d{4}-\d{2}-\d{2}$/.test(params.w)
+      ? params.w
       : "";
-  const currentMonth = monthParam || cairoMonthStr();
-  const monthRange = monthParam ? monthBounds(monthParam) : null;
-  const ledgerWhere = monthRange
-    ? { date: { gte: monthRange[0], lt: monthRange[1] } }
+  // خيارات الأسبوع (السبت → الجمعة): آخر الحركات + آخر 26 أسبوعًا
+  const currentWeek = cairoWeekStr();
+  const weekOptions = [
+    { value: "", label: "آخر الحركات" },
+    ...Array.from({ length: 26 }, (_, i) => shiftWeek(currentWeek, -i)).map((v) => ({
+      value: v,
+      label: weekOptionLabel(v, currentWeek),
+    })),
+  ];
+  const weekRange = weekParam ? weekBounds(weekParam) : null;
+  const ledgerWhere = weekRange
+    ? { date: { gte: weekRange[0], lt: weekRange[1] } }
     : undefined;
 
   const [treasury, ov, expenses, ledger] = await Promise.all([
@@ -40,7 +55,7 @@ export default async function FinancePage({
     prisma.ledgerEntry.findMany({
       where: ledgerWhere,
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
-      take: monthParam ? undefined : 50,
+      take: weekParam ? undefined : 50,
     }),
   ]);
   const ledgerExpenseIds = ledger
@@ -61,7 +76,9 @@ export default async function FinancePage({
   const payables =
     ov.totalRemainingDrivers +
     ov.totalDriverAdvancesOwed +
-    ov.totalContractorAdvancesOwed;
+    ov.totalContractorAdvancesOwed +
+    // أمانة السلف الخارجية المحصَّلة ولسه ما اتسلّمتش — موجودة في الخزنة لكنها ليست ملكنا
+    ov.externalHeld;
   const netWorth = treasury.total + receivables - payables;
   // رأس المال الثابت = الثروة − الربح غير الموزّع (فالربح لا يزيد رأس المال)
   const baseCapital = netWorth - ov.distributableProfit;
@@ -144,7 +161,7 @@ export default async function FinancePage({
           <Indicator label="إجمالي الربح" value={ov.grossProfit} tone="primary" />
           <Indicator label="سحوبات الشركاء" value={ov.totalPartnerWithdrawals} />
           <Indicator
-            label="الربح القابل للتوزيع (محصّل)"
+            label="الربح القابل للتوزيع (رحلات مقفولة)"
             value={ov.realizedProfit}
             tone="success"
           />
@@ -205,14 +222,15 @@ export default async function FinancePage({
         <section>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-bold text-muted-foreground">
-              دفتر الأستاذ ({monthParam ? monthLabel(monthParam) : "آخر الحركات"})
+              دفتر الأستاذ (
+              {weekParam ? `أسبوع ${weekLabel(weekParam)}` : "آخر الحركات"})
             </h2>
-            <MonthFilter currentMonth={currentMonth} />
+            <WeekFilter weeks={weekOptions} selected={weekParam} />
           </div>
           <Card className="divide-y divide-border">
             {ledger.length === 0 ? (
               <p className="p-4 text-center text-sm text-muted-foreground">
-                لا توجد حركات في هذا الشهر
+                لا توجد حركات في هذا الأسبوع
               </p>
             ) : (
               ledger.map((l) => {

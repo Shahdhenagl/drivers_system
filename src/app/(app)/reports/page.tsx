@@ -9,7 +9,15 @@ import { prisma } from "@/lib/prisma";
 import { getFinanceOverview } from "@/lib/finance-overview";
 import { effectiveAmounts } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
-import { formatShortDate, startOfDay, endOfDay } from "@/lib/format";
+import {
+  formatShortDate,
+  startOfDay,
+  endOfDay,
+  cairoWeekStr,
+  shiftWeek,
+  weekBounds,
+  weekOptionLabel,
+} from "@/lib/format";
 import { ArrowRight, Users, Truck, Handshake } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +29,19 @@ export default async function ReportsPage({
 }) {
   const { from, to } = await searchParams;
   const ov = await getFinanceOverview();
+
+  // اختصارات أسبوعية (السبت → الجمعة) لتقرير الفترة
+  const currentWeek = cairoWeekStr();
+  const weekShortcuts = Array.from({ length: 4 }, (_, i) => {
+    const ws = shiftWeek(currentWeek, -i);
+    const [start, end] = weekBounds(ws);
+    const last = new Date(end.getTime() - 86_400_000);
+    return {
+      label: weekOptionLabel(ws, currentWeek),
+      from: ws,
+      to: last.toISOString().slice(0, 10),
+    };
+  });
 
   let custom: null | {
     from: string;
@@ -123,6 +144,26 @@ export default async function ReportsPage({
             تقرير مخصص بين تاريخين
           </h2>
           <Card className="space-y-3 p-4">
+            {/* اختصارات أسبوعية — الأسبوع من السبت للجمعة */}
+            <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 print:hidden">
+              {weekShortcuts.map((s) => {
+                const active = from === s.from && to === s.to;
+                return (
+                  <Link
+                    key={s.from}
+                    href={`/reports?from=${s.from}&to=${s.to}`}
+                    className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                      active
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input bg-background text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    {s.label}
+                  </Link>
+                );
+              })}
+            </div>
+
             <form className="flex flex-wrap items-end gap-3 print:hidden" method="get">
               <div className="flex-1 space-y-1.5">
                 <Label htmlFor="from">من</Label>

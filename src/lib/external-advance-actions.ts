@@ -6,6 +6,7 @@ import { audit } from "@/lib/audit";
 import { toPiastres } from "@/lib/money";
 import { sendTelegram } from "@/lib/telegram";
 import { adminExternalAdvanceMessage } from "@/lib/messages";
+import { collectorAdvanceMarker } from "@/lib/collectors";
 
 type PartyType = "DRIVER" | "CONTRACTOR";
 
@@ -155,7 +156,16 @@ export async function deleteExternalAdvance(id: string) {
   const current = await prisma.externalAdvance.findUnique({ where: { id } });
   if (!current) return { error: "السلفة الخارجية غير موجودة" };
 
-  await prisma.externalAdvance.delete({ where: { id } });
+  // الحذف يرجّع أثر ساقيها: قيود الخزنة (أمانة داخلة/خارجة) وسلف المحصّلين المرتبطة
+  await prisma.$transaction(async (tx) => {
+    await tx.ledgerEntry.deleteMany({
+      where: { refType: "ExternalAdvance", refId: id },
+    });
+    await tx.advance.deleteMany({
+      where: { note: { contains: collectorAdvanceMarker("ext", id) } },
+    });
+    await tx.externalAdvance.delete({ where: { id } });
+  });
   await audit("DELETE", "ExternalAdvance", id, { amount: current.amount });
   await notifyExternalAdvance("DELETE", current);
   await revalidateParties([

@@ -9,7 +9,20 @@ import {
   effectiveAmounts,
   deriveCollectionStatus,
 } from "@/lib/finance";
-import { resolveCollector, collectorAdvanceMarker } from "@/lib/collectors";
+import {
+  resolveCollector,
+  collectorAdvanceMarker,
+  type Collector,
+} from "@/lib/collectors";
+import { advanceBalance } from "@/lib/advance-actions";
+import {
+  openBorrowerLegs,
+  openLenderLegs,
+  owedByBorrower,
+  owedToLender,
+  advanceLeg,
+} from "@/lib/external-legs";
+import { OFFSET } from "@/lib/constants";
 import { wipeParty } from "@/lib/party-wipe";
 import { toPiastres } from "@/lib/money";
 
@@ -54,8 +67,12 @@ export async function updateContractor(id: string, formData: FormData) {
 }
 
 /**
- * تحصيل مجمّع من المقاول — يوزَّع بالأقدم أولًا على الرحلات المستحقة.
- * أي زيادة عن المستحق تُسجَّل رصيدًا للمقاول (له عندنا).
+ * تحصيل مجمّع من المقاول — يقفل الحساب كله بضغطة واحدة:
+ *  1) مقاصّة بدون كاش: اللي له (رصيد مكتب + سلف خارجية له) مقابل اللي عليه
+ *     (آجل الرحلات + سلف خارجية عليه).
+ *  2) الكاش المُدخَل يوزَّع بالأقدم أولًا: آجل الرحلات ← سلف خارجية عليه.
+ *     (فلوس السلفة الخارجية تدخل الخزنة كأمانة حتى تُسلَّم للمُقرِض.)
+ *  3) أي زيادة تُسجَّل رصيدًا للمقاول (له عندنا) فتُطفئ سلف المكتب عليه.
  */
 export async function collectAllFromContractor(
   contractorId: string,
@@ -66,13 +83,27 @@ export async function collectAllFromContractor(
   const dateStr = String(formData.get("date") ?? "");
   const date = dateStr ? new Date(dateStr) : new Date();
   const note = String(formData.get("note") ?? "").trim() || "تحصيل مجمّع";
-  if (amount <= 0) return { error: "اكتب قيمة صحيحة" };
+  if (amount < 0) return { error: "اكتب قيمة صحيحة" };
 
-  const trips = await prisma.trip.findMany({
-    where: { contractorId },
-    orderBy: { date: "asc" },
-    include: { collections: true },
-  });
+  const [trips, externals, advBal] = await Promise.all([
+    prisma.trip.findMany({
+      where: { contractorId },
+      orderBy: { date: "asc" },
+      include: { collections: true },
+    }),
+    prisma.externalAdvance
+      .findMany({
+        where: {
+          OR: [
+            { borrowerType: "CONTRACTOR", borrowerId: contractorId },
+            { lenderType: "CONTRACTOR", lenderId: contractorId },
+          ],
+        },
+        orderBy: { date: "asc" },
+      })
+      .catch(() => []),
+    advanceBalance("CONTRACTOR", contractorId),
+  ]);
 
   // الرحلات المستحقة مرتّبة بالأقدم
   type Item = {
@@ -90,10 +121,11 @@ export async function collectAllFromContractor(
   }
 
   // لو التحصيل "عن طريق محصّل": كل المبلغ يبقى معاه (سلفة عليه) ولا يدخل الخزنة
-  const collector = await resolveCollector(method);
-  if (collector && "notFound" in collector) {
-    return { error: `المحصّل «${collector.notFound}» غير موجود في السواقين` };
+  const collectorRaw = await resolveCollector(method);
+  if (collectorRaw && "notFound" in collectorRaw) {
+    return { error: `المحصّل «${collectorRaw.notFound}» غير موجود في السواقين` };
   }
+  const collector: Collector | null = collectorRaw;
   // اسم المقاول يُحفظ على سلفة المحصّل عشان كشف حسابه يقول حصّل من مين
   const contractorName = collector
     ? (
@@ -104,16 +136,32 @@ export async function collectAllFromContractor(
       )?.name ?? null
     : null;
 
+  // ساقات السلف الخارجية المفتوحة — عليه (مستلِف) وله (مُقرِض)، الأقدم أولًا
+  const borrowerLegs = openBorrowerLegs(externals, "CONTRACTOR", contractorId);
+  const lenderLegs = openLenderLegs(externals, "CONTRACTOR", contractorId);
+  const officeCredit = Math.max(-advBal, 0); // رصيد المكتب له
+
   await prisma.$transaction(async (tx) => {
-    let left = amount;
-    for (const it of items) {
-      if (left <= 0) break;
-      const pay = Math.min(it.remaining, left);
-      left -= pay;
+    // متبقّيات محلّية تتحدّث عبر المرحلتين (مقاصّة ثم كاش)
+    const tripRem = new Map(items.map((it) => [it.trip.id, it.remaining]));
+    const tripPaid = new Map(items.map((it) => [it.trip.id, 0]));
+    const borrowerRem = new Map(
+      borrowerLegs.map((l) => [l.id, owedByBorrower(l)])
+    );
+    const lenderRem = new Map(lenderLegs.map((l) => [l.id, owedToLender(l)]));
+
+    /** تحصيل على رحلة: قيد تحصيل + تحديث حالة التحصيل (+ خزنة/محصّل لو كاش) */
+    async function collectTrip(
+      it: Item,
+      pay: number,
+      payMethod: string,
+      payNote: string,
+      cash: boolean
+    ) {
       const col = await tx.collection.create({
-        data: { tripId: it.trip.id, amount: pay, method, date, note },
+        data: { tripId: it.trip.id, amount: pay, method: payMethod, date, note: payNote },
       });
-      if (collector) {
+      if (cash && collector) {
         // المحصّل يمسك حصّة هذه الرحلة — سلفة عليه مربوطة بالتحصيل (بدون قيد خزنة).
         // الربط بعلامة col يضمن حذفها تلقائيًا مع حذف/تعديل التحصيل من أي مكان.
         await tx.advance.create({
@@ -122,7 +170,7 @@ export async function collectAllFromContractor(
             partyId: collector.id,
             amount: pay,
             direction: "OUT",
-            method,
+            method: payMethod,
             note: `تحصيل عن طريق ${collector.name} ${collectorAdvanceMarker("col", col.id)}`,
             tripId: it.trip.id,
             sourceType: "CONTRACTOR",
@@ -131,27 +179,142 @@ export async function collectAllFromContractor(
             date,
           },
         });
-      } else {
+      } else if (cash) {
         await recordLedger(tx, {
           type: "COLLECTION",
           direction: "IN",
           amount: pay,
-          method,
+          method: payMethod,
           description: `تحصيل — رحلة ${it.trip.startPoint} ← ${it.trip.endPoint}`,
           refType: "Collection",
           refId: col.id,
           date,
         });
       }
+      const paidSoFar = (tripPaid.get(it.trip.id) ?? 0) + pay;
+      tripPaid.set(it.trip.id, paidSoFar);
+      tripRem.set(it.trip.id, Math.max((tripRem.get(it.trip.id) ?? 0) - pay, 0));
       await tx.trip.update({
         where: { id: it.trip.id },
         data: {
-          collectionStatus: deriveCollectionStatus(it.eff, it.collected + pay),
+          collectionStatus: deriveCollectionStatus(it.eff, it.collected + paidSoFar),
         },
       });
     }
 
-    // الزيادة عن المستحق → رصيد للمقاول (له عندنا)
+    /** تحصيل ساق المستلِف من سلفة خارجية — الكاش يدخل الخزنة كأمانة */
+    async function collectBorrowerLeg(
+      leg: (typeof borrowerLegs)[number],
+      pay: number,
+      payMethod: string,
+      cash: boolean
+    ) {
+      await advanceLeg(tx, leg.id, "collected", pay);
+      borrowerRem.set(leg.id, Math.max((borrowerRem.get(leg.id) ?? 0) - pay, 0));
+      if (cash && collector) {
+        await tx.advance.create({
+          data: {
+            partyType: "DRIVER",
+            partyId: collector.id,
+            amount: pay,
+            direction: "OUT",
+            method: payMethod,
+            note: `تحصيل سلفة خارجية عن طريق ${collector.name} ${collectorAdvanceMarker("ext", leg.id)}`,
+            sourceType: "CONTRACTOR",
+            sourceId: contractorId,
+            sourceName: contractorName,
+            date,
+          },
+        });
+      } else if (cash) {
+        await recordLedger(tx, {
+          type: "EXTERNAL_HOLD_IN",
+          direction: "IN",
+          amount: pay,
+          method: payMethod,
+          description: `تحصيل سلفة خارجية (أمانة) — ${leg.lenderName}`,
+          refType: "ExternalAdvance",
+          refId: leg.id,
+          date,
+        });
+      }
+    }
+
+    // ===== 1) مقاصّة بدون كاش: اللي له (سلف خارجية له + رصيد مكتب) مقابل اللي عليه =====
+    const totalDebit =
+      [...tripRem.values()].reduce((a, b) => a + b, 0) +
+      [...borrowerRem.values()].reduce((a, b) => a + b, 0);
+    const totalCredit =
+      officeCredit + [...lenderRem.values()].reduce((a, b) => a + b, 0);
+    const offset = Math.min(totalDebit, totalCredit);
+
+    if (offset > 0) {
+      // جهة «عليه»: الرحلات الأقدم ثم ساقات المستلِف
+      let leftDebit = offset;
+      for (const it of items) {
+        if (leftDebit <= 0) break;
+        const rem = tripRem.get(it.trip.id) ?? 0;
+        if (rem <= 0) continue;
+        const pay = Math.min(rem, leftDebit);
+        leftDebit -= pay;
+        await collectTrip(it, pay, OFFSET, "مقاصّة حساب", false);
+      }
+      for (const leg of borrowerLegs) {
+        if (leftDebit <= 0) break;
+        const rem = borrowerRem.get(leg.id) ?? 0;
+        if (rem <= 0) continue;
+        const pay = Math.min(rem, leftDebit);
+        leftDebit -= pay;
+        await collectBorrowerLeg(leg, pay, OFFSET, false);
+      }
+
+      // جهة «له»: ساقات المُقرِض الأقدم ثم رصيد المكتب
+      let leftCredit = offset;
+      for (const leg of lenderLegs) {
+        if (leftCredit <= 0) break;
+        const rem = lenderRem.get(leg.id) ?? 0;
+        if (rem <= 0) continue;
+        const give = Math.min(rem, leftCredit);
+        leftCredit -= give;
+        await advanceLeg(tx, leg.id, "paid", give);
+        lenderRem.set(leg.id, rem - give);
+      }
+      if (leftCredit > 0) {
+        // إطفاء رصيد المكتب له بقيد صرف بدون خزنة
+        await tx.advance.create({
+          data: {
+            partyType: "CONTRACTOR",
+            partyId: contractorId,
+            amount: leftCredit,
+            direction: "OUT",
+            method: OFFSET,
+            note: "مقاصّة حساب",
+            date,
+          },
+        });
+      }
+    }
+
+    // ===== 2) الكاش المُدخَل: آجل الرحلات ← سلف خارجية عليه ← الزيادة رصيد له =====
+    let left = amount;
+    for (const it of items) {
+      if (left <= 0) break;
+      const rem = tripRem.get(it.trip.id) ?? 0;
+      if (rem <= 0) continue;
+      const pay = Math.min(rem, left);
+      left -= pay;
+      await collectTrip(it, pay, method, note, true);
+    }
+    for (const leg of borrowerLegs) {
+      if (left <= 0) break;
+      const rem = borrowerRem.get(leg.id) ?? 0;
+      if (rem <= 0) continue;
+      const pay = Math.min(rem, left);
+      left -= pay;
+      await collectBorrowerLeg(leg, pay, method, true);
+    }
+
+    // الزيادة عن المستحق → رصيد للمقاول (له عندنا) — تُطفئ سلف المكتب عليه
     if (left > 0) {
       const adv = await tx.advance.create({
         data: {

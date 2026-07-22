@@ -17,7 +17,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { MethodSelect } from "@/components/method-select";
 import { payDriverDues, offsetDriverAdvance } from "./actions";
 import { playSound } from "@/lib/sounds";
-import { formatMoney, toPiastres } from "@/lib/money";
+import { formatMoney, toPiastres, toEgp } from "@/lib/money";
 import { toDateInput } from "@/lib/format";
 import { HandCoins, Scissors } from "lucide-react";
 
@@ -25,25 +25,35 @@ export function PayDriverForm({
   driverId,
   remaining,
   advanceBalance = 0,
+  externalCredit = 0,
+  externalDebt = 0,
 }: {
   driverId: string;
   remaining: number;
   advanceBalance?: number; // + = عليه سلفة لنا، − = له علينا
+  externalCredit?: number; // باقي سلف خارجية له (يستلمها من المكتب)
+  externalDebt?: number; // باقي سلف خارجية عليه (يدفعها للمكتب)
 }) {
+  const advanceDebt = Math.max(advanceBalance, 0);
+  const advanceCredit = Math.max(-advanceBalance, 0);
+  // صافي الحساب = كل اللي له (رحلات + رصيد مكتب + سلف خارجية له)
+  //               ناقص كل اللي عليه (سلف مكتب + سلف خارجية عليه)
+  const net =
+    remaining + advanceCredit + externalCredit - advanceDebt - externalDebt;
+  const suggested = Math.max(net, 0);
+
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
-  const [amountEgp, setAmountEgp] = useState("");
+  const [amountEgp, setAmountEgp] = useState(
+    suggested > 0 ? String(toEgp(suggested)) : ""
+  );
   const submitting = useRef(false);
   const router = useRouter();
 
   const amountP = toPiastres(amountEgp || "0");
-  const payable = remaining;
+  const payable = remaining + externalCredit;
   const duePortion = Math.min(amountP, payable);
   const advancePortion = Math.max(amountP - payable, 0);
-  const advanceDebt = Math.max(advanceBalance, 0);
-  const advanceCredit = Math.max(-advanceBalance, 0);
-  const totalForDriver = payable + advanceCredit;
-  const net = totalForDriver - advanceDebt;
 
   async function action(formData: FormData) {
     if (submitting.current) return; // منع الضغط المزدوج
@@ -58,7 +68,6 @@ export function PayDriverForm({
       }
       playSound("money");
       setOpen(false);
-      setAmountEgp("");
       router.refresh();
     } catch {
       playSound("error");
@@ -124,6 +133,22 @@ export function PayDriverForm({
               </span>
             </div>
           )}
+          {externalCredit > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span>سلف خارجية له</span>
+              <span className="font-bold text-success">
+                {formatMoney(externalCredit)}
+              </span>
+            </div>
+          )}
+          {externalDebt > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span>سلف خارجية عليه (تُخصم)</span>
+              <span className="font-bold text-destructive">
+                − {formatMoney(externalDebt)}
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between border-t border-border pt-1 font-bold">
             <span>صافي الحساب</span>
             <span className={net >= 0 ? "text-success" : "text-destructive"}>
@@ -167,7 +192,7 @@ export function PayDriverForm({
             {amountP > 0 && (
               <div className="rounded-lg bg-muted/70 p-2 text-xs">
                 <div className="flex items-center justify-between">
-                  <span>منه سداد رحلات</span>
+                  <span>منه سداد رحلات وسلف خارجية له</span>
                   <span className="font-semibold">
                     {formatMoney(duePortion, false)}
                   </span>

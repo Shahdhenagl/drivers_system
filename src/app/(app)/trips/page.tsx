@@ -1,11 +1,19 @@
 import Link from "next/link";
 import { AppHeader } from "@/components/layout/app-header";
 import { SearchBar } from "@/components/search-bar";
-import { MonthFilter } from "@/components/month-filter";
+import { WeekFilter } from "@/components/week-filter";
 import { TripCard } from "@/components/trip-card";
 import { TripGroupCard } from "@/components/trip-group-card";
 import { prisma } from "@/lib/prisma";
-import { startOfDay, endOfDay, addDays, monthBounds, monthLabel } from "@/lib/format";
+import {
+  startOfDay,
+  endOfDay,
+  addDays,
+  cairoWeekStr,
+  weekBounds,
+  weekOptionLabel,
+  shiftWeek,
+} from "@/lib/format";
 import { TRIP_STATUS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import type { Prisma } from "@prisma/client";
@@ -27,7 +35,7 @@ export default async function TripsPage({
     status?: string;
     filter?: string;
     collection?: string;
-    m?: string;
+    w?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -37,35 +45,31 @@ export default async function TripsPage({
   if (sp.status === "COMPLETED") where.status = "COMPLETED";
   else if (sp.status === "CONFIRMED") where.status = { not: "COMPLETED" };
 
-  // قائمة الشهور المتاحة (من أقدم طلب حتى الشهر الحالي)
+  // قائمة الأسابيع المتاحة (من أسبوع أقدم طلب حتى الأسبوع الحالي) — السبت → الجمعة
   const minAgg = await prisma.trip.aggregate({ _min: { date: true } });
   const now = new Date();
-  const monthValues: string[] = [];
+  const currentWeek = cairoWeekStr(now);
+  const weekValues: string[] = [];
   {
-    const minDate = minAgg._min.date ?? now;
-    let y = now.getUTCFullYear();
-    let mo = now.getUTCMonth();
-    const minY = minDate.getUTCFullYear();
-    const minMo = minDate.getUTCMonth();
-    while ((y > minY || (y === minY && mo >= minMo)) && monthValues.length < 240) {
-      monthValues.push(`${y}-${String(mo + 1).padStart(2, "0")}`);
-      mo -= 1;
-      if (mo < 0) {
-        mo = 11;
-        y -= 1;
-      }
+    const minWeek = cairoWeekStr(minAgg._min.date ?? now);
+    let cur = currentWeek;
+    while (cur >= minWeek && weekValues.length < 260) {
+      weekValues.push(cur);
+      cur = shiftWeek(cur, -1);
     }
   }
-  const months = monthValues.map((v) => ({ value: v, label: monthLabel(v) }));
-  const selectedMonth =
-    sp.m && monthValues.includes(sp.m) ? sp.m : "all";
+  const weeks = [
+    { value: "all", label: "كل الفترات" },
+    ...weekValues.map((v) => ({ value: v, label: weekOptionLabel(v, currentWeek) })),
+  ];
+  const selectedWeek = sp.w && weekValues.includes(sp.w) ? sp.w : "all";
 
   if (sp.filter === "today") {
     where.date = { gte: startOfDay(), lte: endOfDay() };
   } else if (sp.filter === "tomorrow") {
     where.date = { gte: startOfDay(addDays(new Date(), 1)), lte: endOfDay(addDays(new Date(), 1)) };
-  } else if (selectedMonth !== "all") {
-    const [from, to] = monthBounds(selectedMonth);
+  } else if (selectedWeek !== "all") {
+    const [from, to] = weekBounds(selectedWeek);
     where.date = { gte: from, lt: to };
   }
   if (sp.q) {
@@ -103,7 +107,7 @@ export default async function TripsPage({
     const p = new URLSearchParams();
     if (key) p.set("status", key);
     if (sp.q) p.set("q", sp.q);
-    if (selectedMonth !== "all") p.set("m", selectedMonth);
+    if (selectedWeek !== "all") p.set("w", selectedWeek);
     return `/trips?${p.toString()}`;
   };
 
@@ -113,7 +117,7 @@ export default async function TripsPage({
       <div className="space-y-4 py-3">
         <SearchBar placeholder="بحث: مقاول، سواق، مكان، رقم..." />
 
-        <MonthFilter months={months} selected={selectedMonth} />
+        <WeekFilter weeks={weeks} selected={selectedWeek} />
 
         <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
           {STATUS_CHIPS.map((c) => {

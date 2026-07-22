@@ -53,11 +53,6 @@ export function cairoDayStr(d: Date | string = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: TIMEZONE }).format(date);
 }
 
-/** شهر القاهرة كنص "yyyy-MM" */
-export function cairoMonthStr(d: Date | string = new Date()): string {
-  return cairoDayStr(d).slice(0, 7);
-}
-
 /** هل التاريخان في نفس اليوم بتوقيت القاهرة؟ */
 export function sameCairoDay(a: Date | string, b: Date | string): boolean {
   return cairoDayStr(a) === cairoDayStr(b);
@@ -78,16 +73,57 @@ const AR_MONTHS = [
   "ديسمبر",
 ];
 
-/** تسمية شهر عربية من نص "yyyy-MM" مثل "يوليو 2026" */
-export function monthLabel(ym: string): string {
-  const [y, m] = ym.split("-").map(Number);
-  return `${AR_MONTHS[(m || 1) - 1]} ${y}`;
+/**
+ * مفتاح الأسبوع = تاريخ السبت الذي يبدأ به الأسبوع كنص "yyyy-MM-dd".
+ * الأسبوع المصري: يبدأ السبت وينتهي الجمعة.
+ */
+export function cairoWeekStr(d: Date | string = new Date()): string {
+  const [y, m, day] = cairoDayStr(d).split("-").map(Number);
+  const base = new Date(Date.UTC(y, m - 1, day));
+  const daysSinceSat = (base.getUTCDay() + 1) % 7; // السبت=0 ... الجمعة=6
+  base.setUTCDate(base.getUTCDate() - daysSinceSat);
+  return base.toISOString().slice(0, 10);
 }
 
-/** حدود شهر "yyyy-MM" كـ [from, toExclusive] بتوقيت UTC (تواريخ الرحلات مخزَّنة منتصف ليل UTC) */
-export function monthBounds(ym: string): [Date, Date] {
-  const [y, m] = ym.split("-").map(Number);
-  return [new Date(Date.UTC(y, m - 1, 1)), new Date(Date.UTC(y, m, 1))];
+/** حدود أسبوع من مفتاحه "yyyy-MM-dd" (السبت) كـ [from, toExclusive] بـ UTC */
+export function weekBounds(ws: string): [Date, Date] {
+  const [y, m, d] = ws.split("-").map(Number);
+  const start = new Date(Date.UTC(y, m - 1, d));
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + 7);
+  return [start, end];
+}
+
+/** تسمية أسبوع عربية مثل "18 – 24 يوليو 2026" (وتُظهر الشهرين لو الأسبوع بينهما) */
+export function weekLabel(ws: string): string {
+  const [from, to] = weekBounds(ws);
+  const last = new Date(to.getTime() - 86_400_000);
+  const d1 = from.getUTCDate();
+  const d2 = last.getUTCDate();
+  const mo1 = AR_MONTHS[from.getUTCMonth()];
+  const mo2 = AR_MONTHS[last.getUTCMonth()];
+  const y2 = last.getUTCFullYear();
+  return from.getUTCMonth() === last.getUTCMonth()
+    ? `${d1} – ${d2} ${mo2} ${y2}`
+    : `${d1} ${mo1} – ${d2} ${mo2} ${y2}`;
+}
+
+/** تسمية الأسبوع في قائمة الفلتر — مع تمييز الأسبوع الحالي والسابق */
+export function weekOptionLabel(ws: string, currentWs = cairoWeekStr()): string {
+  const label = weekLabel(ws);
+  if (ws === currentWs) return `هذا الأسبوع • ${label}`;
+  const [prevStart] = weekBounds(currentWs);
+  prevStart.setUTCDate(prevStart.getUTCDate() - 7);
+  if (ws === prevStart.toISOString().slice(0, 10))
+    return `الأسبوع السابق • ${label}`;
+  return label;
+}
+
+/** مفتاح الأسبوع المُزاح بعدد أسابيع (سالب = للخلف) */
+export function shiftWeek(ws: string, weeks: number): string {
+  const [start] = weekBounds(ws);
+  start.setUTCDate(start.getUTCDate() + weeks * 7);
+  return start.toISOString().slice(0, 10);
 }
 
 /**
