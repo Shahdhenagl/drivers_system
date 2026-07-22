@@ -543,6 +543,9 @@ export function AdvancePanel({
   balance: number; // + = عليه لنا، − = لنا عليه
   advances: AdvanceRow[];
 }) {
+  // الحركات مقفولة افتراضيًا — كشف الحساب هو المرجع، والقايمة دي للمراجعة عند الحاجة
+  const [showMoves, setShowMoves] = useState(false);
+
   // التحصيل/السداد عن طريق محصّل يتقسّم على الرحلات — كل دفعة تظهر كحركة واحدة
   const batches = groupByBatch(
     advances,
@@ -621,14 +624,29 @@ export function AdvancePanel({
       )}
 
       {batches.length > 0 && (
-        <div className="divide-y divide-border rounded-lg border border-border">
-          {batches.map((items) =>
-            items.length > 1 ? (
-              <AdvanceBatch key={items[0].id} items={items} />
-            ) : (
-              <AdvanceLine key={items[0].id} advance={items[0]} />
-            )
-          )}
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowMoves((v) => !v)}
+            className="flex w-full items-center justify-between rounded-lg border border-border px-2.5 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted print:hidden"
+            aria-expanded={showMoves}
+          >
+            <span>الحركات ({batches.length})</span>
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${showMoves ? "rotate-180" : ""}`}
+            />
+          </button>
+          <div className={showMoves ? "" : "hidden print:block"}>
+            <div className="mt-2 divide-y divide-border rounded-lg border border-border print:mt-0">
+              {batches.map((items) =>
+                items.length > 1 ? (
+                  <AdvanceBatch key={items[0].id} items={items} />
+                ) : (
+                  <AdvanceLine key={items[0].id} advance={items[0]} />
+                )
+              )}
+            </div>
+          </div>
         </div>
       )}
     </Card>

@@ -22,14 +22,12 @@ import {
   deleteExternalAdvance,
   editExternalAdvance,
   reopenExternalAdvance,
-  settleExternalAdvance,
 } from "@/lib/external-advance-actions";
 import { playSound } from "@/lib/sounds";
 import {
   ArrowDownLeft,
   ArrowUpRight,
   Check,
-  CheckCircle2,
   ChevronDown,
   History,
   Pencil,
@@ -300,16 +298,14 @@ function RowActions({ row }: { row: ExternalAdvanceRow }) {
   const router = useRouter();
   const settled = row.status === "SETTLED";
 
-  async function run(kind: "settle" | "reopen" | "delete") {
+  async function run(kind: "reopen" | "delete") {
     if (kind === "delete" && !confirm("حذف السلفة الخارجية نهائيًا؟")) return;
     setLoading(true);
     try {
       const res =
-        kind === "settle"
-          ? await settleExternalAdvance(row.id)
-          : kind === "reopen"
-            ? await reopenExternalAdvance(row.id)
-            : await deleteExternalAdvance(row.id);
+        kind === "reopen"
+          ? await reopenExternalAdvance(row.id)
+          : await deleteExternalAdvance(row.id);
       if (res?.error) {
         playSound("error");
         alert(res.error);
@@ -327,27 +323,18 @@ function RowActions({ row }: { row: ExternalAdvanceRow }) {
 
   return (
     <>
-      {settled ? (
+      {/* السلفة محسوبة من ساعة تسجيلها — مفيش زر «تمّت». الزر ده بيرجّع السجلات
+          القديمة اللي اتعلّمت «تمّت» قبل كده للحساب تاني. */}
+      {settled && (
         <button
           type="button"
           disabled={loading}
           className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50"
           onClick={() => run("reopen")}
-          aria-label="إعادة تفعيل"
-          title="إعادة تفعيل (ترجع للحساب)"
+          aria-label="رجّعها للحساب"
+          title="رجّعها للحساب"
         >
           <RotateCcw className="h-4 w-4" />
-        </button>
-      ) : (
-        <button
-          type="button"
-          disabled={loading}
-          className="rounded-lg p-1.5 text-success hover:bg-success/10 disabled:opacity-50"
-          onClick={() => run("settle")}
-          aria-label="تمّت التسوية"
-          title="تمّت التسوية (تخرج من الحساب وتبقى كسجل)"
-        >
-          <CheckCircle2 className="h-4 w-4" />
         </button>
       )}
       <button
@@ -373,6 +360,9 @@ export function ExternalAdvancePanel({
   parties: PartyOption[];
   advances: ExternalAdvanceRow[];
 }) {
+  // التفاصيل مقفولة افتراضيًا — الإجماليات فوق كفاية، والقايمة تتفتح عند الحاجة
+  const [showRows, setShowRows] = useState(false);
+
   const totals = useMemo(() => {
     return advances
       .filter((a) => a.status !== "SETTLED")
@@ -428,23 +418,39 @@ export function ExternalAdvancePanel({
         </div>
       </div>
 
-      <div className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">
-        تُحسب في حساب كل طرف فور تسجيلها. زر ✓ يعلّمها «تمّت» فتخرج من الحساب
-        وتبقى كسجل، وزر ↺ يعيدها. الحذف يمسحها نهائيًا.
-      </div>
-
-      <ExternalRows
-        rows={activeRows}
-        currentParty={currentParty}
-        parties={parties}
-      />
-      {settledRows.length > 0 && (
-        <ExternalRows
-          title="مسددة (سجل)"
-          rows={settledRows}
-          currentParty={currentParty}
-          parties={parties}
-        />
+      {advances.length > 0 && (
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setShowRows((v) => !v)}
+            className="flex w-full items-center justify-between rounded-lg border border-border px-2.5 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted print:hidden"
+            aria-expanded={showRows}
+          >
+            <span>التفاصيل ({advances.length})</span>
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${showRows ? "rotate-180" : ""}`}
+            />
+          </button>
+          <div className={showRows ? "space-y-2" : "hidden space-y-2 print:block"}>
+            <div className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">
+              تُحسب في حساب كل طرف فور تسجيلها ولحد ما تتحذف. الحذف يمسحها
+              نهائيًا.
+            </div>
+            <ExternalRows
+              rows={activeRows}
+              currentParty={currentParty}
+              parties={parties}
+            />
+            {settledRows.length > 0 && (
+              <ExternalRows
+                title="مسددة قديمة (خارج الحساب — ↺ ترجّعها)"
+                rows={settledRows}
+                currentParty={currentParty}
+                parties={parties}
+              />
+            )}
+          </div>
+        </div>
       )}
     </Card>
   );
