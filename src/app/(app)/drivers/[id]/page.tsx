@@ -144,41 +144,156 @@ export default async function DriverProfile({
         }[]
     );
   // حركات المحصّل ("عن طريق فلان") ناتجة عن تحصيل من مقاول أو سداد لسواق.
-  // نجيب اسم الطرف المقابل من الرحلة المرتبطة عشان كشف الحساب يوضّح الفلوس
-  // جت من مين وراحت لمين بدل ما يكتفي باسم المحصّل.
-  const collectorTripIds = [
+  // في ملف المحصّل نفسه اسمه بلا فائدة — المطلوب اسم الطرف اللي دفع أو استلم.
+  // نوصل له بثلاث طرق حسب المتاح في السجل: الاسم المحفوظ، علامة الربط في
+  // الملاحظة ([c:dp:] سداد / [c:col:] تحصيل)، أو الرحلة المرتبطة.
+  const collectorAdvances = advances.filter((a) =>
+    collectorNameFromMethod(a.method)
+  );
+  const markerIds = (kind: "dp" | "col") => [
     ...new Set(
-      advances
-        .filter((a) => collectorNameFromMethod(a.method) && a.tripId)
-        .map((a) => a.tripId as string)
+      collectorAdvances
+        .map((a) => a.note?.match(new RegExp(`\\[c:${kind}:([^\\]]+)\\]`))?.[1])
+        .filter((v): v is string => Boolean(v))
     ),
   ];
-  const collectorTrips = collectorTripIds.length
-    ? await prisma.trip
+  const paymentIds = markerIds("dp");
+  const collectionIds = markerIds("col");
+  const advanceTripIds = [
+    ...new Set(
+      collectorAdvances.map((a) => a.tripId).filter((v): v is string => Boolean(v))
+    ),
+  ];
+
+  const tripSelect = {
+    startPoint: true,
+    endPoint: true,
+    contractor: { select: { name: true } },
+    driver: { select: { name: true } },
+  };
+  const [linkedPayments, linkedCollections, linkedTrips] = await Promise.all([
+    paymentIds.length
+      ? prisma.driverPayment
+          .findMany({
+            where: { id: { in: paymentIds } },
+            select: { id: true, trip: { select: tripSelect } },
+          })
+          .catch(() => [])
+      : [],
+    collectionIds.length
+      ? prisma.collection
+          .findMany({
+            where: { id: { in: collectionIds } },
+            select: { id: true, trip: { select: tripSelect } },
+          })
+          .catch(() => [])
+      : [],
+    advanceTripIds.length
+      ? prisma.trip
+          .findMany({
+            where: { id: { in: advanceTripIds } },
+            select: { id: true, ...tripSelect },
+          })
+          .catch(() => [])
+      : [],
+  ]);
+
+  type TripParties = {
+    startPoint: string;
+    endPoint: string;
+    contractor: { name: string };
+    driver: { name: string } | null;
+  };
+  const tripByPaymentId = new Map<string, TripParties>(
+    linkedPayments.map((p) => [p.id, p.trip])
+  );
+  const tripByCollectionId = new Map<string, TripParties>(
+    linkedCollections.map((c) => [c.id, c.trip])
+  );
+  const tripById = new Map<string, TripParties>(
+    linkedTrips.map((t) => [t.id, t])
+  );
+
+  /** الرحلة المرتبطة بحركة المحصّل — عبر علامة الربط أو حقل tripId */
+  const collectorTrip = (a: { note: string | null; tripId: string | null }) => {
+    const dp = a.note?.match(/\[c:dp:([^\]]+)\]/)?.[1];
+    if (dp && tripByPaymentId.has(dp)) return tripByPaymentId.get(dp);
+    const col = a.note?.match(/\[c:col:([^\]]+)\]/)?.[1];
+    if (col && tripByCollectionId.has(col)) return tripByCollectionId.get(col);
+    return a.tripId ? tripById.get(a.tripId) : undefined;
+  };
+
+  // السداد المجمّع القديم (من صفحة السواق) اتسجّل بدون رابط ولا اسم محفوظ.
+  // نستنتج السواق من سدادات نفس الوسيلة ونفس اليوم، وبشرط قاطع فقط: سواق
+  // واحد بالظبط مجموع سداداته يساوي قيمة الحركة. أي لبس → منعرضش اسم.
+  const unlinkedPayoutKeys = collectorAdvances.filter(
+    (a) =>
+      a.direction === "IN" &&
+      !a.sourceName &&
+      !collectorTrip(a) &&
+      !a.note?.includes("[expense:")
+  );
+  const sameDayPayments = unlinkedPayoutKeys.length
+    ? await prisma.driverPayment
         .findMany({
-          where: { id: { in: collectorTripIds } },
-          select: {
-            id: true,
-            startPoint: true,
-            endPoint: true,
-            contractor: { select: { name: true } },
-            driver: { select: { name: true } },
+          where: {
+            OR: unlinkedPayoutKeys.map((a) => ({
+              method: a.method,
+              date: a.date,
+            })),
           },
+          select: { method: true, date: true, amount: true, driverId: true },
         })
         .catch(() => [])
     : [];
-  const tripPartiesById = new Map(collectorTrips.map((t) => [t.id, t]));
 
-  /** الطرف المقابل لحركة محصّل: المقاول اللي دفع (OUT) أو السواق اللي استلم (IN) */
+  /** مجموع سدادات كل سواق في (وسيلة + يوم) — لمطابقتها بقيمة حركة المحصّل */
+  const payoutTotals = new Map<string, Map<string, number>>();
+  for (const p of sameDayPayments) {
+    const slot = `${p.method}|${+p.date}`;
+    const byDriver = payoutTotals.get(slot) ?? new Map<string, number>();
+    byDriver.set(p.driverId, (byDriver.get(p.driverId) ?? 0) + p.amount);
+    payoutTotals.set(slot, byDriver);
+  }
+  const payoutDriverNames = sameDayPayments.length
+    ? await prisma.driver
+        .findMany({
+          where: { id: { in: [...new Set(sameDayPayments.map((p) => p.driverId))] } },
+          select: { id: true, name: true },
+        })
+        .catch(() => [])
+    : [];
+  const driverNameById = new Map(payoutDriverNames.map((x) => [x.id, x.name]));
+
+  const inferredPayoutDriver = (a: {
+    method: string;
+    date: Date;
+    amount: number;
+  }) => {
+    const byDriver = payoutTotals.get(`${a.method}|${+a.date}`);
+    if (!byDriver) return null;
+    const matches = [...byDriver].filter(([, total]) => total === a.amount);
+    return matches.length === 1
+      ? (driverNameById.get(matches[0][0]) ?? null)
+      : null;
+  };
+
+  /** الطرف المقابل: المقاول اللي دفع (OUT) أو السواق اللي استلم (IN) */
   const collectorCounterparty = (a: {
     direction: string;
-    tripId?: string | null;
-    sourceName?: string | null;
+    method: string;
+    amount: number;
+    date: Date;
+    note: string | null;
+    tripId: string | null;
+    sourceName: string | null;
   }) => {
     if (a.sourceName) return a.sourceName;
-    const t = a.tripId ? tripPartiesById.get(a.tripId) : undefined;
-    if (!t) return null;
-    return a.direction === "OUT" ? t.contractor.name : (t.driver?.name ?? null);
+    const t = collectorTrip(a);
+    if (t) {
+      return a.direction === "OUT" ? t.contractor.name : (t.driver?.name ?? null);
+    }
+    return a.direction === "IN" ? inferredPayoutDriver(a) : null;
   };
 
   // فصل الأرباح الإضافية/الإكراميات عن سلف المكتب العادية
@@ -328,14 +443,29 @@ export default async function DriverProfile({
         const isCollector = collectorNameFromMethod(a.method) !== null;
         const other = isCollector ? collectorCounterparty(a) : null;
         // داخل الدفعة المجمّعة الملاحظة واحدة ومكرّرة — الرحلة أنفع للتمييز
-        const trip = isCollector && a.tripId ? tripPartiesById.get(a.tripId) : undefined;
+        const trip = isCollector ? collectorTrip(a) : undefined;
+        // في ملف المحصّل: OUT = قبض فلوس من مقاول، IN = سلّم فلوس لسواق.
+        // استثناء: المصروف اللي اتدفع من فلوس المحصّل — مالوش طرف مقابل.
+        // اسم المحصّل نفسه مش معلومة هنا، فبنوصف العملية حتى لو الطرف مجهول.
+        const expenseName = a.note?.includes("[expense:")
+          ? a.note.split("[expense:")[0].split(":").slice(1).join(":").trim()
+          : null;
+        const collectorLabel = expenseName
+          ? `مصروف — ${expenseName}`
+          : a.note?.includes("[expense:")
+            ? "مصروف من فلوس المحصّل"
+            : a.direction === "OUT"
+              ? other
+                ? `حصّل من المقاول ${other}`
+                : "حصّل فلوس من مقاول"
+              : other
+                ? `سلّم مستحقات للسواق ${other}`
+                : "سلّم مستحقات لسواق";
         return {
           id: `advance-${a.id}`,
           date: a.date,
-          description: other
-            ? a.direction === "OUT"
-              ? `حصّل من ${other}`
-              : `سلّم لـ ${other}`
+          description: isCollector
+            ? collectorLabel
             : isSystemAdvanceMethod(a.method)
               ? methodLabel(a.method)
               : a.direction === "OUT"
@@ -348,10 +478,10 @@ export default async function DriverProfile({
           paid: a.direction === "IN" ? a.amount : undefined,
           received: a.direction === "OUT" ? a.amount : undefined,
           // تحصيل/سداد المحصّل يتقسّم على الرحلات — الدفعة الواحدة حركة واحدة.
-          // اسم الطرف المقابل جزء من المفتاح حتى لا تختلط دفعتان لطرفين مختلفين
-          // في صف واحد بعنوان طرف واحد. الحركات اليدوية بلا مفتاح تجميع.
+          // الوصف جزء من المفتاح حتى لا تندمج حركتان لطرفين مختلفين (أو مصروف
+          // مع سداد) في صف واحد بعنوان واحد. الحركات اليدوية بلا مفتاح تجميع.
           groupKey: isSystemAdvanceMethod(a.method)
-            ? `adv|${a.direction}|${a.method}|${other ?? ""}|${+a.date}`
+            ? `adv|${a.direction}|${a.method}|${isCollector ? collectorLabel : ""}|${+a.date}`
             : null,
           createdAt: a.createdAt,
           action: advanceRowAction(a),
