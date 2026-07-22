@@ -455,7 +455,9 @@ export default async function DriverProfile({
         const expenseName = a.note?.includes("[expense:")
           ? a.note.split("[expense:")[0].split(":").slice(1).join(":").trim()
           : null;
-        const collectorLabel = expenseName
+        const collectorLabel = a.note?.includes("[withdrawal:")
+          ? "سلّم ربح لشريك من فلوسه"
+          : expenseName
           ? `مصروف — ${expenseName}`
           : a.note?.includes("[expense:")
             ? "مصروف من فلوس المحصّل"

@@ -12,14 +12,10 @@ import { Plus, Handshake, ChevronLeft, ArrowRight } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 export default async function PartnersPage() {
-  const [partners, drivers, ov] = await Promise.all([
+  const [partners, ov] = await Promise.all([
     prisma.partner.findMany({
       orderBy: { createdAt: "asc" },
       include: { withdrawals: { select: { amount: true } } },
-    }),
-    prisma.driver.findMany({
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
     }),
     getFinanceOverview(),
   ]);
@@ -115,7 +111,6 @@ export default async function PartnersPage() {
           <DistributeForm
             distributableProfit={ov.realizedProfit}
             partners={partners.map((p) => ({ id: p.id, name: p.name }))}
-            drivers={drivers}
           />
         )}
       </div>

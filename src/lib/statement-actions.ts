@@ -31,8 +31,22 @@ export function advanceRowAction(a: AdvanceLike): StatementRowAction {
       note: a.note,
     };
   }
-  // سلفة "محصّل يمسك الفلوس" — قابلة للحذف مع عكس التحصيل المرتبط على المقاول
   if (collectorNameFromMethod(a.method)) {
+    // حركات المحصّل المولّدة من مصدر آخر تُدار من مصدرها — حذفها من هنا كان
+    // هيمسح تحصيلات نفس اليوم بالخطأ (مالهاش علامة [c:col:] تربطها بتحصيل)
+    if (a.note?.includes("[expense:")) {
+      return {
+        kind: "locked",
+        reason: "مصروف مدفوع من فلوس المحصّل — يُعدَّل أو يُحذف من صفحة المصروفات",
+      };
+    }
+    if (a.note?.includes("[withdrawal:")) {
+      return {
+        kind: "locked",
+        reason: "ربح شريك مستلم عن طريق المحصّل — يُدار من صفحة الشركاء",
+      };
+    }
+    // سلفة "محصّل يمسك الفلوس" — قابلة للحذف مع عكس التحصيل المرتبط على المقاول
     return { kind: "collectorHolding", id: a.id };
   }
   if (isSystemAdvanceMethod(a.method)) {

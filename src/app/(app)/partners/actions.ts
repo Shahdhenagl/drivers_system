@@ -10,10 +10,12 @@ import { toPiastres, formatMoney } from "@/lib/money";
 import { sendTelegram } from "@/lib/telegram";
 import { adminDistributionMessage } from "@/lib/messages";
 import {
+  collectorNameFromMethod,
   driverIdFromAccountMethod,
   methodLabel,
   PAYMENT_METHOD_KEYS,
 } from "@/lib/constants";
+import { resolveCollector, type Collector } from "@/lib/collectors";
 
 export async function createPartner(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
@@ -134,7 +136,13 @@ export async function addWithdrawal(partnerId: string, formData: FormData) {
 export async function deleteWithdrawal(id: string) {
   const w = await prisma.partnerWithdrawal.findUnique({ where: { id } });
   if (!w) return { error: "السحب غير موجود" };
-  const driverId = driverIdFromAccountMethod(w.method);
+  // السحب المستلَم عن طريق محصّل (أو "حساب السواق" في السجلات القديمة) له سلفة
+  // مقابلة على السواق لازم تتمسح معاه
+  const collector = await resolveCollector(w.method);
+  if (collector && "notFound" in collector) {
+    return { error: `المحصّل «${collector.notFound}» غير موجود في السواقين` };
+  }
+  const driverId = collector?.id ?? driverIdFromAccountMethod(w.method);
 
   await prisma.$transaction(async (tx) => {
     await tx.ledgerEntry.deleteMany({
@@ -208,30 +216,28 @@ export async function distributeProfits(formData: FormData) {
   }
   const shares = allShares.filter((s) => s.amount > 0);
 
-  const driverIds = shares
-    .map((s) => driverIdFromAccountMethod(s.method))
-    .filter((id): id is string => Boolean(id));
-  const drivers = driverIds.length
-    ? await prisma.driver.findMany({
-        where: { id: { in: driverIds } },
-        select: { id: true, name: true },
-      })
-    : [];
-  const driverById = new Map(drivers.map((d) => [d.id, d]));
+  // استلام "عن طريق محصّل": الشريك بياخد نصيبه من فلوس المحصّل — يقلّل رصيده
+  // (سلفة عليه) ولا يمسّ الخزنة، بالظبط زي المصروف عن طريق محصّل.
+  const collectorByMethod = new Map<string, Collector>();
+  for (const m of new Set(shares.map((s) => s.method))) {
+    if (!collectorNameFromMethod(m)) continue;
+    const c = await resolveCollector(m);
+    if (c && "notFound" in c) {
+      return { error: `المحصّل «${c.notFound}» غير موجود في السواقين` };
+    }
+    if (c) collectorByMethod.set(m, c);
+  }
 
   for (const s of shares) {
-    const driverId = driverIdFromAccountMethod(s.method);
-    if (driverId && !driverById.has(driverId)) {
-      return { error: `حساب السواق المختار للشريك ${s.name} غير موجود` };
-    }
-    if (!driverId && !PAYMENT_METHOD_KEYS.includes(s.method as never)) {
+    if (collectorByMethod.has(s.method)) continue;
+    if (!PAYMENT_METHOD_KEYS.includes(s.method as never)) {
       return { error: `طريقة استلام غير صحيحة للشريك ${s.name}` };
     }
   }
 
   const methodTotals = new Map<string, number>();
   for (const s of shares) {
-    if (driverIdFromAccountMethod(s.method)) continue;
+    if (collectorByMethod.has(s.method)) continue;
     methodTotals.set(s.method, (methodTotals.get(s.method) ?? 0) + s.amount);
   }
   for (const [m, total] of methodTotals) {
@@ -247,29 +253,28 @@ export async function distributeProfits(formData: FormData) {
       data: { totalProfit: amount, note },
     });
     for (const s of shares) {
-      const driverId = driverIdFromAccountMethod(s.method);
-      const driver = driverId ? driverById.get(driverId) : null;
+      const collector = collectorByMethod.get(s.method) ?? null;
       const w = await tx.partnerWithdrawal.create({
         data: {
           partnerId: s.id,
           amount: s.amount,
           method: s.method,
-          note: driver
-            ? `توزيع أرباح على حساب السواق ${driver.name}`
+          note: collector
+            ? `توزيع أرباح عن طريق ${collector.name}`
             : "توزيع أرباح",
           settlementId: settlement.id,
         },
       });
       reportShares.push({ name: s.name, percent: s.percent, amount: s.amount });
-      if (driver) {
+      if (collector) {
         await tx.advance.create({
           data: {
             partyType: "DRIVER",
-            partyId: driver.id,
+            partyId: collector.id,
             amount: s.amount,
             direction: "IN",
             method: s.method,
-            note: `ربح شريك مستلم على حساب السواق - ${s.name} [withdrawal:${w.id}]`,
+            note: `ربح شريك ${s.name} مستلم عن طريق ${collector.name} [withdrawal:${w.id}]`,
           },
         });
         continue;
@@ -297,8 +302,9 @@ export async function distributeProfits(formData: FormData) {
   }
 
   revalidatePath("/partners");
-  for (const driverId of driverIds) revalidatePath(`/drivers/${driverId}`);
-  if (driverIds.length) revalidatePath("/drivers");
+  const collectorIds = [...new Set([...collectorByMethod.values()].map((c) => c.id))];
+  for (const driverId of collectorIds) revalidatePath(`/drivers/${driverId}`);
+  if (collectorIds.length) revalidatePath("/drivers");
   revalidatePath("/finance");
   revalidatePath("/");
 }

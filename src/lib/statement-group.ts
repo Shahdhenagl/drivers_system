@@ -8,7 +8,7 @@ import type { StatementRow } from "@/components/party-print-statement";
  */
 
 /** علامات ربط داخلية داخل الملاحظات — تُخفى عن العرض */
-const MARKER_RE = /\s*\[c:(?:col|dp|adv):[^\]]+\]/g;
+const MARKER_RE = /\s*\[(?:c:(?:col|dp|adv|ext)|expense|withdrawal):[^\]]+\]/g;
 
 /** يزيل العلامات الداخلية من الملاحظة قبل عرضها */
 export function stripMarkers(note?: string | null): string | null {

@@ -18,23 +18,21 @@ import { distributeProfits } from "./actions";
 import { playSound } from "@/lib/sounds";
 import { formatMoney, toEgp } from "@/lib/money";
 import {
-  driverAccountMethodValue,
+  collectorMethodValue,
+  COLLECTORS,
   PAYMENT_METHODS,
   PAYMENT_METHOD_KEYS,
 } from "@/lib/constants";
 import { PieChart } from "lucide-react";
 
 type PartnerOption = { id: string; name: string };
-type DriverOption = { id: string; name: string };
 
 export function DistributeForm({
   distributableProfit,
   partners,
-  drivers,
 }: {
   distributableProfit: number;
   partners: PartnerOption[];
-  drivers: DriverOption[];
 }) {
   const [open, setOpen] = useState(false);
   const [err, setErr] = useState("");
@@ -108,9 +106,9 @@ export function DistributeForm({
                       {PAYMENT_METHODS[m]}
                     </option>
                   ))}
-                  {drivers.map((driver) => (
-                    <option key={driver.id} value={driverAccountMethodValue(driver.id)}>
-                      حساب السواق - {driver.name}
+                  {COLLECTORS.map((c) => (
+                    <option key={c} value={collectorMethodValue(c)}>
+                      عن طريق {c}
                     </option>
                   ))}
                 </select>
