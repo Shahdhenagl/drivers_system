@@ -246,7 +246,7 @@ export default async function ContractorProfile({
       id: `trip-${t.id}`,
       date: t.date,
       description: `رحلة ${t.startPoint} ← ${t.endPoint}`,
-      details: `${t.driver ? `السواق: ${t.driver.name} • ` : ""}${TRIP_STATUS[tripStatus(t.status)]}`,
+      details: `${t.driver ? `السواق: ${t.driver.name} • ` : ""}${t.vehicleType ? `${t.vehicleType} • ` : ""}${TRIP_STATUS[tripStatus(t.status)]}`,
       onParty: effectiveAmounts(t).contractor,
       action: { kind: "trip" as const, id: t.id },
     })),
@@ -400,21 +400,6 @@ export default async function ContractorProfile({
           netAmount: Math.abs(netContractor),
         }}
         rows={visibleStatementRows}
-        counterpartyLabel="السواق"
-        priceColumn="contractor"
-        trips={trips
-          .filter((t) => !clearedAt || +t.date >= +clearedAt)
-          .map((t) => ({
-            id: t.id,
-            date: t.date,
-            startPoint: t.startPoint,
-            endPoint: t.endPoint,
-            vehicleType: t.vehicleType,
-            counterparty: t.driver?.name,
-            contractorPrice: effectiveAmounts(t).contractor,
-            driverDue: effectiveAmounts(t).driver,
-            statusLabel: TRIP_STATUS[tripStatus(t.status)],
-          }))}
       />
       <div className="space-y-4 py-3 print:hidden">
         <Link

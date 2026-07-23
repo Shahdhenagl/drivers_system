@@ -403,7 +403,7 @@ export default async function DriverProfile({
       id: `trip-${t.id}`,
       date: t.date,
       description: `رحلة ${t.startPoint} ← ${t.endPoint}`,
-      details: `المقاول: ${t.contractor.name} • ${TRIP_STATUS[tripStatus(t.status)]}`,
+      details: `المقاول: ${t.contractor.name} • ${t.vehicleType ? `${t.vehicleType} • ` : ""}${TRIP_STATUS[tripStatus(t.status)]}`,
       forParty: effectiveAmounts(t).driver,
       action: { kind: "trip" as const, id: t.id },
     })),
@@ -606,21 +606,6 @@ export default async function DriverProfile({
           netAmount: Math.abs(netDriver),
         }}
         rows={visibleStatementRows}
-        counterpartyLabel="المقاول"
-        priceColumn="driver"
-        trips={trips
-          .filter((t) => !clearedAt || +t.date >= +clearedAt)
-          .map((t) => ({
-            id: t.id,
-            date: t.date,
-            startPoint: t.startPoint,
-            endPoint: t.endPoint,
-            vehicleType: t.vehicleType,
-            counterparty: t.contractor.name,
-            contractorPrice: effectiveAmounts(t).contractor,
-            driverDue: effectiveAmounts(t).driver,
-            statusLabel: TRIP_STATUS[tripStatus(t.status)],
-          }))}
       />
       <div className="space-y-4 py-3 print:hidden">
         <Link

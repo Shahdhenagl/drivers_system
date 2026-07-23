@@ -171,19 +171,10 @@ for (const [name, text] of [
 // تحقّق إيجابي: تقرير المقاول يُظهر سعره هو
 mustHave("contractorReport يُظهر سعر المقاول نفسه", contractorRep, CONTRACTOR_MARK);
 
-// ── 3) كشف الحساب المطبوع: عمود سعر الطرف نفسه فقط ───────────────────────
-console.log("\n[3] كشف الحساب المطبوع — عمود سعر واحد حسب الطرف:");
-const printTrip = {
-  id: "t1",
-  date: tripDate,
-  startPoint: "القاهرة",
-  endPoint: "الإسكندرية",
-  vehicleType: "نقل ثقيل",
-  counterparty: "الطرف المقابل",
-  contractorPrice: CONTRACTOR_PRICE,
-  driverDue: DRIVER_DUE,
-  statusLabel: "مؤكدة",
-};
+// ── 3) كشف الحساب المطبوع: جدول موحّد بمبالغ الطرف نفسه فقط ──────────────
+// الجدول الواحد يعرض ما يبنيه الاستدعاء: كشف السواق يضع مستحقه في «ليه»،
+// وكشف المقاول يضع سعره في «عليه» — فلا يتسرّب سعر الطرف المقابل إطلاقًا.
+console.log("\n[3] كشف الحساب المطبوع — جدول موحّد بمبالغ الطرف نفسه:");
 const summary = {
   totalForParty: 0,
   totalOnParty: 0,
@@ -198,34 +189,44 @@ const base = {
   periodLabel: "كل الفترات",
   generatedAt: tripDate,
   summary,
-  rows: [],
-  trips: [printTrip],
 };
 
 const driverStmt = renderToStaticMarkup(
   <PartyPrintStatement
     {...base}
     partyType="سواق"
-    counterpartyLabel="المقاول"
-    priceColumn="driver"
+    rows={[
+      {
+        id: "t1",
+        date: tripDate,
+        description: "رحلة القاهرة ← الإسكندرية",
+        details: "المقاول: شركة النور • كبيره • مؤكدة",
+        forParty: DRIVER_DUE,
+      },
+    ]}
   />
 );
 mustNotHave("كشف السواق: لا يحوي قيمة سعر المقاول", driverStmt, CONTRACTOR_MARK);
-mustNotHave("كشف السواق: لا يحوي عنوان «سعر المقاول»", driverStmt, LABEL_CONTRACTOR_PRICE);
-mustHave("كشف السواق: يُظهر عنوان «مستحق السواق»", driverStmt, LABEL_DRIVER_DUE);
+mustNotHave("كشف السواق: لا يحوي عبارة «سعر المقاول»", driverStmt, LABEL_CONTRACTOR_PRICE);
 mustHave("كشف السواق: يُظهر قيمة مستحق السواق", driverStmt, DRIVER_MARK);
 
 const contractorStmt = renderToStaticMarkup(
   <PartyPrintStatement
     {...base}
     partyType="مقاول"
-    counterpartyLabel="السواق"
-    priceColumn="contractor"
+    rows={[
+      {
+        id: "t1",
+        date: tripDate,
+        description: "رحلة القاهرة ← الإسكندرية",
+        details: "السواق: أحمد السائق • كبيره • مؤكدة",
+        onParty: CONTRACTOR_PRICE,
+      },
+    ]}
   />
 );
 mustNotHave("كشف المقاول: لا يحوي قيمة مستحق السواق", contractorStmt, DRIVER_MARK);
-mustNotHave("كشف المقاول: لا يحوي عنوان «مستحق السواق»", contractorStmt, LABEL_DRIVER_DUE);
-mustHave("كشف المقاول: يُظهر عنوان «سعر المقاول»", contractorStmt, LABEL_CONTRACTOR_PRICE);
+mustNotHave("كشف المقاول: لا يحوي عبارة «مستحق السواق»", contractorStmt, LABEL_DRIVER_DUE);
 mustHave("كشف المقاول: يُظهر قيمة سعر المقاول", contractorStmt, CONTRACTOR_MARK);
 
 // ── النتيجة ──────────────────────────────────────────────────────────────

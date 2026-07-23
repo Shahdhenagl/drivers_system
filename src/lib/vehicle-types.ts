@@ -1,5 +1,5 @@
 export const TRIP_VEHICLE_TYPES = [
-  "كبيرة",
+  "كبيره",
   "صيني",
   "شفورليه",
   "سوزكي",

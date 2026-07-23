@@ -45,20 +45,6 @@ export type StatementRow = {
   createdAt?: Date | null;
 };
 
-/** رحلة في جدول تفاصيل الرحلات بكشف الحساب المطبوع */
-export type PrintTrip = {
-  id: string;
-  date: Date;
-  startPoint: string;
-  endPoint: string;
-  vehicleType?: string | null;
-  /** الطرف المقابل: اسم السواق في ملف المقاول، واسم المقاول في ملف السواق */
-  counterparty?: string | null;
-  contractorPrice: number;
-  driverDue: number;
-  statusLabel?: string;
-};
-
 export function PartyPrintStatement({
   companyName,
   partyType,
@@ -68,9 +54,6 @@ export function PartyPrintStatement({
   generatedAt,
   summary,
   rows,
-  trips,
-  counterpartyLabel,
-  priceColumn,
 }: {
   companyName: string;
   partyType: string;
@@ -87,26 +70,18 @@ export function PartyPrintStatement({
     netAmount: number;
   };
   rows: StatementRow[];
-  trips?: PrintTrip[];
-  counterpartyLabel?: string;
-  /**
-   * أي سعر يُعرض في جدول الرحلات — حفاظًا على خصوصية المكتب:
-   * كشف السواق يعرض مستحقه فقط، وكشف المقاول يعرض سعره فقط.
-   */
-  priceColumn: "driver" | "contractor";
 }) {
-  const priceLabel = priceColumn === "driver" ? "مستحق السواق" : "سعر المقاول";
-  const priceOf = (t: { contractorPrice: number; driverDue: number }) =>
-    priceColumn === "driver" ? t.driverDue : t.contractorPrice;
   // الدفعة الواحدة المقسّمة على رحلات تُطبع كسطر واحد بقيمتها الكاملة
   const sortedRows = groupStatementRows(rows).sort((a, b) => +a.date - +b.date);
-  const sortedTrips = [...(trips ?? [])].sort((a, b) => +a.date - +b.date);
-  const tripTotals = sortedTrips.reduce(
-    (acc, t) => ({
-      contractorPrice: acc.contractorPrice + t.contractorPrice,
-      driverDue: acc.driverDue + t.driverDue,
+  // إجماليات الأعمدة — تُطبع في ذيل الجدول ليظهر مجموع «ليه» و«عليه» بوضوح
+  const rowTotals = sortedRows.reduce(
+    (acc, r) => ({
+      forParty: acc.forParty + (r.forParty ?? 0),
+      onParty: acc.onParty + (r.onParty ?? 0),
+      paid: acc.paid + (r.paid ?? 0),
+      received: acc.received + (r.received ?? 0),
     }),
-    { contractorPrice: 0, driverDue: 0 }
+    { forParty: 0, onParty: 0, paid: 0, received: 0 }
   );
 
   return (
@@ -152,67 +127,6 @@ export function PartyPrintStatement({
           <SummaryCell label={summary.netLabel} value={summary.netAmount} strong />
         </div>
 
-        {trips && (
-          <>
-            <div className="print-statement__section-title">
-              تفاصيل الرحلات ({sortedTrips.length})
-            </div>
-            <table className="print-statement__table">
-              <thead>
-                <tr>
-                  <th>التاريخ</th>
-                  <th>الرحلة</th>
-                  <th>نوع العربية</th>
-                  {counterpartyLabel ? <th>{counterpartyLabel}</th> : null}
-                  <th>{priceLabel}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedTrips.length === 0 ? (
-                  <tr>
-                    <td colSpan={counterpartyLabel ? 5 : 4} className="print-statement__empty">
-                      لا توجد رحلات في الفترة المحددة
-                    </td>
-                  </tr>
-                ) : (
-                  sortedTrips.map((t) => (
-                    <tr key={t.id}>
-                      <td>{formatShortDate(t.date)}</td>
-                      <td>
-                        <div className="print-statement__desc">
-                          {t.startPoint} ← {t.endPoint}
-                        </div>
-                        {t.statusLabel ? (
-                          <div className="print-statement__details">{t.statusLabel}</div>
-                        ) : null}
-                      </td>
-                      <td>{t.vehicleType || "-"}</td>
-                      {counterpartyLabel ? <td>{t.counterparty || "-"}</td> : null}
-                      <MoneyCell value={priceOf(t)} />
-                    </tr>
-                  ))
-                )}
-              </tbody>
-              {sortedTrips.length > 0 && (
-                <tfoot>
-                  <tr>
-                    <td colSpan={counterpartyLabel ? 4 : 3}>
-                      <strong>الإجمالي</strong>
-                    </td>
-                    <MoneyCell
-                      value={
-                        priceColumn === "driver"
-                          ? tripTotals.driverDue
-                          : tripTotals.contractorPrice
-                      }
-                    />
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </>
-        )}
-
         <div className="print-statement__section-title">حركات الحساب</div>
         <table className="print-statement__table">
           <thead>
@@ -250,6 +164,19 @@ export function PartyPrintStatement({
               ))
             )}
           </tbody>
+          {sortedRows.length > 0 && (
+            <tfoot>
+              <tr>
+                <td colSpan={2}>
+                  <strong>الإجمالي</strong>
+                </td>
+                <MoneyCell value={rowTotals.forParty} />
+                <MoneyCell value={rowTotals.onParty} />
+                <MoneyCell value={rowTotals.paid} />
+                <MoneyCell value={rowTotals.received} />
+              </tr>
+            </tfoot>
+          )}
         </table>
 
         <div className="print-statement__footer">
